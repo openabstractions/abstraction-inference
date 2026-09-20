@@ -1,0 +1,1004 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Open Abstractions — schema</title>
+<link rel="stylesheet" href="style.css">
+
+<main>
+<nav class="site"><a class="name" href="index.html">Open Abstractions</a>
+<a href="index.html">Overview</a> <a href="cases.html">Cases</a> <a href="reference.html">Reference</a> <a href="evidence.html">Evidence</a> <a href="coverage.html">Coverage</a> <a href="adopt.html">Adopt</a>
+<a class="right" href="https://github.com/openabstractions">github.com/openabstractions</a></nav>
+
+
+<h1>Schema</h1>
+<p class="lead">Use this reference to inspect fields, methods, accepted values and failure outcomes. For setup and working examples, start with the <a href="reference.html">API guide</a>.</p>
+<p>Definition: <code>abstraction.inference.api</code></p>
+<nav aria-label="Schema sections" class="meta"><a href="#service-Chat">Chat</a> · <a href="#service-Embedder">Embedder</a> · <a href="#service-Transcription">Transcription</a> · <a href="#service-Speech">Speech</a> · <a href="#service-Live">Live</a> · <a href="#service-Image">Image</a> · <a href="#service-Operator">Operator</a> · <a href="#types">Types</a> · <a href="#structs">Fields</a> · <a href="#enums">Enumerations</a> · <a href="#constants">Constants</a> · <a href="#encoding">Encoding</a> · <a href="#refusals">Refusals</a></nav>
+<h2 id="service-Chat">Service <code>Chat</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Model calls performed by the receiving runtime for the bound caller. Operations are visible only to the account and program that started them. Every request to a hosted host carries headers from abstraction.credentials applier@1 applied for the bound caller, sent once and kept out of every reply, delta, record and log. Caller exit cancels: an operation nobody observes for idle_ms is closed, because a stream nobody reads is spend. A decision point that cannot answer reads unavailable, never permission.</p>
+<p>Wire identity: <code>abstraction.inference/chat@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Admit one model call for the bound caller and begin it. In order: argument shape (invalid), guarantees and host selection through the router (no_host), host features and required extensions (unsupported_feature), the rights decision for abstraction.inference/complete on host:&lt;name&gt; (not_permitted, or unavailable when the decision point cannot answer), the credential&#39;s ceiling (budget_exceeded), the caller&#39;s concurrent operations (exhausted), then for a hosted host the credentials applier (not_permitted or unavailable). Nothing leaves the service before every check passes. Deltas are observed with Observe.</p>
+<h3><code>Start</code></h3><p><code>request-response</code> <code>Admission</code></p><ul>
+<li>Argument 1: <code>Request</code> <code>request</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read a bounded page of an operation&#39;s deltas from cursor. max_deltas is 1..256, max_bytes 1..65536 and wait_ms 0..30000. When no delta at cursor exists yet and the operation has not ended, wait up to wait_ms for one, then return what is there. An Observe in flight keeps the operation from idling; a caller that disconnects mid-wait stops the wait. Reconnecting with the last next resumes without loss inside retained_deltas.</p>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
+<li>Argument 4: <code>i64</code> <code>max_bytes</code> (required, including zero/false/empty)</li>
+<li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Stop an operation the bound caller started and close its upstream request. Reports whether this call cancelled it or it had already ended.</p>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="service-Embedder">Service <code>Embedder</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Text embeddings computed by a host the receiving runtime picks, for the bound caller. Every request to a hosted host carries headers from abstraction.credentials applier@1 applied once for the bound caller and kept out of every reply, record and log. A decision point that cannot answer reads unavailable, never permission.</p>
+<p>Wire identity: <code>abstraction.inference/embed@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Embed texts for the bound caller in one bounded call. Admission follows Chat.Start&#39;s order for profile embed, without its feature and capacity steps: argument shape (invalid), guarantees and host selection (no_host), the host&#39;s wire (unsupported_feature), the rights decision for abstraction.inference/complete on host:&lt;name&gt; (not_permitted, or unavailable), the credential&#39;s ceiling (budget_exceeded), then for a hosted host the credentials applier with consumer abstraction.inference/embed@1. Nothing leaves the service before every check passes. The call returns when the host replies.</p>
+<h3><code>Embed</code></h3><p><code>request-response</code> <code>Embeddings</code></p><ul>
+<li>Argument 1: <code>EmbedRequest</code> <code>request</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="service-Transcription">Service <code>Transcription</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Prerecorded speech-to-text over an authorized content digest. Operations use the shared retained-delta lifecycle and are visible only through this profile to the account and program that started them.</p>
+<p>Wire identity: <code>abstraction.inference/transcription@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Admit one prerecorded transcription for the bound caller. Admission follows chat order for profile transcription: arguments, host and wire/format support, complete rights, authorized bounded content resolution and verification, ceiling, capacity, then the profile-scoped hosted credential. Nothing leaves the service before all checks pass.</p>
+<h3><code>Start</code></h3><p><code>request-response</code> <code>Admission</code></p><ul>
+<li>Argument 1: <code>TranscriptionRequest</code> <code>request</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read retained segment and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.</p>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
+<li>Argument 4: <code>i64</code> <code>max_bytes</code> (required, including zero/false/empty)</li>
+<li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Stop a transcription operation and close its upstream request, using the shared operation cancellation outcomes.</p>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="service-Speech">Service <code>Speech</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Streaming text-to-speech with bounded audio deltas and a final storage reference. Operations are visible only through this profile to the account and program that started them.</p>
+<p>Wire identity: <code>abstraction.inference/speech@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Admit text-to-speech for the bound caller. Admission follows chat order for profile speech: arguments, host and wire/format support, complete rights, authorized output-write preflight, ceiling, capacity, then the profile-scoped hosted credential. Nothing leaves the service before every check passes.</p>
+<h3><code>Start</code></h3><p><code>request-response</code> <code>Admission</code></p><ul>
+<li>Argument 1: <code>SpeechRequest</code> <code>request</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read retained audio and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.</p>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
+<li>Argument 4: <code>i64</code> <code>max_bytes</code> (required, including zero/false/empty)</li>
+<li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Stop a speech operation and close its upstream request, using the shared operation cancellation outcomes.</p>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="service-Live">Service <code>Live</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Live audio through bounded native IPC calls. One session produces one final response. A new response starts a new session. Credentials and vendor WebSockets stay in the service.</p>
+<p>Wire identity: <code>abstraction.inference/live@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Admit a live session after host support, complete permission, output-write preflight, budget, shared capacity and credential checks. The service owns the upstream session. Observe reports setup failures after admission.</p>
+<h3><code>Start</code></h3><p><code>request-response</code> <code>Admission</code></p><ul>
+<li>Argument 1: <code>LiveRequest</code> <code>request</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Append 1..65536 even-sized PCM bytes at the expected sequence. Bounded input and idle limits apply. Concurrent appends are serialized; only confirmed sends advance next_sequence.</p>
+<h3><code>Append</code></h3><p><code>request-response</code> <code>LiveInputResult</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>sequence</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>binary</code> <code>audio</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read retained transcript, audio and terminal deltas using shared cursor and wait semantics.</p>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
+<li>Argument 4: <code>i64</code> <code>max_bytes</code> (required, including zero/false/empty)</li>
+<li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Close input and request the final response. A repeated Commit is duplicate. Observe continues until terminal delivery or failure; Commit does not wait for synthesis to finish.</p>
+<h3><code>Commit</code></h3><p><code>request-response</code> <code>LiveInputResult</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Immediately stop the live session and its upstream connection. Uses shared operation cancellation and ownership semantics.</p>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="service-Image">Service <code>Image</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Image generation and edit with authorized digest inputs, bounded progress and typed result deliveries. Operations are visible only through this profile to the account and program that started them.</p>
+<p>Wire identity: <code>abstraction.inference/image@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Admit image generation or edit for the bound caller. Admission checks arguments, explicit host mode/size/count support, complete rights, authorized input and mask resolution, output-write preflight, ceiling, shared capacity and the profile-scoped credential before paid work.</p>
+<h3><code>Start</code></h3><p><code>request-response</code> <code>Admission</code></p><ul>
+<li>Argument 1: <code>ImageRequest</code> <code>request</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read retained progress, result and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.</p>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
+<li>Argument 4: <code>i64</code> <code>max_bytes</code> (required, including zero/false/empty)</li>
+<li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Stop image work, including queue polling, and cancel the upstream job where its wire supports cancellation.</p>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="service-Operator">Service <code>Operator</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Administer the runtime&#39;s inference hosts, the gateway window and its local keys, and read the inference audit. Each call is a rights decision for the bound operator subject; same-account identity alone grants nothing. A decision point that cannot answer reads unavailable.</p>
+<p>Wire identity: <code>abstraction.inference/operator@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Read the configured hosts, their router state and each hosted credential&#39;s spend today. Gated by abstraction.inference/host.manage on resource account.</p>
+<h3><code>Hosts</code></h3><p><code>request-response</code> <code>HostList</code></p><ul>
+</ul>
+<p>Conditionally add one host. Gated by host.manage. For the bound operator program and the runtime&#39;s other operator programs it also writes the permit rule abstraction.inference/complete on host:&lt;name&gt;, and for a hosted host with a credential it writes the runtime&#39;s own permit rule abstraction.credentials/apply on credential:&lt;name&gt;, which the router&#39;s listing reads need. Existing rules are left as they are.</p>
+<h3><code>AddHost</code></h3><p><code>request-response</code> <code>HostChange</code></p><ul>
+<li>Argument 1: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>HostEntry</code> <code>host</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. Rules are left as they are.</p>
+<h3><code>RemoveHost</code></h3><p><code>request-response</code> <code>HostChange</code></p><ul>
+<li>Argument 1: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>string</code> <code>name</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read the local keys of the receiving account. Gated by abstraction.inference/key.issue on resource account.</p>
+<h3><code>Keys</code></h3><p><code>request-response</code> <code>KeyList</code></p><ul>
+</ul>
+<p>Mint a local key for program, an absolute executable path, and hold it in the platform store. credential, when not empty, names the hosted credential the window&#39;s requests for that program may spend under. Gated by key.issue. The key grants nothing: the window still binds the peer, requires that program, and decides abstraction.inference/complete and credentials apply for it.</p>
+<h3><code>IssueKey</code></h3><p><code>request-response</code> <code>KeyIssued</code></p><ul>
+<li>Argument 1: <code>string</code> <code>program</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>string</code> <code>credential</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Destroy the active local key of program. Gated by key.issue.</p>
+<h3><code>RevokeKey</code></h3><p><code>request-response</code> <code>KeyRevoked</code></p><ul>
+<li>Argument 1: <code>string</code> <code>program</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read retained inference decisions from both routes. Gated by abstraction.inference/audit.read on resource account. cursor 0 starts at the oldest retained entry; max_entries is 1..256.</p>
+<h3><code>Audit</code></h3><p><code>request-response</code> <code>AuditPage</code></p><ul>
+<li>Argument 1: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>max_entries</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read the gateway window setting and whether the window listens now. Gated by abstraction.inference/host.manage on resource account.</p>
+<h3><code>Gateway</code></h3><p><code>request-response</code> <code>GatewayState</code></p><ul>
+</ul>
+<p>Conditionally write the gateway window setting to the runtime state and apply it to the running runtime: open listens on address, and closed stops the listener and every window connection. address is 127.0.0.1:&lt;port&gt;; empty keeps the recorded address when opening, and 127.0.0.1:8793 when none is recorded. The setting survives a restart. Gated by host.manage.</p>
+<h3><code>SetGateway</code></h3><p><code>request-response</code> <code>GatewayChange</code></p><ul>
+<li>Argument 1: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>bool</code> <code>open</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>string</code> <code>address</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="encoding">Encoding <span class="tag">[DEF-E1]</span></h2>
+<div class="wrap"><table>
+<thead><tr><th>setting</th><th>value</th><th>rule</th></tr></thead>
+<tbody>
+<tr><td><code>escape</code></td><td><code>minimal</code></td><td><span class="tag">[DEF-E2]</span></td></tr>
+<tr><td><code>indent</code></td><td><code>2</code></td><td><span class="tag">[DEF-E3]</span></td></tr>
+<tr><td><code>map_keys</code></td><td><code>utf8-bytes</code></td><td><span class="tag">[DEF-E4]</span></td></tr>
+<tr><td><code>numbers</code></td><td><code>integer-decimal</code></td><td><span class="tag">[DEF-E5]</span></td></tr>
+<tr><td><code>opaque</code></td><td><code>verbatim</code></td><td><span class="tag">[DEF-E6]</span></td></tr>
+<tr><td><code>terminator</code></td><td><code>newline</code></td><td><span class="tag">[DEF-E7]</span></td></tr>
+<tr><td><code>duplicate_keys</code></td><td><code>refuse</code></td><td><span class="tag">[DEF-E8]</span></td></tr>
+<tr><td><code>depth_limit</code></td><td><code>64</code></td><td><span class="tag">[DEF-E9]</span></td></tr>
+</tbody></table></div>
+<h2 id="types">Types</h2>
+<div class="wrap"><table>
+<thead><tr><th>kind</th><th>types</th></tr></thead>
+<tbody>
+<tr><td>built in</td><td><code>AuditOutcome</code> <code>AuditRoute</code> <code>CancelOutcome</code> <code>DeltaKind</code> <code>EditOutcome</code> <code>EmbedOutcome</code> <code>ImageMode</code> <code>KeyState</code> <code>ListOutcome</code> <code>LiveFormat</code> <code>LiveInputOutcome</code> <code>PageOutcome</code> <code>PartKind</code> <code>ReplyOutcome</code> <code>Role</code> <code>SpeechFormat</code> <code>StartOutcome</code> <code>StopReason</code> <code>TimestampMode</code> <code>TranscriptUnitKind</code> <code>binary</code> <code>bool</code> <code>i64</code> <code>string</code></td></tr>
+<tr><td>declared below</td><td><code>AudioChunk</code> <code>CeilingLimit</code> <code>Cost</code> <code>Delivery</code> <code>HostEntry</code> <code>ImageProgress</code> <code>ImageReply</code> <code>ImageResult</code> <code>LiveReply</code> <code>LiveTranscript</code> <code>LocalKey</code> <code>Message</code> <code>Options</code> <code>Part</code> <code>Reply</code> <code>SpeechReply</code> <code>Spend</code> <code>Temperature</code> <code>TranscriptSegment</code> <code>TranscriptionReply</code> <code>Usage</code></td></tr>
+<tr><td>container <span class="tag">[DEF-T3]</span></td><td><code>list&lt;RequestGuarantee&gt;</code> <code>list&lt;string&gt;</code></td></tr>
+<tr><td>repeated record <span class="tag">[DEF-A9]</span></td><td><code>list&lt;AuditEntry&gt;</code> <code>list&lt;Delivery&gt;</code> <code>list&lt;Delta&gt;</code> <code>list&lt;HostState&gt;</code> <code>list&lt;LocalKey&gt;</code> <code>list&lt;Message&gt;</code> <code>list&lt;Part&gt;</code> <code>list&lt;Tool&gt;</code></td></tr>
+<tr><td>string map <span class="tag">[DEF-A10]</span></td><td><code>map&lt;string,string&gt;</code></td></tr>
+</tbody></table></div>
+<h2 id="structs">Structs <span class="tag">[DEF-T1]</span></h2>
+<p class="meta">A field is required, or says when it is omitted <span class="tag">[DEF-A4]</span>. Each struct says on its own what it does with a field name it has never heard of <span class="tag">[DEF-A7]</span>. A wire name never moves; where a language must spell it differently the field says so <span class="tag">[DEF-A2]</span>.</p>
+<h3 id="struct-Part"><code>Part</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>kind</code></td><td><code>PartKind</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>text</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>3</td><td><code>digest</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>4</td><td><code>media_type</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>5</td><td><code>call_id</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>6</td><td><code>name</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>7</td><td><code>arguments</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Message"><code>Message</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>role</code></td><td><code>Role</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>parts</code></td><td><code>list&lt;Part&gt;</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Tool"><code>Tool</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>name</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>description</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>parameters</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Temperature"><code>Temperature</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>milli</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Options"><code>Options</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>max_output</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>2</td><td><code>temperature</code></td><td><code>Temperature</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>3</td><td><code>stop</code></td><td><code>list&lt;string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>4</td><td><code>json_schema</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Request"><code>Request</code></h3>
+<p class="meta">the document <span class="tag">[DEF-A1]</span> · unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>messages</code></td><td><code>list&lt;Message&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>tools</code></td><td><code>list&lt;Tool&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>4</td><td><code>options</code></td><td><code>Options</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>5</td><td><code>extensions</code></td><td><code>map&lt;string,string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>6</td><td><code>required_extensions</code></td><td><code>list&lt;string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>7</td><td><code>guarantees</code></td><td><code>list&lt;RequestGuarantee&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>credential</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Usage"><code>Usage</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>input</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>output</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>cached</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Cost"><code>Cost</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>micros</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>currency</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Reply"><code>Reply</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ReplyOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>message</code></td><td><code>Message</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>stop_reason</code></td><td><code>StopReason</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>usage</code></td><td><code>Usage</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>host</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>cost</code></td><td><code>Cost</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Delta"><code>Delta</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>sequence</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>kind</code></td><td><code>DeltaKind</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>index</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>4</td><td><code>part</code></td><td><code>Part</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>5</td><td><code>usage</code></td><td><code>Usage</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>6</td><td><code>end</code></td><td><code>Reply</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>7</td><td><code>segment</code></td><td><code>TranscriptSegment</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>8</td><td><code>transcription_end</code></td><td><code>TranscriptionReply</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>9</td><td><code>audio</code></td><td><code>AudioChunk</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>10</td><td><code>speech_end</code></td><td><code>SpeechReply</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>11</td><td><code>transcript</code></td><td><code>LiveTranscript</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>12</td><td><code>live_end</code></td><td><code>LiveReply</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>13</td><td><code>image_progress</code></td><td><code>ImageProgress</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>14</td><td><code>image_result</code></td><td><code>ImageResult</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>15</td><td><code>image_end</code></td><td><code>ImageReply</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Admission"><code>Admission</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>StartOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>operation</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>host</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>retention_ms</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>idle_ms</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>retained_deltas</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-DeltaPage"><code>DeltaPage</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>PageOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>deltas</code></td><td><code>list&lt;Delta&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>next</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>at_end</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Cancellation"><code>Cancellation</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>CancelOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reply_outcome</code></td><td><code>ReplyOutcome</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-EmbedRequest"><code>EmbedRequest</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>inputs</code></td><td><code>list&lt;string&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>dimensions</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>4</td><td><code>guarantees</code></td><td><code>list&lt;RequestGuarantee&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>credential</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>6</td><td><code>extensions</code></td><td><code>map&lt;string,string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Embeddings"><code>Embeddings</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>EmbedOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>vectors</code></td><td><code>list&lt;string&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>dimensions</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>usage</code></td><td><code>Usage</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>host</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>cost</code></td><td><code>Cost</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-TranscriptionRequest"><code>TranscriptionRequest</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>audio_digest</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>media_type</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>language</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>5</td><td><code>timestamps</code></td><td><code>TimestampMode</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>guarantees</code></td><td><code>list&lt;RequestGuarantee&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>credential</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>8</td><td><code>extensions</code></td><td><code>map&lt;string,string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-TranscriptSegment"><code>TranscriptSegment</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>index</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>kind</code></td><td><code>TranscriptUnitKind</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>start_ms</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>end_ms</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>text</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-TranscriptionReply"><code>TranscriptionReply</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ReplyOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>language</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>duration_ms</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>usage</code></td><td><code>Usage</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>host</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>cost</code></td><td><code>Cost</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-SpeechRequest"><code>SpeechRequest</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>voice</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>text</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>format</code></td><td><code>SpeechFormat</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>guarantees</code></td><td><code>list&lt;RequestGuarantee&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>credential</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>7</td><td><code>extensions</code></td><td><code>map&lt;string,string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-AudioChunk"><code>AudioChunk</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>index</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>data</code></td><td><code>binary</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Delivery"><code>Delivery</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>digest</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>media_type</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>size</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>location</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-SpeechReply"><code>SpeechReply</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ReplyOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>delivery</code></td><td><code>Delivery</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>characters</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>usage</code></td><td><code>Usage</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>host</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>cost</code></td><td><code>Cost</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-LiveRequest"><code>LiveRequest</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>voice</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>format</code></td><td><code>LiveFormat</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>guarantees</code></td><td><code>list&lt;RequestGuarantee&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>credential</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>6</td><td><code>extensions</code></td><td><code>map&lt;string,string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-LiveInputResult"><code>LiveInputResult</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>LiveInputOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>next_sequence</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-LiveTranscript"><code>LiveTranscript</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>text</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>is_final</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-LiveReply"><code>LiveReply</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ReplyOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>delivery</code></td><td><code>Delivery</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>usage</code></td><td><code>Usage</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>input_audio_bytes</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>output_audio_bytes</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>host</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ImageRequest"><code>ImageRequest</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>mode</code></td><td><code>ImageMode</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>prompt</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>size</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>count</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>image_digest</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>7</td><td><code>image_media_type</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>8</td><td><code>mask_digest</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>9</td><td><code>mask_media_type</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>10</td><td><code>guarantees</code></td><td><code>list&lt;RequestGuarantee&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>11</td><td><code>credential</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>12</td><td><code>required_extensions</code></td><td><code>list&lt;string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>13</td><td><code>extensions</code></td><td><code>map&lt;string,string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ImageProgress"><code>ImageProgress</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>percent</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>2</td><td><code>message</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ImageResult"><code>ImageResult</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>index</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>delivery</code></td><td><code>Delivery</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ImageReply"><code>ImageReply</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ReplyOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>deliveries</code></td><td><code>list&lt;Delivery&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>images</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>usage</code></td><td><code>Usage</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>host</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>cost</code></td><td><code>Cost</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-CeilingLimit"><code>CeilingLimit</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>tokens_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>2</td><td><code>micros_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>3</td><td><code>requests_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>4</td><td><code>images_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>5</td><td><code>audio_seconds_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>6</td><td><code>characters_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-HostEntry"><code>HostEntry</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>name</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>hosted</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>kind</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>base</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>credential</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>6</td><td><code>ceiling</code></td><td><code>CeilingLimit</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>7</td><td><code>profiles</code></td><td><code>list&lt;string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>8</td><td><code>declared_by</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Spend"><code>Spend</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>day</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>tokens</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>micros</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>requests</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>5</td><td><code>audio_seconds</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>6</td><td><code>characters</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>7</td><td><code>images</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-HostState"><code>HostState</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>entry</code></td><td><code>HostEntry</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>up</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>why</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>spend</code></td><td><code>Spend</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-HostList"><code>HostList</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ListOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>revision</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>hosts</code></td><td><code>list&lt;HostState&gt;</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-HostChange"><code>HostChange</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>EditOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>revision</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-LocalKey"><code>LocalKey</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>program</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>name</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>credential</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>4</td><td><code>issued_unix_ms</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>issued_by</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>state</code></td><td><code>KeyState</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-KeyList"><code>KeyList</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ListOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>keys</code></td><td><code>list&lt;LocalKey&gt;</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-KeyIssued"><code>KeyIssued</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>EditOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>key</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>4</td><td><code>record</code></td><td><code>LocalKey</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-KeyRevoked"><code>KeyRevoked</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>EditOutcome</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-AuditEntry"><code>AuditEntry</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>sequence</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>unix_ms</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>route</code></td><td><code>AuditRoute</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>rung</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>program</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>operation</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>host</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>9</td><td><code>credential</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>10</td><td><code>outcome</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>11</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>12</td><td><code>tokens_in</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>13</td><td><code>tokens_out</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>14</td><td><code>wall_ms</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>15</td><td><code>ceiling</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>16</td><td><code>domain</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>17</td><td><code>claim</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>18</td><td><code>profile</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>19</td><td><code>audio_seconds</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>20</td><td><code>characters</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+<tr><td>21</td><td><code>images</code></td><td><code>i64</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-AuditPage"><code>AuditPage</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>AuditOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>entries</code></td><td><code>list&lt;AuditEntry&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>next</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>at_end</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-GatewayState"><code>GatewayState</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ListOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>revision</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>open</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>address</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>listening</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>listening_address</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>why</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-GatewayChange"><code>GatewayChange</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>EditOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>revision</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h2 id="enums">Enumerations <span class="tag">[DEF-T5]</span></h2>
+<p>Enum fields carry JSON strings containing exact member wire spellings, never numeric IDs. Unknown names are preserved with grant and refused as bad_enum with refuse on read and write. Optional absent fields preserve presence separately from an empty string.</p>
+<p class="meta">An enumeration is a closed vocabulary of wire names, and each one says on its own what a reader does with a member it has never heard of <span class="tag">[DEF-A5]</span>.</p>
+<h3 id="enum-RequestGuarantee"><code>RequestGuarantee</code></h3>
+<p class="meta">a member this reader does not know is <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>local_only</code></td><td><code>abstraction.inference/local-only@1</code></td></tr>
+<tr><td>2</td><td><code>hosted_allowed</code></td><td><code>abstraction.inference/hosted-allowed@1</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-Role"><code>Role</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>system</code></td><td><code>system</code></td></tr>
+<tr><td>2</td><td><code>user</code></td><td><code>user</code></td></tr>
+<tr><td>3</td><td><code>assistant</code></td><td><code>assistant</code></td></tr>
+<tr><td>4</td><td><code>tool</code></td><td><code>tool</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-PartKind"><code>PartKind</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>text</code></td><td><code>text</code></td></tr>
+<tr><td>2</td><td><code>image</code></td><td><code>image</code></td></tr>
+<tr><td>3</td><td><code>tool_call</code></td><td><code>tool_call</code></td></tr>
+<tr><td>4</td><td><code>tool_result</code></td><td><code>tool_result</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ReplyOutcome"><code>ReplyOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>completed</code></td><td><code>completed</code></td></tr>
+<tr><td>2</td><td><code>refused</code></td><td><code>refused</code></td></tr>
+<tr><td>3</td><td><code>not_permitted</code></td><td><code>not_permitted</code></td></tr>
+<tr><td>4</td><td><code>budget_exceeded</code></td><td><code>budget_exceeded</code></td></tr>
+<tr><td>5</td><td><code>unsupported_feature</code></td><td><code>unsupported_feature</code></td></tr>
+<tr><td>6</td><td><code>no_host</code></td><td><code>no_host</code></td></tr>
+<tr><td>7</td><td><code>cancelled</code></td><td><code>cancelled</code></td></tr>
+<tr><td>8</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+<tr><td>9</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>10</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>11</td><td><code>exhausted</code></td><td><code>exhausted</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-StopReason"><code>StopReason</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>no_stop</code></td><td><code>no_stop</code></td></tr>
+<tr><td>2</td><td><code>end</code></td><td><code>end</code></td></tr>
+<tr><td>3</td><td><code>max_output</code></td><td><code>max_output</code></td></tr>
+<tr><td>4</td><td><code>stop_sequence</code></td><td><code>stop_sequence</code></td></tr>
+<tr><td>5</td><td><code>tool_calls</code></td><td><code>tool_calls</code></td></tr>
+<tr><td>6</td><td><code>content_filter</code></td><td><code>content_filter</code></td></tr>
+<tr><td>7</td><td><code>other</code></td><td><code>other</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-DeltaKind"><code>DeltaKind</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>part</code></td><td><code>part</code></td></tr>
+<tr><td>2</td><td><code>usage</code></td><td><code>usage</code></td></tr>
+<tr><td>3</td><td><code>end</code></td><td><code>end</code></td></tr>
+<tr><td>4</td><td><code>segment</code></td><td><code>segment</code></td></tr>
+<tr><td>5</td><td><code>audio</code></td><td><code>audio</code></td></tr>
+<tr><td>6</td><td><code>transcript</code></td><td><code>transcript</code></td></tr>
+<tr><td>7</td><td><code>image_progress</code></td><td><code>image_progress</code></td></tr>
+<tr><td>8</td><td><code>image_result</code></td><td><code>image_result</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-StartOutcome"><code>StartOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>accepted</code></td><td><code>accepted</code></td></tr>
+<tr><td>2</td><td><code>not_permitted</code></td><td><code>not_permitted</code></td></tr>
+<tr><td>3</td><td><code>budget_exceeded</code></td><td><code>budget_exceeded</code></td></tr>
+<tr><td>4</td><td><code>unsupported_feature</code></td><td><code>unsupported_feature</code></td></tr>
+<tr><td>5</td><td><code>no_host</code></td><td><code>no_host</code></td></tr>
+<tr><td>6</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+<tr><td>7</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>8</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>9</td><td><code>exhausted</code></td><td><code>exhausted</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-PageOutcome"><code>PageOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>page</code></td><td><code>page</code></td></tr>
+<tr><td>2</td><td><code>gap</code></td><td><code>gap</code></td></tr>
+<tr><td>3</td><td><code>unknown</code></td><td><code>unknown</code></td></tr>
+<tr><td>4</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>5</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>6</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-CancelOutcome"><code>CancelOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>cancelled</code></td><td><code>cancelled</code></td></tr>
+<tr><td>2</td><td><code>ended</code></td><td><code>ended</code></td></tr>
+<tr><td>3</td><td><code>unknown</code></td><td><code>unknown</code></td></tr>
+<tr><td>4</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>5</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>6</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-EmbedOutcome"><code>EmbedOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>completed</code></td><td><code>completed</code></td></tr>
+<tr><td>2</td><td><code>refused</code></td><td><code>refused</code></td></tr>
+<tr><td>3</td><td><code>not_permitted</code></td><td><code>not_permitted</code></td></tr>
+<tr><td>4</td><td><code>budget_exceeded</code></td><td><code>budget_exceeded</code></td></tr>
+<tr><td>5</td><td><code>unsupported_feature</code></td><td><code>unsupported_feature</code></td></tr>
+<tr><td>6</td><td><code>no_host</code></td><td><code>no_host</code></td></tr>
+<tr><td>7</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+<tr><td>8</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>9</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-TranscriptUnitKind"><code>TranscriptUnitKind</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>segment</code></td><td><code>segment</code></td></tr>
+<tr><td>2</td><td><code>word</code></td><td><code>word</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-TimestampMode"><code>TimestampMode</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>none</code></td><td><code>none</code></td></tr>
+<tr><td>2</td><td><code>segment</code></td><td><code>segment</code></td></tr>
+<tr><td>3</td><td><code>word</code></td><td><code>word</code></td></tr>
+<tr><td>4</td><td><code>segment_and_word</code></td><td><code>segment_and_word</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-SpeechFormat"><code>SpeechFormat</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>mp3</code></td><td><code>mp3</code></td></tr>
+<tr><td>2</td><td><code>opus</code></td><td><code>opus</code></td></tr>
+<tr><td>3</td><td><code>aac</code></td><td><code>aac</code></td></tr>
+<tr><td>4</td><td><code>flac</code></td><td><code>flac</code></td></tr>
+<tr><td>5</td><td><code>wav</code></td><td><code>wav</code></td></tr>
+<tr><td>6</td><td><code>pcm</code></td><td><code>pcm</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-LiveFormat"><code>LiveFormat</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>pcm16_24000</code></td><td><code>pcm16_24000</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-LiveInputOutcome"><code>LiveInputOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>accepted</code></td><td><code>accepted</code></td></tr>
+<tr><td>2</td><td><code>duplicate</code></td><td><code>duplicate</code></td></tr>
+<tr><td>3</td><td><code>out_of_order</code></td><td><code>out_of_order</code></td></tr>
+<tr><td>4</td><td><code>closed</code></td><td><code>closed</code></td></tr>
+<tr><td>5</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>6</td><td><code>unknown</code></td><td><code>unknown</code></td></tr>
+<tr><td>7</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>8</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+<tr><td>9</td><td><code>exhausted</code></td><td><code>exhausted</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ImageMode"><code>ImageMode</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>generate</code></td><td><code>generate</code></td></tr>
+<tr><td>2</td><td><code>edit</code></td><td><code>edit</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ListOutcome"><code>ListOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>page</code></td><td><code>page</code></td></tr>
+<tr><td>2</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>3</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>4</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-EditOutcome"><code>EditOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>applied</code></td><td><code>applied</code></td></tr>
+<tr><td>2</td><td><code>conflict</code></td><td><code>conflict</code></td></tr>
+<tr><td>3</td><td><code>unknown</code></td><td><code>unknown</code></td></tr>
+<tr><td>4</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>5</td><td><code>no_secure_store</code></td><td><code>no_secure_store</code></td></tr>
+<tr><td>6</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>7</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-KeyState"><code>KeyState</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>active</code></td><td><code>active</code></td></tr>
+<tr><td>2</td><td><code>revoked</code></td><td><code>revoked</code></td></tr>
+<tr><td>3</td><td><code>lost</code></td><td><code>lost</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-AuditRoute"><code>AuditRoute</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>native</code></td><td><code>native</code></td></tr>
+<tr><td>2</td><td><code>window</code></td><td><code>window</code></td></tr>
+<tr><td>3</td><td><code>remote</code></td><td><code>remote</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-AuditOutcome"><code>AuditOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>page</code></td><td><code>page</code></td></tr>
+<tr><td>2</td><td><code>gap</code></td><td><code>gap</code></td></tr>
+<tr><td>3</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>4</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>5</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h2 id="constants">Constants <span class="tag">[DEF-A6]</span></h2>
+<div class="wrap"><table>
+<thead><tr><th>name</th><th>type</th><th>value</th></tr></thead>
+<tbody>
+<tr><td><code>features</code></td><td><code>list&lt;string&gt;</code></td><td><code>abstraction.inference/tools@1, abstraction.inference/json-schema@1, abstraction.inference/vision@1</code></td></tr>
+<tr><td><code>resource_actions</code></td><td><code>list&lt;string&gt;</code></td><td><code>abstraction.inference/complete, abstraction.inference/host.manage, abstraction.inference/key.issue, abstraction.inference/audit.read</code></td></tr>
+<tr><td><code>local_key_kinds</code></td><td><code>list&lt;string&gt;</code></td><td><code>openabstractions/local-key@1</code></td></tr>
+<tr><td><code>local_host_kinds</code></td><td><code>list&lt;string&gt;</code></td><td><code>ollama, lmstudio, lemonade, whispercpp, piper, comfyui, swarmui, docker-model-runner, foundry-local</code></td></tr>
+<tr><td><code>host_profiles</code></td><td><code>list&lt;string&gt;</code></td><td><code>chat, embed, transcription, speech, image, live</code></td></tr>
+<tr><td><code>host_declarers</code></td><td><code>list&lt;string&gt;</code></td><td><code>operator, ollama, lmstudio, docker-model-runner, foundry-local, default</code></td></tr>
+<tr><td><code>credential_consumers</code></td><td><code>list&lt;string&gt;</code></td><td><code>abstraction.inference/chat@1, abstraction.inference/embed@1, abstraction.inference/transcription@1, abstraction.inference/speech@1, abstraction.inference/live@1</code></td></tr>
+<tr><td><code>claim_extensions</code></td><td><code>list&lt;string&gt;</code></td><td><code>openabstractions/claimed-program</code></td></tr>
+</tbody></table></div>
+<h2 id="refusals">Refusal words <span class="tag">[DEF-R1]</span></h2>
+<div class="wrap"><table>
+<thead><tr><th>order</th><th>word</th><th>stage</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>malformed</code></td><td><code>grammar</code></td></tr>
+<tr><td>2</td><td><code>bad_string</code></td><td><code>grammar</code></td></tr>
+<tr><td>3</td><td><code>bad_binary</code></td><td><code>grammar</code></td></tr>
+<tr><td>4</td><td><code>number_spelling</code></td><td><code>grammar</code></td></tr>
+<tr><td>5</td><td><code>wrong_type</code></td><td><code>grammar</code></td></tr>
+<tr><td>6</td><td><code>depth_exceeded</code></td><td><code>grammar</code></td></tr>
+<tr><td>7</td><td><code>duplicate_key</code></td><td><code>grammar</code></td></tr>
+<tr><td>8</td><td><code>duplicate_field</code></td><td><code>structure</code></td></tr>
+<tr><td>9</td><td><code>unknown_field</code></td><td><code>structure</code></td></tr>
+<tr><td>10</td><td><code>missing_field</code></td><td><code>structure</code></td></tr>
+<tr><td>11</td><td><code>bad_enum</code></td><td><code>structure</code></td></tr>
+<tr><td>12</td><td><code>trailing_bytes</code></td><td><code>document</code></td></tr>
+</tbody></table></div>
+
+<footer>
+<p><a href="index.html">Overview</a> · <a href="cases.html">Cases</a> · <a href="reference.html">Reference</a> · <a href="evidence.html">Evidence</a> · <a href="coverage.html">Coverage</a> · <a href="adopt.html">Adopt</a> ·
+<a href="https://github.com/openabstractions">github.com/openabstractions</a></p>
+</footer>
+</main>
+</html>

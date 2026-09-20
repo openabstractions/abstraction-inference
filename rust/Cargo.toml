@@ -1,0 +1,10 @@
+[package]
+name = "abstraction-inference-api"
+version = "0.0.0"
+edition = "2021"
+description = "Generated OpenAbstractions inference chat Rust service protocol"
+[lib]
+path = "../rs/abstraction/inference/api/rec.rs"
+
+[dependencies]
+abstraction-frame = { path = "../../abstraction-identity/rust-frame" }

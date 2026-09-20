@@ -1,0 +1,25 @@
+{
+  "name": "@openabstractions/inference",
+  "version": "0.0.0",
+  "description": "JavaScript complete() and stream() over inference chat@1, with its generated client and codecs.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openabstractions/abstraction-inference.git",
+    "directory": "javascript"
+  },
+  "homepage": "https://github.com/openabstractions/abstraction-inference#readme",
+  "bugs": {
+    "url": "https://github.com/openabstractions/abstraction-inference/issues"
+  },
+  "type": "module",
+  "types": "./js/abstraction/inference/api/index.d.mts",
+  "exports": {".": {"default": "./index.js"}, "./protocol": {"types": "./js/abstraction/inference/api/index.d.mts", "default": "./js/abstraction/inference/api/index.mjs"}, "./job": {"types": "./js/abstraction/inference/job/index.d.mts", "default": "./js/abstraction/inference/job/index.mjs"}},
+  "files": [
+    "index.js",
+    "js"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

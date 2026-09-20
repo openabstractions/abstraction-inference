@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abstraction-inference-protocol"
+version = "0.0.0"
+description = "Generated OpenAbstractions inference chat protocol types and service client, with the complete and stream client"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["abstraction.inference*"]
+namespaces = true
