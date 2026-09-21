@@ -5,6 +5,8 @@ putting a provider key or vendor protocol in the application. The application
 names a model family and the behavior it needs. The runtime chooses an allowed
 local engine such as Ollama or Lemonade, or a hosted provider such as
 OpenRouter, then applies the named credential inside the service.
+Video generation and image batches use durable jobs, with retained results and
+recovery after the application reconnects.
 
 [CONTRACT.md](CONTRACT.md) states the obligations. `inference.thrift` is the
 definition. The generated Go, C++, Python, Rust and JavaScript protocol code
