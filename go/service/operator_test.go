@@ -129,7 +129,7 @@ func TestOperatorProfileSharesTheEndpointAndBindsTheCaller(t *testing.T) {
 	}
 	recorder.mu.Lock()
 	for _, s := range recorder.subjects {
-		if !strings.EqualFold(s.Program, filepath.Clean(exe)) || s.Account == "" {
+		if !strings.EqualFold(s.Program, identity.CanonicalProgramPath(filepath.Clean(exe))) || s.Account == "" {
 			t.Fatalf("operator saw subject %+v; this program is %s", s, exe)
 		}
 	}

@@ -2,7 +2,7 @@ github.com/openabstractions/abstraction-cas/go v0.4.0 h1:zaAJm5VrYMBQm8U64rtuBS/
 github.com/openabstractions/abstraction-cas/go v0.4.0/go.mod h1:pR8sRTbXF3k7fiXNjNiBqqc7i0Wu9RQvctH3q/wKUYo=
 github.com/openabstractions/abstraction-identity v0.4.0 h1:BmBeiuB7BOoG7cn/Rd1aX30gwVhWVQYJHb65jDrAEaE=
 github.com/openabstractions/abstraction-identity v0.4.0/go.mod h1:gv5sDQuTQqv/UY+fXY5Q74i1junNIEvf/5UsZxMxwKY=
-github.com/openabstractions/abstraction-inference/go v0.2.0 h1:fB/vopcbYe/3mdsNcVMe5nV2gwYSZjdaoEx+O6Geg5A=
+github.com/openabstractions/abstraction-inference/go v0.2.0 h1:lMg0ToQWs+3Zdg5PGMVzAocnqc9as4IcI0K3m53BHns=
 github.com/openabstractions/abstraction-inference/go v0.2.0/go.mod h1:qRJg9CbeZ/i3Uhx4LvbWrNQ7ihcOigTGGs0G3iznwSI=
 github.com/openabstractions/abstraction-job/go v0.6.0 h1:8vOExvBqZGdWxblPvHh7wUQ9ohLSY1AwuIqM0BTHRH4=
 github.com/openabstractions/abstraction-job/go v0.6.0/go.mod h1:r/sV592kFpKZwWmeCOohXq3T4yrInVzdfckX9mfCWzU=

@@ -123,7 +123,7 @@ func serveLiveIPC(t *testing.T) *liveIPCFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.program = filepath.Clean(exe)
+	f.program = identity.CanonicalProgramPath(filepath.Clean(exe))
 	routes := router.New(router.NewHosted("live", upstream.URL, router.WireOpenAIRealtime, "live"))
 	routes.UseCredentials(func(context.Context, string, string, string) (map[string]string, error) { return nil, nil })
 	routes.Survey()

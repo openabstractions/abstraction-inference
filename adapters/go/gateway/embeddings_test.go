@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
 )
 
@@ -30,7 +31,7 @@ func TestAnEmbeddingsClientThroughTheWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.grant("oalk-embed", filepath.Clean(exe), true)
+	f.grant("oalk-embed", identity.CanonicalProgramPath(filepath.Clean(exe)), true)
 	post := func(body string) (int, map[string]any) {
 		req, _ := http.NewRequest(http.MethodPost, f.base+"/v1/embeddings", strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer oalk-embed")

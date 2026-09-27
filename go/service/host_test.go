@@ -105,7 +105,7 @@ func serve(t *testing.T, hold bool) (*served, *[]string, *sync.Mutex) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := filepath.Clean(exe)
+	program := identity.CanonicalProgramPath(filepath.Clean(exe))
 	r := router.New(router.NewHosted("openrouter", up.URL+"/api/v1", router.WireOpenAICompatible, "openrouter"))
 	r.UseCredentials(func(context.Context, string, string, string) (map[string]string, error) {
 		return map[string]string{"Authorization": "Bearer " + secret}, nil
@@ -215,7 +215,7 @@ func TestNativeProviderIsMediatedAndForcedToLocalExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := filepath.Clean(exe)
+	program := identity.CanonicalProgramPath(filepath.Clean(exe))
 	current, err := user.Current()
 	if err != nil {
 		t.Fatal(err)
@@ -321,7 +321,7 @@ func TestTwoRuntimeNativeCycleStopsAtTheLeafBeforeCallingBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := filepath.Clean(exe)
+	program := identity.CanonicalProgramPath(filepath.Clean(exe))
 	current, err := user.Current()
 	if err != nil {
 		t.Fatal(err)
