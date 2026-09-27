@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coder/websocket"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	inference "github.com/openabstractions/abstraction-inference/go"
@@ -41,6 +38,48 @@ type liveIPCFixture struct {
 	records  []inference.Record
 	recorded chan struct{}
 }
+
+type ipcLiveConnection struct {
+	f      *liveIPCFixture
+	events chan inference.LiveEvent
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (c *ipcLiveConnection) Append(_ context.Context, audio []byte) error {
+	if len(audio) != 9600 {
+		return inference.NewLiveError(inference.LiveErrorInvalid)
+	}
+	c.f.appends.Add(1)
+	return nil
+}
+
+func (c *ipcLiveConnection) Commit(context.Context) error {
+	c.f.commits.Add(1)
+	c.events <- inference.LiveEvent{Kind: inference.LiveEventAudio, Audio: append([]byte(nil), c.f.output...)}
+	c.events <- inference.LiveEvent{Kind: inference.LiveEventTranscript, Transcript: "native IPC"}
+	c.events <- inference.LiveEvent{Kind: inference.LiveEventTranscript, Final: true}
+	c.events <- inference.LiveEvent{Kind: inference.LiveEventTerminal, Final: true, Outcome: inference.LiveCompleted, Usage: inference.LiveUsage{InputTokens: 2, OutputTokens: 3}}
+	return nil
+}
+
+func (c *ipcLiveConnection) Read(ctx context.Context) (inference.LiveEvent, error) {
+	select {
+	case event := <-c.events:
+		return event, nil
+	default:
+	}
+	select {
+	case event := <-c.events:
+		return event, nil
+	case <-ctx.Done():
+		return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorCancelled)
+	case <-c.closed:
+		return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorCancelled)
+	}
+}
+
+func (c *ipcLiveConnection) Close() { c.once.Do(func() { close(c.closed) }) }
 
 func (f *liveIPCFixture) waitRecords(t *testing.T, count int) []inference.Record {
 	t.Helper()
@@ -76,64 +115,6 @@ func serveLiveIPC(t *testing.T) *liveIPCFixture {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/models" {
 			_, _ = w.Write([]byte(`{"data":[{"id":"gpt-realtime"}]}`))
-			return
-		}
-		if r.URL.Path != "/realtime" || r.Header.Get("Authorization") != "Bearer "+liveIPCSecret {
-			http.Error(w, "refused", http.StatusUnauthorized)
-			return
-		}
-		conn, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			return
-		}
-		defer conn.CloseNow()
-		ctx := r.Context()
-		_, update, err := conn.Read(ctx)
-		if err != nil {
-			return
-		}
-		var session struct {
-			Type string `json:"type"`
-		}
-		if json.Unmarshal(update, &session) != nil || session.Type != "session.update" {
-			return
-		}
-		if conn.Write(ctx, websocket.MessageText, []byte(`{"type":"session.updated"}`)) != nil {
-			return
-		}
-		for {
-			_, payload, err := conn.Read(ctx)
-			if err != nil {
-				return
-			}
-			var event struct {
-				Type  string `json:"type"`
-				Audio string `json:"audio"`
-			}
-			if json.Unmarshal(payload, &event) != nil {
-				return
-			}
-			switch event.Type {
-			case "input_audio_buffer.append":
-				pcm, err := base64.StdEncoding.Strict().DecodeString(event.Audio)
-				if err != nil || len(pcm) != 9600 {
-					return
-				}
-				f.appends.Add(1)
-			case "input_audio_buffer.commit":
-				f.commits.Add(1)
-			case "response.create":
-				for _, message := range []string{
-					`{"type":"response.output_audio.delta","delta":"` + base64.StdEncoding.EncodeToString(f.output) + `"}`,
-					`{"type":"response.output_audio_transcript.delta","delta":"native IPC"}`,
-					`{"type":"response.output_audio_transcript.done","transcript":"native IPC"}`,
-					`{"type":"response.done","response":{"status":"completed","usage":{"input_tokens":2,"output_tokens":3}}}`,
-				} {
-					if conn.Write(ctx, websocket.MessageText, []byte(message)) != nil {
-						return
-					}
-				}
-			}
 		}
 	}))
 	t.Cleanup(upstream.Close)
@@ -147,8 +128,14 @@ func serveLiveIPC(t *testing.T) *liveIPCFixture {
 	routes.UseCredentials(func(context.Context, string, string, string) (map[string]string, error) { return nil, nil })
 	routes.Survey()
 	p, err := inference.New(inference.Config{
-		Router:    routes,
-		HTTP:      upstream.Client(),
+		Router: routes,
+		HTTP:   upstream.Client(),
+		LiveDialer: func(_ context.Context, client *http.Client, _, _, _ string, _ wire.LiveFormat, headers map[string]string) (inference.LiveConnection, error) {
+			if client.CheckRedirect == nil || headers["Authorization"] != "Bearer "+liveIPCSecret {
+				t.Error("live connector did not receive guarded credential request")
+			}
+			return &ipcLiveConnection{f: f, events: make(chan inference.LiveEvent, 4), closed: make(chan struct{})}, nil
+		},
 		SurveyAge: time.Hour,
 		Idle:      2 * time.Second,
 		Decide: func(_ context.Context, subject inference.Subject, action, resource string) (string, error) {

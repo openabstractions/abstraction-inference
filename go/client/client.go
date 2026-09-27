@@ -91,6 +91,7 @@ func (c *Chat) Stream(ctx context.Context, request Request) iter.Seq2[Delta, err
 		defer func() {
 			if !ended {
 				cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), callMargin)
+				//unchecked: best-effort cancel after Stream already has its result or error; the caller has nothing left to receive a second failure
 				c.Cancel(cancelCtx, a.Operation)
 				cancel()
 			}

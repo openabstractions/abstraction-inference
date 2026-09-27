@@ -9,12 +9,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	cas "github.com/openabstractions/abstraction-cas/go"
 )
 
 // Ceiling is a credential's daily limit per UTC day: tokens (input plus
 // output), spend in currency millionths, requests, images, audio seconds and
-// characters. Zero means no limit in that unit. Tokens and spend are enforced;
-// the other units are recorded for the profiles that count them.
+// characters. Zero means no limit in that unit. Every positive limit is
+// enforced at admission; the provider records usage as each call ends.
 type Ceiling struct {
 	TokensPerDay       int64 `json:"tokens_per_day,omitempty"`
 	MicrosPerDay       int64 `json:"micros_per_day,omitempty"`
@@ -210,18 +212,16 @@ func (c *Ceilings) addModalities(name string, tokens, micros, requests, images, 
 }
 
 func (c *Ceilings) persist() error {
-	raw, err := json.MarshalIndent(c.counts, "", "  ")
-	if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
 		return err
 	}
-	tmp := c.path + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, c.path)
+	return cas.Change(c.path, func([]byte) ([]byte, error) {
+		raw, err := json.MarshalIndent(c.counts, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		return append(raw, '\n'), nil
+	})
 }
 
 // SetLimit replaces a credential's ceiling; a zero Ceiling removes it. Counts
@@ -237,6 +237,24 @@ func (c *Ceilings) SetLimit(name string, limit Ceiling) error {
 		return nil
 	}
 	c.limits[name] = limit
+	return nil
+}
+
+// ReplaceLimits atomically installs the current declaration budgets. Removed
+// declarations lose their limits; accumulated usage remains unchanged.
+func (c *Ceilings) ReplaceLimits(limits map[string]Ceiling) error {
+	next := make(map[string]Ceiling, len(limits))
+	for name, limit := range limits {
+		if limit.Negative() {
+			return fmt.Errorf("inference: negative ceiling for %s", name)
+		}
+		if limit != (Ceiling{}) {
+			next[name] = limit
+		}
+	}
+	c.mu.Lock()
+	c.limits = next
+	c.mu.Unlock()
 	return nil
 }
 

@@ -62,6 +62,7 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 		name := part.FormName()
 		if name == "file" {
 			if audio != nil {
+				//unchecked: mime/multipart.Part.Close always returns nil
 				part.Close()
 				w.transcriptionBadRequest(rw, b, "", "file")
 				return
@@ -75,6 +76,7 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 			}
 			fields[name] = append(fields[name], string(raw))
 		}
+		//unchecked: mime/multipart.Part.Close always returns nil
 		part.Close()
 		if err != nil {
 			w.transcriptionBadRequest(rw, b, "", "multipart")
@@ -128,7 +130,7 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 	case inference.ContentResolved:
 	case inference.ContentForbidden:
 		s := b.Subject()
-		w.record(inference.Record{Profile: "transcription", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "forbidden", Reason: "content:write"})
+		w.record(inference.Record{Profile: "transcription", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "forbidden", Reason: "content:write:forbidden"})
 		writeError(rw, http.StatusForbidden, "forbidden", "content write is not permitted")
 		return
 	case inference.ContentTooLarge:
@@ -189,6 +191,7 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 	var text strings.Builder
 	for _, unit := range units {
 		if unit.Kind == wire.TranscriptUnitKindSegment {
+			//unchecked: strings.Builder.WriteString never returns a non-nil error
 			text.WriteString(unit.Text)
 		}
 	}
@@ -210,6 +213,7 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 		out["segments"], out["words"] = segments, words
 	}
 	rw.Header().Set("Content-Type", "application/json")
+	//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to (matches writeError and the other Encode calls in this package)
 	_ = json.NewEncoder(rw).Encode(out)
 }
 

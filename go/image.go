@@ -199,7 +199,7 @@ func (p *Provider) resolveImageInput(ctx context.Context, subject Subject, diges
 	case ContentUnknown:
 		return resolvedImageInput{}, wire.StartOutcomeInvalid, "content:unknown"
 	case ContentForbidden:
-		return resolvedImageInput{}, wire.StartOutcomeForbidden, "content:forbidden"
+		return resolvedImageInput{}, wire.StartOutcomeForbidden, "content:read:forbidden"
 	case ContentTooLarge:
 		return resolvedImageInput{}, wire.StartOutcomeInvalid, "content:too-large"
 	default:
@@ -548,6 +548,7 @@ func (p *Provider) runRemoteImage(ctx context.Context, op *operation, req wire.I
 	cancelRemote := func() {
 		stop, done := context.WithTimeout(context.Background(), 5*time.Second)
 		defer done()
+		//unchecked: best-effort cancel in a cleanup closure; the caller already has its own error and nothing left to receive a second one
 		_, _ = wire.NewImageClient(transport.WithContext(stop)).Cancel(admission.Operation)
 	}
 	var results []wire.ImageResult

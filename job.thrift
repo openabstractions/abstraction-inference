@@ -85,4 +85,4 @@ struct JobResult {
 struct Document {
  1: optional Request request(omit="absent")
  2: optional JobResult result(omit="absent")
-}(document="true",unknown_fields="refuse",doc="Exactly one of request or result is present. Request documents are opaque job submission spec bytes. Result documents are immutable operation result bytes read through abstraction.job/operation@1. The job layer does not parse either variant.")
+}(document="true",unknown_fields="refuse",doc="Exactly one of request or result is present. Request documents are opaque job submission spec bytes. Result documents are immutable operation result bytes read through abstraction.job/operations@1. The job layer does not parse either variant.")

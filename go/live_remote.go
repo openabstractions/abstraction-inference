@@ -198,6 +198,7 @@ func (b *remoteLiveBackend) cancelRemote() {
 	b.cancelOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		//unchecked: best-effort cancel in a sync.Once teardown helper that returns nothing; no caller left to report the failure to
 		_, _ = wire.NewLiveClient(b.transport.WithContext(ctx)).Cancel(b.operation)
 	})
 }

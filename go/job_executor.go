@@ -31,6 +31,10 @@ const (
 // job scope and its named credential. Scope itself grants no authority.
 type JobSubjectResolver func(context.Context, string, string) (Subject, ContentOutcome)
 
+// OperationJobSubjectResolver uses private job evidence for the claimed record.
+// The legacy resolver remains for journals accepted before subject retention.
+type OperationJobSubjectResolver func(context.Context, string, string, string) (Subject, ContentOutcome)
+
 type inferenceJobWork struct {
 	Scope   string          `json:"scope"`
 	Request jobwire.Request `json:"request"`
@@ -83,12 +87,17 @@ type durableJobBackend interface {
 // download execution profile: adding a new kind changes no existing prepared
 // download meaning, and recovery rechecks every old preparation.
 type JobExecution struct {
-	provider       *Provider
-	resolveSubject JobSubjectResolver
-	backend        durableJobBackend
-	pollInterval   time.Duration
-	leaseTTL       time.Duration
-	onError        func(error)
+	provider                *Provider
+	resolveSubject          JobSubjectResolver
+	resolveOperationSubject OperationJobSubjectResolver
+	backend                 durableJobBackend
+	pollInterval            time.Duration
+	leaseTTL                time.Duration
+	onError                 func(error)
+}
+
+func (e *JobExecution) SetOperationSubjectResolver(resolve OperationJobSubjectResolver) {
+	e.resolveOperationSubject = resolve
 }
 
 func NewJobExecution(provider *Provider, resolve JobSubjectResolver, onError func(error)) *JobExecution {
@@ -208,10 +217,22 @@ type inferenceJobPlan struct {
 }
 
 func (e *JobExecution) plan(ctx context.Context, work inferenceJobWork, pin inferenceJobCheckpoint, operationID string) (inferenceJobPlan, acceptance.AcceptanceOutcome, string) {
+	return e.planForSubject(ctx, work, pin, operationID, nil)
+}
+
+func (e *JobExecution) planForSubject(ctx context.Context, work inferenceJobWork, pin inferenceJobCheckpoint, operationID string, admitted *Subject) (inferenceJobPlan, acceptance.AcceptanceOutcome, string) {
 	if e.provider == nil || e.resolveSubject == nil || e.backend == nil {
 		return inferenceJobPlan{}, acceptance.AcceptanceOutcomeUnavailable, "provider:unavailable"
 	}
-	subject, outcome := e.resolveSubject(ctx, work.Scope, work.Request.Image.Credential)
+	var subject Subject
+	outcome := ContentResolved
+	if admitted != nil {
+		subject = *admitted
+	} else if operationID != "" && e.resolveOperationSubject != nil {
+		subject, outcome = e.resolveOperationSubject(ctx, operationID, work.Scope, work.Request.Image.Credential)
+	} else {
+		subject, outcome = e.resolveSubject(ctx, work.Scope, work.Request.Image.Credential)
+	}
 	switch outcome {
 	case ContentResolved:
 	case ContentForbidden, ContentUnknown:
@@ -318,6 +339,22 @@ func (e *JobExecution) plan(ctx context.Context, work inferenceJobWork, pin infe
 }
 
 func (e *JobExecution) CheckAdmission(scope, kind string, raw []byte, required []string) (acceptance.AcceptanceOutcome, string) {
+	return e.checkAdmissionForSubject(scope, kind, raw, required, nil)
+}
+
+// CheckAdmissionForSubject checks new work with the receiving boundary's
+// account/program, before a journal or operation ID exists.
+func (e *JobExecution) CheckAdmissionForSubject(scope, kind string, raw []byte, required []string, subject Subject) (acceptance.AcceptanceOutcome, string) {
+	outcome, reason := e.checkAdmissionForSubject(scope, kind, raw, required, &subject)
+	if outcome == acceptance.AcceptanceOutcomeForbidden {
+		// JOB-A16 admission has invalid for a caller-repairable refusal. A
+		// forbidden outcome here would be ignored and the key would be sealed.
+		return acceptance.AcceptanceOutcomeInvalid, reason
+	}
+	return outcome, reason
+}
+
+func (e *JobExecution) checkAdmissionForSubject(scope, kind string, raw []byte, required []string, subject *Subject) (acceptance.AcceptanceOutcome, string) {
 	if kind != InferenceJobKind || !slices.Contains(required, RecoverableUpstreamGuarantee) {
 		return acceptance.AcceptanceOutcomeInvalid, "recoverable-upstream guarantee required"
 	}
@@ -327,7 +364,7 @@ func (e *JobExecution) CheckAdmission(scope, kind string, raw []byte, required [
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, outcome, reason := e.plan(ctx, inferenceJobWork{Scope: scope, Request: request}, inferenceJobCheckpoint{}, "")
+	_, outcome, reason := e.planForSubject(ctx, inferenceJobWork{Scope: scope, Request: request}, inferenceJobCheckpoint{}, "", subject)
 	return outcome, reason
 }
 
@@ -506,6 +543,7 @@ func (e *JobExecution) execute(ctx context.Context, store job.Store, held *job.R
 // that an unchanged URL proves an upstream's continuity; a registered provider
 // additionally supplies its service-owned BindingID.
 func inferenceHostBinding(host *router.Host) string {
+	//unchecked: the struct below holds only strings and a bool; json.Marshal on plain data types cannot fail
 	data, _ := json.Marshal(struct {
 		Name, Registration, Base, Path, Wire, Credential, DeclaredBy, Domain string
 		Hosted                                                               bool
@@ -618,7 +656,11 @@ func (e *JobExecution) finishRecorded(store job.Store, held *job.Record, state j
 func (e *JobExecution) recordJobAttempt(ctx context.Context, held *job.Record, work inferenceJobWork, plan inferenceJobPlan, outcome, reason string, images int64) {
 	subject := plan.subject
 	if subject.Account == "" {
-		subject, _ = e.resolveSubject(ctx, work.Scope, work.Request.Image.Credential)
+		if e.resolveOperationSubject != nil {
+			subject, _ = e.resolveOperationSubject(ctx, held.ID, work.Scope, work.Request.Image.Credential)
+		} else {
+			subject, _ = e.resolveSubject(ctx, work.Scope, work.Request.Image.Credential)
+		}
 	}
 	host, model, credential := "", work.Request.Image.Model, work.Request.Image.Credential
 	if plan.host != nil {
@@ -648,6 +690,7 @@ func (e *JobExecution) OperationFailure(record *job.Record) *acceptance.WorkFail
 		return nil
 	}
 	var checkpoint inferenceJobCheckpoint
+	//unchecked: a decode failure leaves checkpoint zero-valued; the following check already treats an empty Failure as "use the generic default message", which is the intended best-effort fallback here
 	_ = record.DecodeCheckpoint(&checkpoint)
 	message := "inference work failed"
 	if checkpoint.Failure != "" {

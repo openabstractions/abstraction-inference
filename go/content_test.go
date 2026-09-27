@@ -107,7 +107,7 @@ func TestVisionResolutionRefusalsSpendNothing(t *testing.T) {
 		reason  string
 	}{
 		{"unknown", ContentUnknown, wire.StartOutcomeInvalid, "content:unknown"},
-		{"other_scope", ContentForbidden, wire.StartOutcomeForbidden, "content:forbidden"},
+		{"other_scope", ContentForbidden, wire.StartOutcomeForbidden, "content:read:forbidden"},
 		{"reader_down", ContentUnavailable, wire.StartOutcomeUnavailable, "content:unavailable"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

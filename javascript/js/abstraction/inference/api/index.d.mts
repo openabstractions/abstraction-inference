@@ -286,20 +286,20 @@ export interface HostChange {
   reason: string;
 }
 
-// One host the runtime reaches. A remote runtime is an
-// abstraction.facade/registry@1 declaration; router@1 Hosts lists its hosts as
-// <name>/<host>. profiles holds 1..16 distinct host_profiles members or
-// <owner>/<name>@<n>; empty in AddHost selects the wire's default:
-// openai-compatible and every local kind serve chat, embed, transcription,
-// speech and image, and anthropic-messages and any other wire serve chat.
-// declared_by is asserted by the runtime, operator for a host added through
-// AddHost, and AddHost refuses a non-empty value as invalid. name is 1..64
-// bytes of a-z 0-9 _ - and unique. A local host (hosted false) names a
-// local_host_kinds member as both name and kind, and the base URL of that
-// runtime on this machine, and carries no credential or ceiling. A hosted host
-// names a wire kind (router wire_kinds or <owner>/<name>@<n>), its https or
-// loopback http API root, the abstraction.credentials name the service applies
-// to it, and optionally that credential's ceiling. base carries no user
+// One host the runtime reaches, kept as an abstraction.facade/registry@1
+// declaration of role host. A remote runtime is a declaration of role remote;
+// router@1 Hosts lists its hosts as <name>/<host>. profiles holds 1..16
+// distinct host_profiles members or <owner>/<name>@<n>; empty in AddHost
+// selects the wire's default: openai-compatible and every local kind serve
+// chat, embed, transcription, speech and image, and anthropic-messages and any
+// other wire serve chat. declared_by is asserted by the runtime, operator for a
+// host added through AddHost, and AddHost refuses a non-empty value as invalid.
+// name is 1..64 bytes of a-z 0-9 _ - and unique. A local host (hosted false)
+// names a local_host_kinds member as both name and kind, and the base URL of
+// that runtime on this machine, and carries no credential or ceiling. A hosted
+// host names a wire kind (router wire_kinds or <owner>/<name>@<n>), its https
+// or loopback http API root, the abstraction.credentials name the service
+// applies to it, and optionally that credential's ceiling. base carries no user
 // information, query or fragment.
 export interface HostEntry {
   name: string;
@@ -532,11 +532,11 @@ export interface Message {
 /** Administer the runtime's inference hosts, the gateway window and its local keys, and read the inference audit. Each call is a rights decision for the bound operator subject; same-account identity alone grants nothing. A decision point that cannot answer reads unavailable. */
 export declare class OperatorClient {
   constructor(transport: FrameTransport);
-  /** Read the configured hosts, their router state and each hosted credential's spend today. Gated by abstraction.inference/host.manage on resource account. */
+  /** Read the configured hosts, their router state and each hosted credential's spend today, from the registry's declarations of role host. Gated by abstraction.inference/host.manage on resource account. */
   hosts(): Promise<HostList>;
-  /** Conditionally add one host. Gated by host.manage. For the bound operator program and the runtime's other operator programs it also writes the permit rule abstraction.inference/complete on host:<name>, and for a hosted host with a credential it writes the runtime's own permit rule abstraction.credentials/apply on credential:<name>, which the router's listing reads need. Existing rules are left as they are. */
+  /** Conditionally add one host, kept as a registry declaration of role host. Gated by host.manage. For the bound operator program and the runtime's other operator programs it also writes the permit rule abstraction.inference/complete on host:<name>, and for a hosted host with a credential it writes the runtime's own permit rule abstraction.credentials/apply on credential:<name>, which the router's listing reads need. Existing rules are left as they are. */
   addHost(expectedRevision: string, host: HostEntry): Promise<HostChange>;
-  /** Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. Rules are left as they are. */
+  /** Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. A host the installation or a product declared is disabled by name instead of removed. Rules are left as they are. */
   removeHost(expectedRevision: string, name: string): Promise<HostChange>;
   /** Read the local keys of the receiving account. Gated by abstraction.inference/key.issue on resource account. */
   keys(): Promise<KeyList>;
@@ -818,7 +818,7 @@ export declare function encode(v: Request): Uint8Array;
 
 export declare const features: readonly ["abstraction.inference/tools@1", "abstraction.inference/json-schema@1", "abstraction.inference/vision@1"];
 
-export declare const hostDeclarers: readonly ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "default"];
+export declare const hostDeclarers: readonly ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "installation", "default"];
 
 export declare const hostProfiles: readonly ["chat", "embed", "transcription", "speech", "image", "live"];
 

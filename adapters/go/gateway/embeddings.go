@@ -84,6 +84,7 @@ func (w *Window) openAIEmbeddings(rw http.ResponseWriter, r *http.Request, b Bou
 		}
 	}
 	rw.Header().Set("Content-Type", "application/json")
+	//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to (matches writeError and the other Encode calls in this package)
 	json.NewEncoder(rw).Encode(map[string]any{"object": "list", "data": data, "model": reply.Model,
 		"usage": map[string]any{"prompt_tokens": reply.Usage.Input, "total_tokens": reply.Usage.Input}})
 }

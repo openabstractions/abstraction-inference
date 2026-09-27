@@ -164,11 +164,46 @@ func TestTranscriptionOtherContentScopeIsForbiddenWithoutSpend(t *testing.T) {
 	})
 	before := f.applier.count()
 	a := f.provider.StartTranscription(context.Background(), caller, transcriptionRequest(audio))
-	if a.Outcome != wire.StartOutcomeForbidden || a.Reason != "content:forbidden" {
+	if a.Outcome != wire.StartOutcomeForbidden || a.Reason != "content:read:forbidden" {
 		t.Fatalf("admission %+v", a)
 	}
 	if len(f.up.posts()) != 0 || f.applier.count() != before {
 		t.Fatalf("forbidden content spent: posts %d applies %d/%d", len(f.up.posts()), f.applier.count(), before)
+	}
+}
+
+// TestTranscriptionWriteGrantDoesNotNameReadAsWrite models the real gateway
+// sequence on one digest: the window stores the uploaded audio under
+// content.write (gateway/transcription.go storeGatewayAudio) before the
+// provider ever runs, then the provider resolves that same digest under
+// content.read here (resolveAudio). A caller granted only content.write for
+// the digest is refused on read, and the refusal must name the operation
+// that was actually refused rather than repeat the write grant's word.
+func TestTranscriptionWriteGrantDoesNotNameReadAsWrite(t *testing.T) {
+	// readGranted models the caller's content.read grants only. The digest
+	// below is written (uploaded and stored by the window under a separate
+	// content.write grant this fixture never models) but never added here,
+	// exactly as serve/runtime_content_test.go proves at the rights layer
+	// (TestRuntimeContentConfiguresScopedReadAndWrite: "write implicitly
+	// granted read"). content.read for it must still be refused.
+	readGranted := map[string]bool{}
+	f, audio := transcriptionFixture(t, func(c *Config) {
+		c.ResolveContent = func(_ context.Context, _ Subject, digest string, limit int64) ([]byte, ContentOutcome) {
+			if readGranted[digest] {
+				t.Fatal("this test never grants content.read")
+			}
+			return nil, ContentForbidden
+		}
+	})
+	a := f.provider.StartTranscription(context.Background(), caller, transcriptionRequest(audio))
+	if a.Outcome != wire.StartOutcomeForbidden {
+		t.Fatalf("admission %+v", a)
+	}
+	if a.Reason != "content:read:forbidden" {
+		t.Fatalf("reason %q does not name the read refusal", a.Reason)
+	}
+	if strings.Contains(a.Reason, "write") {
+		t.Fatalf("read refusal named write: %q", a.Reason)
 	}
 }
 

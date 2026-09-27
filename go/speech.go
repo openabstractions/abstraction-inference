@@ -274,13 +274,17 @@ func runSpeechHTTP(ctx context.Context, client *http.Client, host *router.Host, 
 	}
 	if kind == "elevenlabs" {
 		address += "/" + url.PathEscape(input.Voice) + "/stream"
-		u, _ := url.Parse(address)
+		u, err := url.Parse(address)
+		if err != nil {
+			return speechFailed(wire.ReplyOutcomeUnavailable, "upstream:address")
+		}
 		q := u.Query()
 		q.Set("output_format", elevenFormat(input.Format))
 		u.RawQuery = q.Encode()
 		address = u.String()
 		body = map[string]any{"text": input.Text, "model_id": model}
 	}
+	//unchecked: body above holds only string values; json.Marshal on plain data types cannot fail
 	raw, _ := json.Marshal(body)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, address, bytes.NewReader(raw))
 	if err != nil {
@@ -290,12 +294,13 @@ func runSpeechHTTP(ctx context.Context, client *http.Client, host *router.Host, 
 	for k, v := range headers {
 		httpReq.Header.Set(k, v)
 	}
-	resp, err := client.Do(httpReq)
+	resp, err := credentialRequestClient(client, headers).Do(httpReq)
 	if err != nil {
 		return speechFailed(wire.ReplyOutcomeUnavailable, "upstream:unreachable")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		//unchecked: best-effort drain for connection reuse; the outcome is already decided by the status code below
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		if resp.StatusCode == 400 || resp.StatusCode == 404 || resp.StatusCode == 422 {
 			return speechFailed(wire.ReplyOutcomeUnsupportedFeature, "voice:"+input.Voice)
@@ -307,6 +312,7 @@ func runSpeechHTTP(ctx context.Context, client *http.Client, host *router.Host, 
 		return speechFailed(outcome, fmt.Sprintf("upstream:%d", resp.StatusCode))
 	}
 	expected := speechMediaType(input.Format)
+	//unchecked: a parse failure yields an empty contentType, which the following check already treats the same as a missing header (skip the media-type assertion) by design
 	if contentType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); contentType != "" && contentType != "application/octet-stream" && contentType != expected {
 		return speechFailed(wire.ReplyOutcomeUnavailable, "upstream:media-type")
 	}
@@ -320,6 +326,7 @@ func runSpeechHTTP(ctx context.Context, client *http.Client, host *router.Host, 
 			if int64(whole.Len()+n) > maxBytes {
 				return speechFailed(wire.ReplyOutcomeUnavailable, "upstream:too-large")
 			}
+			//unchecked: bytes.Buffer.Write never returns a non-nil error
 			_, _ = whole.Write(buf[:n])
 			emit(buf[:n])
 		}
@@ -389,6 +396,7 @@ func (p *Provider) runRemoteSpeech(ctx context.Context, op *operation, req wire.
 	cancelRemote := func() {
 		stop, done := context.WithTimeout(context.Background(), 5*time.Second)
 		defer done()
+		//unchecked: best-effort cancel in a cleanup closure; the caller already has its own error and nothing left to receive a second one
 		_, _ = wire.NewSpeechClient(transport.WithContext(stop)).Cancel(admission.Operation)
 	}
 	remoteAudio := sha256.New()
@@ -414,6 +422,7 @@ func (p *Provider) runRemoteSpeech(ctx context.Context, op *operation, req wire.
 					return speechFailed(wire.ReplyOutcomeUnavailable, "remote:audio")
 				}
 				remoteSize += int64(len(d.Audio.Data))
+				//unchecked: hash.Hash.Write is documented to never return a non-nil error
 				_, _ = remoteAudio.Write(d.Audio.Data)
 				emit(d.Audio.Data)
 			}

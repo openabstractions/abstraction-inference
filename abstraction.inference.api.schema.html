@@ -6,9 +6,8 @@
 <link rel="stylesheet" href="style.css">
 
 <main>
-<nav class="site"><a class="name" href="index.html">Open Abstractions</a>
-<a href="index.html">Overview</a> <a href="cases.html">Cases</a> <a href="reference.html">Reference</a> <a href="evidence.html">Evidence</a> <a href="coverage.html">Coverage</a> <a href="adopt.html">Adopt</a>
-<a class="right" href="https://github.com/openabstractions">github.com/openabstractions</a></nav>
+<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">Open Abstractions</a>
+<a href="adopt.html">Adopt</a><a href="cases.html">Cases</a><span class="nav-devs-label">for developers</span><a href="reference.html">Reference</a><a href="coverage.html">Coverage</a><a href="catalogue.html">Catalogue</a><a href="https://github.com/openabstractions">GitHub</a></nav>
 
 
 <h1>Schema</h1>
@@ -151,15 +150,15 @@
 <p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
-<p>Read the configured hosts, their router state and each hosted credential&#39;s spend today. Gated by abstraction.inference/host.manage on resource account.</p>
+<p>Read the configured hosts, their router state and each hosted credential&#39;s spend today, from the registry&#39;s declarations of role host. Gated by abstraction.inference/host.manage on resource account.</p>
 <h3><code>Hosts</code></h3><p><code>request-response</code> <code>HostList</code></p><ul>
 </ul>
-<p>Conditionally add one host. Gated by host.manage. For the bound operator program and the runtime&#39;s other operator programs it also writes the permit rule abstraction.inference/complete on host:&lt;name&gt;, and for a hosted host with a credential it writes the runtime&#39;s own permit rule abstraction.credentials/apply on credential:&lt;name&gt;, which the router&#39;s listing reads need. Existing rules are left as they are.</p>
+<p>Conditionally add one host, kept as a registry declaration of role host. Gated by host.manage. For the bound operator program and the runtime&#39;s other operator programs it also writes the permit rule abstraction.inference/complete on host:&lt;name&gt;, and for a hosted host with a credential it writes the runtime&#39;s own permit rule abstraction.credentials/apply on credential:&lt;name&gt;, which the router&#39;s listing reads need. Existing rules are left as they are.</p>
 <h3><code>AddHost</code></h3><p><code>request-response</code> <code>HostChange</code></p><ul>
 <li>Argument 1: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>HostEntry</code> <code>host</code> (required, including zero/false/empty)</li>
 </ul>
-<p>Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. Rules are left as they are.</p>
+<p>Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. A host the installation or a product declared is disabled by name instead of removed. Rules are left as they are.</p>
 <h3><code>RemoveHost</code></h3><p><code>request-response</code> <code>HostChange</code></p><ul>
 <li>Argument 1: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>string</code> <code>name</code> (required, including zero/false/empty)</li>
@@ -974,7 +973,7 @@
 <tr><td><code>local_key_kinds</code></td><td><code>list&lt;string&gt;</code></td><td><code>openabstractions/local-key@1</code></td></tr>
 <tr><td><code>local_host_kinds</code></td><td><code>list&lt;string&gt;</code></td><td><code>ollama, lmstudio, lemonade, whispercpp, piper, comfyui, swarmui, docker-model-runner, foundry-local</code></td></tr>
 <tr><td><code>host_profiles</code></td><td><code>list&lt;string&gt;</code></td><td><code>chat, embed, transcription, speech, image, live</code></td></tr>
-<tr><td><code>host_declarers</code></td><td><code>list&lt;string&gt;</code></td><td><code>operator, ollama, lmstudio, docker-model-runner, foundry-local, default</code></td></tr>
+<tr><td><code>host_declarers</code></td><td><code>list&lt;string&gt;</code></td><td><code>operator, ollama, lmstudio, docker-model-runner, foundry-local, installation, default</code></td></tr>
 <tr><td><code>credential_consumers</code></td><td><code>list&lt;string&gt;</code></td><td><code>abstraction.inference/chat@1, abstraction.inference/embed@1, abstraction.inference/transcription@1, abstraction.inference/speech@1, abstraction.inference/live@1</code></td></tr>
 <tr><td><code>claim_extensions</code></td><td><code>list&lt;string&gt;</code></td><td><code>openabstractions/claimed-program</code></td></tr>
 </tbody></table></div>

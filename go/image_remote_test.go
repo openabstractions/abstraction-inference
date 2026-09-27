@@ -2,7 +2,13 @@ package inference_test
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
+	"math/big"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -14,6 +20,45 @@ import (
 	router "github.com/openabstractions/abstraction-router/go"
 	routerwire "github.com/openabstractions/abstraction-router/go/abstraction/router"
 )
+
+// This TLS fixture stays in core so remote transport tests have no dependency
+// on the vendor realtime adapter.
+func remoteLiveTLS(t *testing.T) (*tls.Config, *tls.Config) {
+	t.Helper()
+	caPublic, caPrivate, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	caTemplate := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "live remote test CA"},
+		NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, caPublic, caPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(ca)
+	certificate := func(serial int64, usage x509.ExtKeyUsage) tls.Certificate {
+		public, private, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		template := &x509.Certificate{SerialNumber: big.NewInt(serial), DNSNames: []string{"runtime.test"},
+			NotBefore: ca.NotBefore, NotAfter: ca.NotAfter, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{usage}}
+		der, err := x509.CreateCertificate(rand.Reader, template, ca, public, caPrivate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: private}
+	}
+	server := &tls.Config{Certificates: []tls.Certificate{certificate(2, x509.ExtKeyUsageServerAuth)}, ClientCAs: roots}
+	client := &tls.Config{Certificates: []tls.Certificate{certificate(3, x509.ExtKeyUsageClientAuth)}, RootCAs: roots, ServerName: "runtime.test"}
+	return server, client
+}
 
 type imageRemoteInventory struct{}
 

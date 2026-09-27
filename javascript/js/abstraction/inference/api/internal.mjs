@@ -375,7 +375,7 @@ export const localHostKinds = ["ollama", "lmstudio", "lemonade", "whispercpp", "
 
 export const hostProfiles = ["chat", "embed", "transcription", "speech", "image", "live"];
 
-export const hostDeclarers = ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "default"];
+export const hostDeclarers = ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "installation", "default"];
 
 export const credentialConsumers = ["abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/live@1"];
 
@@ -3854,20 +3854,20 @@ export function newCeilingLimit() {
   return { tokensPerDay: 0n, microsPerDay: 0n, requestsPerDay: 0n, imagesPerDay: 0n, audioSecondsPerDay: 0n, charactersPerDay: 0n };
 }
 
-// One host the runtime reaches. A remote runtime is an
-// abstraction.facade/registry@1 declaration; router@1 Hosts lists its hosts as
-// <name>/<host>. profiles holds 1..16 distinct host_profiles members or
-// <owner>/<name>@<n>; empty in AddHost selects the wire's default:
-// openai-compatible and every local kind serve chat, embed, transcription,
-// speech and image, and anthropic-messages and any other wire serve chat.
-// declared_by is asserted by the runtime, operator for a host added through
-// AddHost, and AddHost refuses a non-empty value as invalid. name is 1..64
-// bytes of a-z 0-9 _ - and unique. A local host (hosted false) names a
-// local_host_kinds member as both name and kind, and the base URL of that
-// runtime on this machine, and carries no credential or ceiling. A hosted host
-// names a wire kind (router wire_kinds or <owner>/<name>@<n>), its https or
-// loopback http API root, the abstraction.credentials name the service applies
-// to it, and optionally that credential's ceiling. base carries no user
+// One host the runtime reaches, kept as an abstraction.facade/registry@1
+// declaration of role host. A remote runtime is a declaration of role remote;
+// router@1 Hosts lists its hosts as <name>/<host>. profiles holds 1..16
+// distinct host_profiles members or <owner>/<name>@<n>; empty in AddHost
+// selects the wire's default: openai-compatible and every local kind serve
+// chat, embed, transcription, speech and image, and anthropic-messages and any
+// other wire serve chat. declared_by is asserted by the runtime, operator for a
+// host added through AddHost, and AddHost refuses a non-empty value as invalid.
+// name is 1..64 bytes of a-z 0-9 _ - and unique. A local host (hosted false)
+// names a local_host_kinds member as both name and kind, and the base URL of
+// that runtime on this machine, and carries no credential or ceiling. A hosted
+// host names a wire kind (router wire_kinds or <owner>/<name>@<n>), its https
+// or loopback http API root, the abstraction.credentials name the service
+// applies to it, and optionally that credential's ceiling. base carries no user
 // information, query or fragment.
 export function newHostEntry() {
   return { name: "", hosted: false, kind: "", base: "", credential: "", ceiling: null, profiles: [], declaredBy: "" };

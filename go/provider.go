@@ -61,6 +61,13 @@ type Decider func(ctx context.Context, subject Subject, action, resource string)
 // holder or its decision point cannot answer).
 type Applier func(ctx context.Context, subject Subject, consumer, name, target string) (map[string]string, string)
 
+// Admitter is a check a provider registers for work its own program does on
+// the picked host before a call is decided: a load, a warm-up, anything that
+// keeps its own refusal word instead of turning into an upstream failure. A
+// false answer carries the provider's own reason word and refuses the
+// operation before Decide runs (INF-A5).
+type Admitter func(ctx context.Context, host *router.Host, model string) (reason string, ok bool)
+
 // ContentOutcome is the result of resolving one digest for the original
 // caller. The resolver enforces the caller's content scope before returning
 // bytes.
@@ -205,6 +212,11 @@ type Config struct {
 	Router *router.Router
 	Decide Decider
 	Apply  Applier
+	// Admit runs after pick and before Decide, once a host is picked. Nil runs
+	// nothing. A false answer refuses the operation `unavailable` with the
+	// hook's reason, or `not_permitted` when the reason is exactly that word
+	// (INF-A5).
+	Admit Admitter
 	// ResolveContent reads image digests after host authorization and before
 	// credentials or an upstream request. It is required by requests that use
 	// vision@1 and receives the original bound caller.
@@ -234,6 +246,10 @@ type Config struct {
 	// HTTP sends upstream requests; nil uses a client without a total timeout,
 	// because a stream lasts as long as the model writes.
 	HTTP *http.Client
+	// LiveDialer opens local vendor realtime sessions after the service applies
+	// rights, budget, credential and redirect policy. Nil leaves local realtime
+	// unavailable; remote live sessions use the shared transport independently.
+	LiveDialer LiveDialer
 	// Retention keeps an ended operation observable; default one minute.
 	Retention time.Duration
 	// Idle cancels an operation nobody observes; default ten seconds.
@@ -341,11 +357,29 @@ func (p *Provider) bounds(a *wire.Admission) {
 	a.RetainedDeltas = int64(p.cfg.RetainedDeltas)
 }
 
+// admitStartOutcome is the Start outcome for a false Admit answer: the
+// provider's own word, `not_permitted` reading as that outcome and every
+// other word reading as `unavailable`.
+func admitStartOutcome(reason string) wire.StartOutcome {
+	if reason == "not_permitted" {
+		return wire.StartOutcomeNotPermitted
+	}
+	return wire.StartOutcomeUnavailable
+}
+
+// admitEmbedOutcome mirrors admitStartOutcome for embed@1.
+func admitEmbedOutcome(reason string) wire.EmbedOutcome {
+	if reason == "not_permitted" {
+		return wire.EmbedOutcomeNotPermitted
+	}
+	return wire.EmbedOutcomeUnavailable
+}
+
 func refusal(outcome wire.StartOutcome, reason string) wire.Admission {
 	return wire.Admission{Outcome: outcome, Reason: reason}
 }
 
-// Start admits one request for subject in the contract's order (INF-S2) and
+// Start admits one request for subject in the contract's order (INF-A2) and
 // begins its upstream request. Nothing leaves the service before every check
 // passes.
 func (p *Provider) Start(ctx context.Context, subject Subject, req wire.Request) wire.Admission {
@@ -378,6 +412,11 @@ func (p *Provider) Start(ctx context.Context, subject Subject, req wire.Request)
 	host, model, reason := p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileChat)
 	if host == nil {
 		return refuse(wire.StartOutcomeNoHost, reason, nil, "")
+	}
+	if p.cfg.Admit != nil {
+		if admitReason, ok := p.cfg.Admit(ctx, host, model); !ok {
+			return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+		}
 	}
 	adapter := adapterFor(host.Wire)
 	if host.Wire == "" {
@@ -495,6 +534,25 @@ func (p *Provider) HasBindingOperations(bindingID string) bool {
 	defer p.mu.Unlock()
 	for _, op := range p.ops {
 		if op.bindingID == bindingID || op.bindingID == "" && op.host != nil && op.host.BindingID == bindingID {
+			return true
+		}
+	}
+	return false
+}
+
+// ActiveForModel reports whether an operation for model is still active or
+// retained for observation. A provider whose Admit hook loads model as an
+// object uses it to tell a started or still-open operation from one that has
+// fully ended and aged out of retention, so its own idle clock can keep the
+// object it loaded for as long as the operation is open (INF-A5).
+func (p *Provider) ActiveForModel(model string) bool {
+	if model == "" {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, op := range p.ops {
+		if op.model == model {
 			return true
 		}
 	}

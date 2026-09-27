@@ -1,0 +1,10 @@
+This adapter depends on github.com/openabstractions/websocket at
+ce87d3641bd1e04e7acfd4a848d193951d5da73f
+(Go version v0.0.0-20260926143434-ce87d3641bd1).
+
+It is an OpenAbstractions fork of github.com/gorilla/websocket v1.5.3,
+upstream commit ce903f6d1d961af3a8602f2842c8b1c3fca58c4d. The fork
+retains the Gorilla BSD-3-Clause license and upstream history. Its OA-FORK.md
+identifies the local change and maintenance responsibility. The accompanying
+GORILLA_WEBSOCKET_LICENSE preserves the full upstream attribution and terms
+for redistributions of this adapter.

@@ -119,6 +119,7 @@ func (b replicateJobBackend) Cancel(ctx context.Context, host *router.Host, hand
 	if response == nil {
 		return errors.New(failed.reason)
 	}
+	//unchecked: closing a response body already fully read by jsonImageRequest's own status check; the cancel already succeeded and a Close error here is not actionable
 	response.Body.Close()
 	return nil
 }

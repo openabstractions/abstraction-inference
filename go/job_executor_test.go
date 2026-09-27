@@ -132,15 +132,16 @@ func (b *fakeDurableBackend) Cancel(context.Context, *router.Host, string, map[s
 }
 
 type durableFixture struct {
-	execution *JobExecution
-	backend   *fakeDurableBackend
-	provider  *Provider
-	committed [][]byte
-	records   []Record
-	recorded  chan struct{}
-	permitted bool
-	consumer  string
-	mu        sync.Mutex
+	execution         *JobExecution
+	backend           *fakeDurableBackend
+	provider          *Provider
+	committed         [][]byte
+	records           []Record
+	recorded          chan struct{}
+	permitted         bool
+	policyUnavailable bool
+	consumer          string
+	mu                sync.Mutex
 }
 
 func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixture {
@@ -156,6 +157,9 @@ func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixtur
 		Decide: func(context.Context, Subject, string, string) (string, error) {
 			fixture.mu.Lock()
 			defer fixture.mu.Unlock()
+			if fixture.policyUnavailable {
+				return "", errors.New("rights backend unavailable")
+			}
 			if fixture.permitted {
 				return "permitted", nil
 			}
@@ -202,6 +206,63 @@ func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixtur
 	execution.backend, execution.pollInterval = backend, time.Millisecond
 	fixture.execution = execution
 	return fixture
+}
+
+type boundInferenceExecutor struct{ *JobExecution }
+
+func (e boundInferenceExecutor) CheckSubjectAdmission(binding acceptanceprovider.Binding, kind string, spec []byte, required []string) (acceptance.AcceptanceOutcome, string) {
+	return e.CheckAdmissionForSubject(binding.Scope, kind, spec, required, Subject{Account: binding.Subject.Account, Program: binding.Subject.Program})
+}
+
+func TestInferenceBoundAdmissionRefusesBeforeJournalAndDuplicateKeepsReceipt(t *testing.T) {
+	fixture := newDurableFixture(t, &fakeDurableBackend{})
+	root := t.TempDir()
+	p, err := acceptanceprovider.OpenWithExecutor(root, "owner", boundInferenceExecutor{fixture.execution})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable := filepath.Join(t.TempDir(), "caller")
+	subject := acceptanceprovider.AuthenticatedSubject{AccountKind: "posix", Account: caller.Account, Executable: executable, Program: caller.Program}
+	scope, err := acceptanceprovider.LocalSubjectScope(subject.AccountKind, subject.Account, executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := acceptanceprovider.Binding{Scope: scope, Subject: &subject, Origin: "local"}
+	submission := durableSubmission(t, p, "bound-admission", jobwire.ProfileVideo)
+	fixture.mu.Lock()
+	fixture.permitted = false
+	fixture.mu.Unlock()
+	result, err := p.BindBinding(binding).Submit(submission)
+	if err != nil || result.Outcome != acceptance.AcceptanceOutcomeInvalid || result.Reason != "rights:denied" || result.Receipt != nil {
+		t.Fatalf("permanent refusal %+v %v", result, err)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "acceptance", "requests"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("refusal journaled: %v %v", entries, err)
+	}
+	fixture.mu.Lock()
+	fixture.policyUnavailable = true
+	fixture.mu.Unlock()
+	result, err = p.BindBinding(binding).Submit(submission)
+	if err != nil || result.Outcome != acceptance.AcceptanceOutcomeUnavailable || result.Receipt != nil {
+		t.Fatalf("policy outage %+v %v", result, err)
+	}
+	fixture.mu.Lock()
+	fixture.policyUnavailable = false
+	fixture.permitted = true
+	fixture.mu.Unlock()
+	result, err = p.BindBinding(binding).Submit(submission)
+	if err != nil || result.Outcome != acceptance.AcceptanceOutcomeAccepted || result.Receipt == nil {
+		t.Fatalf("repaired grant %+v %v", result, err)
+	}
+	operationID := result.Receipt.OperationID
+	fixture.mu.Lock()
+	fixture.permitted = false
+	fixture.mu.Unlock()
+	result, err = p.BindBinding(binding).Submit(submission)
+	if err != nil || result.Outcome != acceptance.AcceptanceOutcomeAccepted || result.Receipt == nil || result.Receipt.OperationID != operationID {
+		t.Fatalf("duplicate after revocation %+v %v", result, err)
+	}
 }
 
 func durableSubmission(t *testing.T, provider *acceptanceprovider.Provider, key string, profile jobwire.Profile) acceptance.Submission {
@@ -398,7 +459,17 @@ func TestInferenceJobRetriesResultAccountingBeforeTerminal(t *testing.T) {
 	blocked := make(chan struct{})
 	backend := &fakeDurableBackend{poll: durableJobStatus{State: durableJobSucceeded, Outputs: []durableJobOutput{{Data: []byte("\x89PNG\r\n\x1a\n1234"), MediaType: "image/png"}}}}
 	backend.pollHook = func() {
-		if err := os.Mkdir(state+".tmp", 0o700); err != nil {
+		// cas.Change stages its replacement under a randomized name it
+		// invents itself, so nothing here can collide with that; its lock
+		// file is the one fixed, predictable path, and failing to open it
+		// (because it is already a directory) fails the persist the same
+		// way the write used to fail when blocked. An earlier successful
+		// persist (at submit time) already left this file behind, closed
+		// but not removed, so it is replaced rather than freshly created.
+		if err := os.RemoveAll(state + ".lock"); err != nil {
+			t.Error(err)
+		}
+		if err := os.Mkdir(state+".lock", 0o700); err != nil {
 			t.Error(err)
 		}
 		close(blocked)
@@ -432,7 +503,7 @@ func TestInferenceJobRetriesResultAccountingBeforeTerminal(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if err := os.Remove(state + ".tmp"); err != nil {
+	if err := os.Remove(state + ".lock"); err != nil {
 		t.Fatal(err)
 	}
 	final := waitDurable(t, provider.BindOperations("caller-scope"), submission.Identity, true)
@@ -451,7 +522,12 @@ func TestInferenceJobRetriesAttemptAccountingBeforeFirstSubmit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(state+".tmp", 0o700); err != nil {
+	// cas.Change stages its replacement under a randomized name it invents
+	// itself, so nothing here can collide with that; its lock file is the
+	// one fixed, predictable path, and failing to open it (because it is
+	// already a directory) fails the persist the same way the write used
+	// to fail when blocked.
+	if err := os.Mkdir(state+".lock", 0o700); err != nil {
 		t.Fatal(err)
 	}
 	backend := &fakeDurableBackend{poll: durableJobStatus{State: durableJobSucceeded, Outputs: []durableJobOutput{{Data: []byte("\x89PNG\r\n\x1a\n1234"), MediaType: "image/png"}}}}
@@ -485,7 +561,7 @@ func TestInferenceJobRetriesAttemptAccountingBeforeFirstSubmit(t *testing.T) {
 		t.Fatal("upstream submit happened before accounting")
 	}
 	backend.mu.Unlock()
-	if err := os.Remove(state + ".tmp"); err != nil {
+	if err := os.Remove(state + ".lock"); err != nil {
 		t.Fatal(err)
 	}
 	final := waitDurable(t, provider.BindOperations("caller-scope"), submission.Identity, true)
@@ -724,6 +800,30 @@ func TestInferenceJobRequiresRecoverableGuaranteeBeforeAcceptance(t *testing.T) 
 	result, err := provider.Bind("caller-scope").Submit(submission)
 	if err != nil || result.Outcome != acceptance.AcceptanceOutcomeInvalid || result.Receipt != nil {
 		t.Fatalf("result %+v %v", result, err)
+	}
+}
+
+func TestInferenceJobAdmissionUsesReceiverSubjectWithoutScopeInversion(t *testing.T) {
+	fixture := newDurableFixture(t, &fakeDurableBackend{})
+	provider, err := acceptanceprovider.OpenWithExecutor(t.TempDir(), "owner", fixture.execution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission := durableSubmission(t, provider, "subject-admission", jobwire.ProfileVideo)
+	fixture.execution.resolveSubject = func(context.Context, string, string) (Subject, ContentOutcome) {
+		return Subject{}, ContentForbidden
+	}
+	if outcome, _ := fixture.execution.CheckAdmission("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}); outcome != acceptance.AcceptanceOutcomeForbidden {
+		t.Fatalf("legacy scope inversion outcome %s", outcome)
+	}
+	if outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller); outcome != acceptance.AcceptanceOutcomeAccepted {
+		t.Fatalf("receiver subject admission %s %s", outcome, reason)
+	}
+	fixture.mu.Lock()
+	fixture.permitted = false
+	fixture.mu.Unlock()
+	if outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller); outcome != acceptance.AcceptanceOutcomeInvalid || reason != "rights:denied" {
+		t.Fatalf("permanent refusal was not reported before acceptance: %s %s", outcome, reason)
 	}
 }
 

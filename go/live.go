@@ -24,11 +24,16 @@ type liveSession struct {
 	committed        bool
 }
 
-func validateLive(req wire.LiveRequest) string {
+func validateLive(req wire.LiveRequest) string { return validateLiveFields(req, true) }
+
+// validateLiveFields checks one live request. voice is false for the window's
+// pre-upgrade preflight, which knows the model from the WebSocket URL and the
+// voice only from the session.update that arrives after the upgrade.
+func validateLiveFields(req wire.LiveRequest, voice bool) string {
 	if req.Model == "" || len(req.Model) > 256 {
 		return "model"
 	}
-	if req.Voice == "" || len(req.Voice) > 256 || !nameChars(req.Voice, "_-.") {
+	if voice && (req.Voice == "" || len(req.Voice) > 256 || !nameChars(req.Voice, "_-.")) {
 		return "voice"
 	}
 	if !req.Format.Known() {
@@ -59,6 +64,63 @@ func validateLive(req wire.LiveRequest) string {
 		}
 	}
 	return ""
+}
+
+// PreflightLive answers whether subject may open a live session for the model
+// in req, deciding the same host routing, wire support and
+// abstraction.inference/complete rule StartLive decides, and admitting nothing.
+// The gateway window calls it before it completes a Realtime WebSocket
+// upgrade, so a program without the rule is refused with an HTTP status
+// instead of an error event on an open socket (CONTRACT.md INF-W8). Voice,
+// budget, credential and capacity stay with StartLive, which the session.update
+// that follows a successful upgrade reaches. Accepted carries the routed host
+// and model and an empty Operation.
+func (p *Provider) PreflightLive(ctx context.Context, subject Subject, req wire.LiveRequest) wire.Admission {
+	started := p.cfg.Now()
+	via := routeOf(ctx)
+	refuse := func(outcome wire.StartOutcome, reason string, h *router.Host, model string) wire.Admission {
+		r := Record{Route: via.name, Rung: via.rung, Domain: via.domain, Claim: via.claim, Family: familyOf(req.Model), Profile: router.ProfileLive, Account: subject.Account, Program: subject.Program, Model: req.Model, Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds()}
+		if h != nil {
+			r.Host = h.Name
+			r.Model = model
+			if h.Wire == router.WireRemote {
+				r.Domain = h.Domain
+			}
+		}
+		p.record(r)
+		return refusal(outcome, reason)
+	}
+	if subject.Account == "" || subject.Program == "" {
+		return refuse(wire.StartOutcomeForbidden, "caller", nil, "")
+	}
+	if reason := validateLiveFields(req, false); reason != "" {
+		return refuse(wire.StartOutcomeInvalid, reason, nil, "")
+	}
+	host, model, reason := p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileLive)
+	if host == nil {
+		return refuse(wire.StartOutcomeNoHost, reason, nil, "")
+	}
+	if host.Wire != router.WireOpenAIRealtime && host.Wire != router.WireRemote {
+		return refuse(wire.StartOutcomeUnsupportedFeature, "wire:"+host.Wire, host, model)
+	}
+	word, err := p.cfg.Decide(ctx, subject, ActionComplete, ResourceHost(host.Name))
+	if err != nil || ctx.Err() != nil {
+		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
+	}
+	if word != "permitted" {
+		if word == "denied" || word == "not_granted" || word == "unknown_action" {
+			return refuse(wire.StartOutcomeNotPermitted, "rights:"+word, host, model)
+		}
+		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
+	}
+	if host.Wire == router.WireOpenAIRealtime && p.cfg.LiveDialer == nil {
+		return refuse(wire.StartOutcomeUnavailable, "upstream:unavailable", host, model)
+	}
+	a := wire.Admission{Outcome: wire.StartOutcomeAccepted, Host: host.Name, Model: model}
+	// The window needs idle_ms before it upgrades, to bound a connection that
+	// admits no session. Operation stays empty: nothing was admitted.
+	p.bounds(&a)
+	return a
 }
 
 func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.LiveRequest) wire.Admission {
@@ -102,6 +164,9 @@ func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.Live
 		}
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
 	}
+	if host.Wire == router.WireOpenAIRealtime && p.cfg.LiveDialer == nil {
+		return refuse(wire.StartOutcomeUnavailable, "upstream:unavailable", host, model)
+	}
 	remote := host.Wire == router.WireRemote
 	var commit ContentCommitter
 	if !remote {
@@ -112,7 +177,7 @@ func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.Live
 		commit, outcome = p.cfg.PrepareContentWrite(ctx, subject, "live", liveMediaType, p.cfg.MaxSpeechBytes)
 		if outcome != ContentResolved || commit == nil {
 			if outcome == ContentForbidden {
-				return refuse(wire.StartOutcomeForbidden, "content:forbidden", host, model)
+				return refuse(wire.StartOutcomeForbidden, "output:forbidden", host, model)
 			}
 			return refuse(wire.StartOutcomeUnavailable, "content:unavailable", host, model)
 		}
@@ -297,7 +362,21 @@ func (p *Provider) runLive(ctx context.Context, op *operation, req wire.LiveRequ
 			}
 		}
 		if err == nil {
-			backend, err = dialLiveBackend(ctx, p.cfg.HTTP, address.String(), op.model, req.Voice, req.Format.String(), headers)
+			if p.cfg.LiveDialer == nil {
+				err = liveError(liveBackendUnavailable)
+			} else {
+				// The credential-bearing HTTP policy stays in core. Adapters receive
+				// only this guarded client for the session handshake.
+				connection, dialErr := p.cfg.LiveDialer(ctx, credentialRequestClient(p.cfg.HTTP, headers), address.String(), op.model, req.Voice, req.Format, headers)
+				err = dialErr
+				if err != nil && connection != nil {
+					connection.Close()
+				} else if connection != nil {
+					backend = localLiveBackend{connection: connection}
+				} else if err == nil {
+					err = liveError(liveBackendUnavailable)
+				}
+			}
 		}
 	}
 	clear(headers)
@@ -378,7 +457,7 @@ func (p *Provider) runLive(ctx context.Context, op *operation, req wire.LiveRequ
 			case ContentResolved:
 			case ContentForbidden:
 				end.Outcome = wire.ReplyOutcomeForbidden
-				end.Reason = "content:forbidden"
+				end.Reason = "output:forbidden"
 				return
 			default:
 				end.Reason = "content:unavailable"

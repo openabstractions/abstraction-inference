@@ -12,20 +12,40 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coder/websocket"
+	websocket "github.com/openabstractions/abstraction-inference/adapters/go/transportws"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 )
 
 type liveGatewayProvider struct {
-	mu       sync.Mutex
-	request  wire.LiveRequest
-	subject  inference.Subject
-	appends  [][]byte
-	sequence []int64
-	starts   atomic.Int64
-	commits  atomic.Int64
-	cancels  atomic.Int64
+	mu         sync.Mutex
+	request    wire.LiveRequest
+	preflight  wire.LiveRequest
+	subject    inference.Subject
+	appends    [][]byte
+	sequence   []int64
+	starts     atomic.Int64
+	preflights atomic.Int64
+	commits    atomic.Int64
+	cancels    atomic.Int64
+	// refuse, when set to a real outcome, is what PreflightLive answers with
+	// instead of admitting the connection. Zero admits.
+	refuse wire.StartOutcome
+	reason string
+	// idleMS is the wait budget the preflight reports to the window.
+	idleMS int64
+}
+
+func (p *liveGatewayProvider) PreflightLive(_ context.Context, subject inference.Subject, request wire.LiveRequest) wire.Admission {
+	p.mu.Lock()
+	p.preflight = request
+	refuse, reason := p.refuse, p.reason
+	p.mu.Unlock()
+	p.preflights.Add(1)
+	if refuse != 0 {
+		return wire.Admission{Outcome: refuse, Reason: reason}
+	}
+	return wire.Admission{Outcome: wire.StartOutcomeAccepted, Host: "fixture-live", Model: request.Model, IdleMs: p.idleMS}
 }
 
 func (*liveGatewayProvider) Start(context.Context, inference.Subject, wire.Request) wire.Admission {
@@ -141,12 +161,16 @@ func newLiveGatewayFixture(t *testing.T) *liveGatewayFixture {
 	return f
 }
 
+// liveModel is the model the fixture's connections name in the Realtime URL.
+const liveModel = "gpt-realtime"
+
+func (f *liveGatewayFixture) url(query string) string {
+	return "ws://" + f.window.Addr().String() + "/v1/realtime" + query
+}
+
 func (f *liveGatewayFixture) dial(t *testing.T) *websocket.Conn {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	header := http.Header{"Authorization": []string{"Bearer live-key"}}
-	conn, response, err := websocket.Dial(ctx, "ws://"+f.window.Addr().String()+"/v1/realtime", &websocket.DialOptions{HTTPHeader: header})
+	conn, response, err := f.tryDial(t, "?model="+liveModel)
 	if err != nil {
 		if response != nil {
 			t.Fatalf("dial status %s: %v", response.Status, err)
@@ -154,6 +178,14 @@ func (f *liveGatewayFixture) dial(t *testing.T) *websocket.Conn {
 		t.Fatal(err)
 	}
 	return conn
+}
+
+func (f *liveGatewayFixture) tryDial(t *testing.T, query string) (*websocket.Conn, *http.Response, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	header := http.Header{"Authorization": []string{"Bearer live-key"}}
+	return websocket.Dial(ctx, f.url(query), &websocket.DialOptions{HTTPHeader: header})
 }
 
 func writeLiveEvent(t *testing.T, conn *websocket.Conn, value any) {
@@ -184,6 +216,125 @@ func readLiveEvent(t *testing.T, conn *websocket.Conn) map[string]any {
 	return event
 }
 
+// TestRealtimeGatewayDecidesRightsBeforeUpgrade holds INF-W8's order: the
+// complete decision on the routed host answers with an HTTP status while the
+// connection is still an ordinary request, and no socket is ever upgraded for
+// a program the rule refuses.
+func TestRealtimeGatewayDecidesRightsBeforeUpgrade(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		query   string
+		outcome wire.StartOutcome
+		reason  string
+		status  int
+		word    string
+	}{
+		{name: "not permitted", query: "?model=" + liveModel, outcome: wire.StartOutcomeNotPermitted, reason: "rights:not_granted", status: http.StatusForbidden, word: "not_permitted"},
+		{name: "no host", query: "?model=" + liveModel, outcome: wire.StartOutcomeNoHost, reason: "router:no_profile", status: http.StatusNotFound, word: "no_host"},
+		{name: "wire without live", query: "?model=" + liveModel, outcome: wire.StartOutcomeUnsupportedFeature, reason: "wire:openai-compatible", status: http.StatusBadRequest, word: "unsupported_feature"},
+		{name: "no model in the url", query: "", status: http.StatusBadRequest, word: "invalid"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newLiveGatewayFixture(t)
+			f.provider.mu.Lock()
+			f.provider.refuse, f.provider.reason = test.outcome, test.reason
+			f.provider.mu.Unlock()
+			conn, response, err := f.tryDial(t, test.query)
+			if err == nil {
+				conn.CloseNow()
+				t.Fatal("the connection was upgraded despite the refusal")
+			}
+			if response == nil {
+				t.Fatalf("no HTTP response: %v", err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != test.status {
+				t.Fatalf("status = %d, want %d", response.StatusCode, test.status)
+			}
+			var body struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+				t.Fatalf("error body: %v", err)
+			}
+			if body.Error.Code != test.word {
+				t.Fatalf("error code = %q, want %q", body.Error.Code, test.word)
+			}
+			if f.provider.starts.Load() != 0 {
+				t.Fatal("a refused connection reached native StartLive")
+			}
+			if test.query == "" && f.provider.preflights.Load() != 0 {
+				t.Fatal("a request without a model reached the provider")
+			}
+			if test.query != "" {
+				f.provider.mu.Lock()
+				defer f.provider.mu.Unlock()
+				if f.provider.preflight.Model != liveModel || f.provider.preflight.Credential != "hosted-live" {
+					t.Fatalf("preflight request = %+v", f.provider.preflight)
+				}
+			}
+		})
+	}
+}
+
+// TestRealtimeGatewayClosesAnIdleConnection spends the wait budget the
+// preflight reported, both before a session is admitted and after, and holds
+// that an admitted session is cancelled when the budget runs out.
+func TestRealtimeGatewayClosesAnIdleConnection(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		configure bool
+		cancels   int64
+	}{
+		{name: "before session.update", configure: false, cancels: 0},
+		{name: "after session.update", configure: true, cancels: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newLiveGatewayFixture(t)
+			f.provider.idleMS = 150
+			conn := f.dial(t)
+			defer conn.CloseNow()
+			assertLiveType(t, readLiveEvent(t, conn), "session.created")
+			if test.configure {
+				writeLiveEvent(t, conn, validLiveSession())
+				assertLiveType(t, readLiveEvent(t, conn), "session.updated")
+			}
+			event := readLiveEvent(t, conn)
+			assertLiveType(t, event, "error")
+			body, _ := event["error"].(map[string]any)
+			if body == nil || body["code"] != "cancelled" {
+				t.Fatalf("idle error = %#v", event)
+			}
+			deadline := time.Now().Add(3 * time.Second)
+			for f.provider.cancels.Load() != test.cancels && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+			if f.provider.cancels.Load() != test.cancels {
+				t.Fatalf("native cancels = %d, want %d", f.provider.cancels.Load(), test.cancels)
+			}
+		})
+	}
+}
+
+// TestRealtimeGatewayBindsTheSessionToTheConnectionModel keeps session.update
+// from naming a model other than the one complete was decided against.
+func TestRealtimeGatewayBindsTheSessionToTheConnectionModel(t *testing.T) {
+	f := newLiveGatewayFixture(t)
+	conn := f.dial(t)
+	defer conn.CloseNow()
+	assertLiveType(t, readLiveEvent(t, conn), "session.created")
+	other := validLiveSession()
+	other["session"].(map[string]any)["model"] = "another-realtime"
+	writeLiveEvent(t, conn, other)
+	assertLiveType(t, readLiveEvent(t, conn), "error")
+	if f.provider.starts.Load() != 0 {
+		t.Fatal("a second model reached native StartLive")
+	}
+}
+
 func assertLiveType(t *testing.T, event map[string]any, want string) {
 	t.Helper()
 	if event["type"] != want {
@@ -193,7 +344,7 @@ func assertLiveType(t *testing.T, event map[string]any, want string) {
 
 func validLiveSession() map[string]any {
 	return map[string]any{"type": "session.update", "session": map[string]any{
-		"type": "realtime", "model": "gpt-realtime", "output_modalities": []string{"audio"},
+		"type": "realtime", "model": liveModel, "output_modalities": []string{"audio"},
 		"audio": map[string]any{
 			"input":  map[string]any{"format": map[string]any{"type": "audio/pcm", "rate": 24000}, "turn_detection": nil},
 			"output": map[string]any{"format": map[string]any{"type": "audio/pcm", "rate": 24000}, "voice": "marin"},

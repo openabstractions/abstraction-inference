@@ -103,7 +103,7 @@ func (p *Provider) resolveAudio(ctx context.Context, subject Subject, req wire.T
 	case ContentUnknown:
 		return nil, wire.StartOutcomeInvalid, "content:unknown"
 	case ContentForbidden:
-		return nil, wire.StartOutcomeForbidden, "content:forbidden"
+		return nil, wire.StartOutcomeForbidden, "content:read:forbidden"
 	case ContentTooLarge:
 		return nil, wire.StartOutcomeInvalid, "content:too-large"
 	case ContentUnavailable:
@@ -318,24 +318,33 @@ func runTranscriptionHTTP(ctx context.Context, client *http.Client, host *router
 	h := textproto.MIMEHeader{}
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="audio%s"`, fileExtension(input.MediaType)))
 	h.Set("Content-Type", input.MediaType)
+	//unchecked: mw writes into the bytes.Buffer declared above, whose Write never returns a non-nil error; multipart.Writer.CreatePart only surfaces the underlying writer's error
 	part, _ := mw.CreatePart(h)
+	//unchecked: part.Write ultimately writes into the same bytes.Buffer, which never returns a non-nil error
 	_, _ = part.Write(audio)
+	//unchecked: mw writes into a bytes.Buffer, whose Write never returns a non-nil error
 	_ = mw.WriteField("response_format", "verbose_json")
 	if kind != "whispercpp" {
+		//unchecked: mw writes into a bytes.Buffer, whose Write never returns a non-nil error
 		_ = mw.WriteField("model", model)
 	}
 	if input.Language != "" {
+		//unchecked: mw writes into a bytes.Buffer, whose Write never returns a non-nil error
 		_ = mw.WriteField("language", input.Language)
 	}
 	if input.Timestamps == wire.TimestampModeSegment || input.Timestamps == wire.TimestampModeSegmentAndWord {
+		//unchecked: mw writes into a bytes.Buffer, whose Write never returns a non-nil error
 		_ = mw.WriteField("timestamp_granularities[]", "segment")
 	}
 	if input.Timestamps == wire.TimestampModeWord || input.Timestamps == wire.TimestampModeSegmentAndWord {
+		//unchecked: mw writes into a bytes.Buffer, whose Write never returns a non-nil error
 		_ = mw.WriteField("timestamp_granularities[]", "word")
 		if kind == "whispercpp" {
+			//unchecked: mw writes into a bytes.Buffer, whose Write never returns a non-nil error
 			_ = mw.WriteField("token_timestamps", "true")
 		}
 	}
+	//unchecked: mw.Close finalizes into a bytes.Buffer, whose Write never returns a non-nil error
 	_ = mw.Close()
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, host.TranscriptionURL(), &body)
 	if err != nil {
@@ -345,12 +354,13 @@ func runTranscriptionHTTP(ctx context.Context, client *http.Client, host *router
 	for k, v := range headers {
 		httpReq.Header.Set(k, v)
 	}
-	resp, err := client.Do(httpReq)
+	resp, err := credentialRequestClient(client, headers).Do(httpReq)
 	if err != nil {
 		return transcriptionFailed(wire.ReplyOutcomeUnavailable, "upstream:unreachable")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		//unchecked: best-effort drain for connection reuse; the outcome is already decided by the status code below
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		outcome := wire.ReplyOutcomeRefused
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
@@ -443,12 +453,13 @@ func runDeepgram(ctx context.Context, client *http.Client, host *router.Host, mo
 	for k, v := range headers {
 		httpReq.Header.Set(k, v)
 	}
-	resp, err := client.Do(httpReq)
+	resp, err := credentialRequestClient(client, headers).Do(httpReq)
 	if err != nil {
 		return transcriptionFailed(wire.ReplyOutcomeUnavailable, "upstream:unreachable")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		//unchecked: best-effort drain for connection reuse; the outcome is already decided by the status code below
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		outcome := wire.ReplyOutcomeRefused
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
@@ -556,6 +567,7 @@ func (p *Provider) runRemoteTranscription(ctx context.Context, op *operation, re
 	cancelRemote := func() {
 		stop, done := context.WithTimeout(context.Background(), 5*time.Second)
 		defer done()
+		//unchecked: best-effort cancel in a cleanup closure; the caller already has its own error and nothing left to receive a second one
 		_, _ = wire.NewTranscriptionClient(transport.WithContext(stop)).Cancel(admission.Operation)
 	}
 	cursor := int64(0)

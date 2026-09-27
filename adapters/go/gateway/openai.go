@@ -251,6 +251,7 @@ func (w *Window) openAIChat(rw http.ResponseWriter, r *http.Request, b Bound, gr
 		for _, part := range reply.Message.Parts {
 			switch part.Kind {
 			case wire.PartKindText:
+				//unchecked: strings.Builder.WriteString never returns a non-nil error
 				text.WriteString(part.Text)
 			case wire.PartKindToolCall:
 				calls = append(calls, map[string]any{"id": part.CallID, "type": "function", "function": map[string]any{"name": part.Name, "arguments": part.Arguments}})
@@ -263,6 +264,7 @@ func (w *Window) openAIChat(rw http.ResponseWriter, r *http.Request, b Bound, gr
 			message["tool_calls"] = calls
 		}
 		rw.Header().Set("Content-Type", "application/json")
+		//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to (matches writeError and the other Encode calls in this package)
 		json.NewEncoder(rw).Encode(map[string]any{"id": id, "object": "chat.completion", "created": created, "model": reply.Model,
 			"choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": openAIFinish(reply.StopReason)}},
 			"usage":   openAIUsage(reply.Usage)})
@@ -326,8 +328,7 @@ func (w *Window) openAIChat(rw http.ResponseWriter, r *http.Request, b Bound, gr
 			send(map[string]any{"id": id, "object": "chat.completion.chunk", "created": created, "model": end.Model, "choices": []any{}, "usage": openAIUsage(end.Usage)})
 		}
 	}
-	fmt.Fprint(rw, "data: [DONE]\n\n")
-	if flusher != nil {
+	if _, err := fmt.Fprint(rw, "data: [DONE]\n\n"); err == nil && flusher != nil {
 		flusher.Flush()
 	}
 }

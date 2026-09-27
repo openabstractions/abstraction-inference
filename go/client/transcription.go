@@ -54,6 +54,7 @@ func (c *Transcriptions) Transcribe(ctx context.Context, request TranscriptionRe
 	defer func() {
 		if !ended {
 			cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), callMargin)
+			//unchecked: best-effort cancel after Transcribe already has its result or error; the caller has nothing left to receive a second failure
 			_, _ = c.Cancel(cancelCtx, a.Operation)
 			cancel()
 		}

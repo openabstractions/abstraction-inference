@@ -274,8 +274,8 @@ pub struct JobResult {
 
 /// Exactly one of request or result is present. Request documents are opaque
 /// job submission spec bytes. Result documents are immutable operation result
-/// bytes read through abstraction.job/operation@1. The job layer does not parse
-/// either variant.
+/// bytes read through abstraction.job/operations@1. The job layer does not
+/// parse either variant.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Document {
     pub request: Option<Request>,

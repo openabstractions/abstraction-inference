@@ -48,6 +48,7 @@ func (c *Image) Generate(ctx context.Context, request ImageRequest) ([]ImageResu
 	defer func() {
 		if !ended {
 			cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), callMargin)
+			//unchecked: best-effort cancel after Generate already has its result or error; the caller has nothing left to receive a second failure
 			_, _ = c.Cancel(cancelCtx, a.Operation)
 			cancel()
 		}

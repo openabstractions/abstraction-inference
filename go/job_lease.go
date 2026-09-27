@@ -43,6 +43,7 @@ func (l *inferenceLease) hold() {
 		case <-l.done:
 			return
 		case <-ticker.C:
+			//unchecked: renew already calls l.cancel() internally on failure; this background goroutine has no caller left to report the error to
 			_ = l.renew()
 		}
 	}

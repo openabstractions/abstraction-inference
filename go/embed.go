@@ -98,9 +98,15 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 	if host == nil {
 		return refuse(wire.EmbedOutcomeNoHost, reason)
 	}
+	if p.cfg.Admit != nil {
+		if admitReason, ok := p.cfg.Admit(ctx, host, model); !ok {
+			return refuse(admitEmbedOutcome(admitReason), admitReason)
+		}
+	}
 	remote := host.Wire == router.WireRemote
+	native := host.Wire == router.WireNative
 	address := ""
-	if !remote {
+	if !remote && !native {
 		if host.Wire == "" || host.Wire == router.WireOpenAICompatible {
 			address = host.EmbedURL()
 		}
@@ -129,9 +135,12 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 		}
 	}
 	var result wire.Embeddings
-	if remote {
+	switch {
+	case remote:
 		result = embedRemote(ctx, host, model, req, subject)
-	} else {
+	case native:
+		result = nativeEmbed(ctx, host, model, req)
+	default:
 		var headers map[string]string
 		if credential != "" {
 			var outcome string
@@ -146,14 +155,14 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 		}
 		result = embedOpenAI(ctx, p.cfg.HTTP, address, model, req, headers)
 		clear(headers)
-		if credential != "" && p.cfg.Ceilings != nil {
-			var micros int64
-			if result.Cost != nil {
-				micros = result.Cost.Micros
-			}
-			if err := p.cfg.Ceilings.Add(credential, result.Usage.Input, micros); err != nil {
-				p.report(err)
-			}
+	}
+	if credential != "" && p.cfg.Ceilings != nil && !remote {
+		var micros int64
+		if result.Cost != nil {
+			micros = result.Cost.Micros
+		}
+		if err := p.cfg.Ceilings.Add(credential, result.Usage.Input, micros); err != nil {
+			p.report(err)
 		}
 	}
 	result.Host, result.Model = host.Name, model
@@ -184,7 +193,7 @@ func embedOpenAI(ctx context.Context, client *http.Client, address, model string
 	for k, v := range headers {
 		httpReq.Header.Set(k, v)
 	}
-	resp, err := client.Do(httpReq)
+	resp, err := credentialRequestClient(client, headers).Do(httpReq)
 	if err != nil {
 		if ctx.Err() != nil {
 			return embedFailed(wire.EmbedOutcomeUnavailable, "upstream:cancelled")
@@ -193,6 +202,7 @@ func embedOpenAI(ctx context.Context, client *http.Client, address, model string
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		//unchecked: best-effort drain for connection reuse; the outcome is already decided by the status code below
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		outcome := wire.EmbedOutcomeRefused
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
@@ -288,6 +298,32 @@ func embedRemote(ctx context.Context, host *router.Host, model string, req wire.
 			outcome = wire.EmbedOutcomeUnavailable
 		}
 		return embedFailed(outcome, "remote:"+result.Reason)
+	}
+	return result
+}
+
+// nativeEmbed delegates embed@1 to a declared local provider's own OA
+// endpoint over the identity-bound native transport, mirroring nativeChat's
+// dispatch to the same downstream: the request travels with the chosen model
+// name, and the downstream observes this service as its caller.
+func nativeEmbed(ctx context.Context, host *router.Host, model string, req wire.EmbedRequest) wire.Embeddings {
+	transport, ok := host.NativeTransport()
+	if !ok {
+		return embedFailed(wire.EmbedOutcomeUnavailable, "native:transport")
+	}
+	forwarded := req
+	forwarded.Model = model
+	forwarded.Extensions = nil
+	result, err := wire.NewEmbedderClient(transport.WithContext(ctx)).Embed(forwarded)
+	if err != nil {
+		return embedFailed(wire.EmbedOutcomeUnavailable, "native:unreachable")
+	}
+	if result.Outcome != wire.EmbedOutcomeCompleted {
+		outcome := result.Outcome
+		if !outcome.Known() {
+			outcome = wire.EmbedOutcomeUnavailable
+		}
+		return embedFailed(outcome, "native:"+result.Reason)
 	}
 	return result
 }

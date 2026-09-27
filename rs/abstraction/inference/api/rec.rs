@@ -1286,7 +1286,7 @@ pub const LOCAL_HOST_KINDS: [&str; 9] = ["ollama", "lmstudio", "lemonade", "whis
 
 pub const HOST_PROFILES: [&str; 6] = ["chat", "embed", "transcription", "speech", "image", "live"];
 
-pub const HOST_DECLARERS: [&str; 6] = ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "default"];
+pub const HOST_DECLARERS: [&str; 7] = ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "installation", "default"];
 
 pub const CREDENTIAL_CONSUMERS: [&str; 5] = ["abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/live@1"];
 
@@ -1749,21 +1749,21 @@ pub struct CeilingLimit {
     pub characters_per_day: i64,
 }
 
-/// One host the runtime reaches. A remote runtime is an
-/// abstraction.facade/registry@1 declaration; router@1 Hosts lists its hosts as
-/// <name>/<host>. profiles holds 1..16 distinct host_profiles members or
-/// <owner>/<name>@<n>; empty in AddHost selects the wire's default:
-/// openai-compatible and every local kind serve chat, embed, transcription,
-/// speech and image, and anthropic-messages and any other wire serve chat.
-/// declared_by is asserted by the runtime, operator for a host added through
-/// AddHost, and AddHost refuses a non-empty value as invalid. name is 1..64
-/// bytes of a-z 0-9 _ - and unique. A local host (hosted false) names a
-/// local_host_kinds member as both name and kind, and the base URL of that
-/// runtime on this machine, and carries no credential or ceiling. A hosted host
-/// names a wire kind (router wire_kinds or <owner>/<name>@<n>), its https or
-/// loopback http API root, the abstraction.credentials name the service applies
-/// to it, and optionally that credential's ceiling. base carries no user
-/// information, query or fragment.
+/// One host the runtime reaches, kept as an abstraction.facade/registry@1
+/// declaration of role host. A remote runtime is a declaration of role remote;
+/// router@1 Hosts lists its hosts as <name>/<host>. profiles holds 1..16
+/// distinct host_profiles members or <owner>/<name>@<n>; empty in AddHost
+/// selects the wire's default: openai-compatible and every local kind serve
+/// chat, embed, transcription, speech and image, and anthropic-messages and any
+/// other wire serve chat. declared_by is asserted by the runtime, operator for
+/// a host added through AddHost, and AddHost refuses a non-empty value as
+/// invalid. name is 1..64 bytes of a-z 0-9 _ - and unique. A local host (hosted
+/// false) names a local_host_kinds member as both name and kind, and the base
+/// URL of that runtime on this machine, and carries no credential or ceiling. A
+/// hosted host names a wire kind (router wire_kinds or <owner>/<name>@<n>), its
+/// https or loopback http API root, the abstraction.credentials name the
+/// service applies to it, and optionally that credential's ceiling. base
+/// carries no user information, query or fragment.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HostEntry {
     pub name: String,
@@ -12524,18 +12524,20 @@ impl<T: FrameTransport> Image for ImageClient<T> {
 pub trait Operator {
     type Error;
     /// Read the configured hosts, their router state and each hosted
-    /// credential's spend today. Gated by abstraction.inference/host.manage on
-    /// resource account.
+    /// credential's spend today, from the registry's declarations of role host.
+    /// Gated by abstraction.inference/host.manage on resource account.
     fn hosts(&self) -> Result<HostList, Self::Error>;
-    /// Conditionally add one host. Gated by host.manage. For the bound operator
-    /// program and the runtime's other operator programs it also writes the
-    /// permit rule abstraction.inference/complete on host:<name>, and for a
-    /// hosted host with a credential it writes the runtime's own permit rule
+    /// Conditionally add one host, kept as a registry declaration of role host.
+    /// Gated by host.manage. For the bound operator program and the runtime's
+    /// other operator programs it also writes the permit rule
+    /// abstraction.inference/complete on host:<name>, and for a hosted host
+    /// with a credential it writes the runtime's own permit rule
     /// abstraction.credentials/apply on credential:<name>, which the router's
     /// listing reads need. Existing rules are left as they are.
     fn add_host(&self, expected_revision: String, host: HostEntry) -> Result<HostChange, Self::Error>;
     /// Conditionally remove one host; operations already admitted run to their
-    /// end. Gated by host.manage. Rules are left as they are.
+    /// end. Gated by host.manage. A host the installation or a product declared
+    /// is disabled by name instead of removed. Rules are left as they are.
     fn remove_host(&self, expected_revision: String, name: String) -> Result<HostChange, Self::Error>;
     /// Read the local keys of the receiving account. Gated by
     /// abstraction.inference/key.issue on resource account.

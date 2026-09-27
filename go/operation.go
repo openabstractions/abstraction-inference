@@ -7,7 +7,7 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
-	modelid "github.com/openabstractions/abstraction-model/go/identity"
+	modelid "github.com/openabstractions/abstraction-model/identity"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 

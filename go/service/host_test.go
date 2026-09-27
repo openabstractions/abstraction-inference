@@ -69,6 +69,7 @@ func fakeUpstream(t *testing.T, hold bool) (*httptest.Server, *[]string, *sync.M
 type served struct {
 	client   *wire.ChatClient
 	endpoint string
+	host     *Host
 	records  func() []inference.Record
 	recorded chan struct{}
 	program  string
@@ -148,7 +149,7 @@ func serve(t *testing.T, hold bool) (*served, *[]string, *sync.Mutex) {
 	go func() { done <- h.Serve(ctx) }()
 	t.Cleanup(func() { cancel(); <-done; p.Close() })
 	transport := listen.FrameClient{Endpoint: endpoint}.WithDefaults(35*time.Second, MaxFrameBytes)
-	return &served{client: wire.NewChatClient(transport), endpoint: endpoint, program: program, recorded: recorded, records: func() []inference.Record {
+	return &served{client: wire.NewChatClient(transport), endpoint: endpoint, host: h, program: program, recorded: recorded, records: func() []inference.Record {
 		recMu.Lock()
 		defer recMu.Unlock()
 		return append([]inference.Record(nil), records...)
@@ -553,12 +554,29 @@ func TestADisconnectMidObserveStopsTheWaitAndIdleClosesTheUpstream(t *testing.T)
 func TestNativeHostBoundsConcurrentConnectionsAndRecovers(t *testing.T) {
 	s, _, _ := serve(t, false)
 	connections := make([]io.Closer, 0, 64)
+	defer func() {
+		for _, connection := range connections {
+			connection.Close()
+		}
+	}()
 	for i := 0; i < 64; i++ {
 		connection, err := listen.Dial(s.endpoint)
 		if err != nil {
 			t.Fatalf("occupy slot %d: %v", i, err)
 		}
 		connections = append(connections, connection)
+		// Session admission waits for the first header byte. A plain frame
+		// header then occupies a Host call slot while its body is missing.
+		if _, err := connection.Write([]byte{0}); err != nil {
+			t.Fatalf("start held call %d: %v", i, err)
+		}
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for len(s.host.slots) != cap(s.host.slots) {
+		if time.Now().After(deadline) {
+			t.Fatalf("held calls occupy %d of %d slots", len(s.host.slots), cap(s.host.slots))
+		}
+		time.Sleep(2 * time.Millisecond)
 	}
 	if _, err := s.client.Start(request()); err == nil {
 		t.Fatal("connection above the 64-slot bound was served")
@@ -566,7 +584,7 @@ func TestNativeHostBoundsConcurrentConnectionsAndRecovers(t *testing.T) {
 	for _, connection := range connections {
 		connection.Close()
 	}
-	deadline := time.Now().Add(3 * time.Second)
+	deadline = time.Now().Add(3 * time.Second)
 	for {
 		admission, err := s.client.Start(request())
 		if err == nil {

@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"os/user"
+	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,12 +55,15 @@ type Host struct {
 	placement inference.ExecutionPlacement
 	binding   inference.ExecutionBinding
 	leaf      bool
-	ctx       context.Context
-	cancel    context.CancelFunc
-	once      sync.Once
-	workers   sync.WaitGroup
-	slots     chan struct{}
-	OnError   func(error)
+	// designated limits a leaf provider that delegates authorization to the
+	// runtime. An ordinary inference service leaves it empty.
+	designated []string
+	ctx        context.Context
+	cancel     context.CancelFunc
+	once       sync.Once
+	workers    sync.WaitGroup
+	slots      chan struct{}
+	OnError    func(error)
 	// Assign before Serve. Called when admission stops, before calls drain.
 	OnStopped func()
 	// Operator, assigned before Serve, serves operator@1 on the same endpoint.
@@ -81,6 +86,28 @@ func ListenForPlacement(endpoint string, provider *inference.Provider, placement
 // leaf backends and refuse another native or remote OA delegation.
 func ListenLeaf(endpoint string, provider *inference.Provider, placement inference.ExecutionPlacement) (*Host, error) {
 	return listenForPlacement(endpoint, provider, placement, inference.ExecutionBinding{}, true)
+}
+
+// ListenDesignatedLeaf serves a one-hop provider that trusts only the named
+// runtime executables to have authorized the original application. A missing
+// designation refuses construction before opening the endpoint.
+func ListenDesignatedLeaf(endpoint string, provider *inference.Provider, placement inference.ExecutionPlacement, programs ...string) (*Host, error) {
+	if len(programs) == 0 {
+		return nil, errors.New("inference service: runtime program required")
+	}
+	allowed := make([]string, 0, len(programs))
+	for _, program := range programs {
+		if !identity.ValidSubjectProgram(program) || !filepath.IsAbs(program) {
+			return nil, errors.New("inference service: runtime program must be an absolute executable path")
+		}
+		allowed = append(allowed, identity.CanonicalProgramPath(program))
+	}
+	h, err := listenForPlacement(endpoint, provider, placement, inference.ExecutionBinding{}, true)
+	if err != nil {
+		return nil, err
+	}
+	h.designated = allowed
+	return h, nil
 }
 
 // ListenMediated serves one declaration generation selected by resolution.
@@ -106,12 +133,12 @@ func listenForPlacement(endpoint string, provider *inference.Provider, placement
 	if owner.Uid == "" {
 		return nil, errors.New("inference service: service principal unavailable")
 	}
-	l, err := listen.Listen(endpoint)
+	l, err := listen.ListenFramed(endpoint, listen.Program)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Host{listener: l, owner: owner.Uid, provider: provider, placement: placement, binding: binding, leaf: leaf, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 64)}, nil
+	return &Host{listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 64}), owner: owner.Uid, provider: provider, placement: placement, binding: binding, leaf: leaf, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 64)}, nil
 }
 
 func (h *Host) Close() error {
@@ -137,6 +164,7 @@ func (h *Host) Serve(ctx context.Context) error {
 	}
 	h.serving = true
 	h.lifecycle.Unlock()
+	//unchecked: best-effort shutdown triggered asynchronously by context cancellation; Serve already returns its own error and has no way to receive a second one from this later callback
 	stop := context.AfterFunc(ctx, func() { h.Close() })
 	defer stop()
 	defer h.workers.Wait()
@@ -157,6 +185,7 @@ func (h *Host) Serve(ctx context.Context) error {
 		select {
 		case h.slots <- struct{}{}:
 		default:
+			//unchecked: best-effort close of a connection rejected for backpressure; this loop has no caller left to report the failure to
 			conn.Close()
 			continue
 		}
@@ -233,18 +262,14 @@ func (r *receiver) admittingContext(rung string) context.Context {
 	return ctx
 }
 
-// caller is the bound subject of this runtime's account, or the zero Subject,
-// which the provider refuses as forbidden, and the rung it was bound at. macOS
-// has no Program proof.
+// caller returns the bound subject of this runtime's account. A transport that
+// cannot satisfy Program proof yields the zero Subject, refused as forbidden.
 func (r *receiver) caller() inference.Subject {
 	subject, _ := r.bound()
 	return subject
 }
 
 func (r *receiver) bound() (inference.Subject, string) {
-	if runtime.GOOS == "darwin" {
-		return inference.Subject{}, ""
-	}
 	peer, err := r.call.Peer()
 	if err != nil {
 		return inference.Subject{}, ""
@@ -252,6 +277,18 @@ func (r *receiver) bound() (inference.Subject, string) {
 	subject, err := SubjectFromPeer(peer)
 	if err != nil || subject.Account != r.host.owner || r.call.Recheck() != nil {
 		return inference.Subject{}, peer.Rung()
+	}
+	if len(r.host.designated) > 0 {
+		matched := false
+		for _, allowed := range r.host.designated {
+			if subject.Program == allowed || runtime.GOOS == "windows" && strings.EqualFold(subject.Program, allowed) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return inference.Subject{}, peer.Rung()
+		}
 	}
 	return subject, peer.Rung()
 }

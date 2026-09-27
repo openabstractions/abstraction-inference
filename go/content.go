@@ -61,7 +61,7 @@ func (p *Provider) resolveImages(ctx context.Context, subject Subject, req wire.
 			case ContentUnknown:
 				return nil, wire.StartOutcomeInvalid, "content:unknown"
 			case ContentForbidden:
-				return nil, wire.StartOutcomeForbidden, "content:forbidden"
+				return nil, wire.StartOutcomeForbidden, "content:read:forbidden"
 			case ContentTooLarge:
 				return nil, wire.StartOutcomeInvalid, "content:too-large"
 			case ContentUnavailable:

@@ -2633,7 +2633,7 @@ var LocalHostKinds = []string{"ollama", "lmstudio", "lemonade", "whispercpp", "p
 
 var HostProfiles = []string{"chat", "embed", "transcription", "speech", "image", "live"}
 
-var HostDeclarers = []string{"operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "default"}
+var HostDeclarers = []string{"operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "installation", "default"}
 
 var CredentialConsumers = []string{"abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/live@1"}
 
@@ -3064,20 +3064,20 @@ type CeilingLimit struct {
 	CharactersPerDay   int64
 }
 
-// One host the runtime reaches. A remote runtime is an
-// abstraction.facade/registry@1 declaration; router@1 Hosts lists its hosts as
-// <name>/<host>. profiles holds 1..16 distinct host_profiles members or
-// <owner>/<name>@<n>; empty in AddHost selects the wire's default:
-// openai-compatible and every local kind serve chat, embed, transcription,
-// speech and image, and anthropic-messages and any other wire serve chat.
-// declared_by is asserted by the runtime, operator for a host added through
-// AddHost, and AddHost refuses a non-empty value as invalid. name is 1..64
-// bytes of a-z 0-9 _ - and unique. A local host (hosted false) names a
-// local_host_kinds member as both name and kind, and the base URL of that
-// runtime on this machine, and carries no credential or ceiling. A hosted host
-// names a wire kind (router wire_kinds or <owner>/<name>@<n>), its https or
-// loopback http API root, the abstraction.credentials name the service applies
-// to it, and optionally that credential's ceiling. base carries no user
+// One host the runtime reaches, kept as an abstraction.facade/registry@1
+// declaration of role host. A remote runtime is a declaration of role remote;
+// router@1 Hosts lists its hosts as <name>/<host>. profiles holds 1..16
+// distinct host_profiles members or <owner>/<name>@<n>; empty in AddHost
+// selects the wire's default: openai-compatible and every local kind serve
+// chat, embed, transcription, speech and image, and anthropic-messages and any
+// other wire serve chat. declared_by is asserted by the runtime, operator for a
+// host added through AddHost, and AddHost refuses a non-empty value as invalid.
+// name is 1..64 bytes of a-z 0-9 _ - and unique. A local host (hosted false)
+// names a local_host_kinds member as both name and kind, and the base URL of
+// that runtime on this machine, and carries no credential or ceiling. A hosted
+// host names a wire kind (router wire_kinds or <owner>/<name>@<n>), its https
+// or loopback http API root, the abstraction.credentials name the service
+// applies to it, and optionally that credential's ceiling. base carries no user
 // information, query or fragment.
 type HostEntry struct {
 	Name       string
@@ -15777,8 +15777,17 @@ func DescribeEndpoint(frame []byte, program, version string, services ...Describ
 	for i, service := range services {
 		contract, ready, why := service.DescribeService()
 		readiness := "ready"
-		if !ready {
+		if ready {
+			why = ""
+		} else {
 			readiness = "not_ready"
+		}
+		var guarantees []string
+		var capabilities map[string]string
+		if described, ok := service.(interface {
+			DescribeServiceMetadata() ([]string, map[string]string)
+		}); ok {
+			guarantees, capabilities = described.DescribeServiceMetadata()
 		}
 		if i > 0 {
 			out = append(out, ',')
@@ -15787,7 +15796,23 @@ func DescribeEndpoint(frame []byte, program, version string, services ...Describ
 		out = esc(out, contract)
 		out = append(out, ",\"readiness\":\""+readiness+"\",\"why\":"...)
 		out = esc(out, why)
-		out = append(out, ",\"guarantees\":[],\"capabilities\":{}}"...)
+		out = append(out, ",\"guarantees\":["...)
+		for j, guarantee := range guarantees {
+			if j > 0 {
+				out = append(out, ',')
+			}
+			out = esc(out, guarantee)
+		}
+		out = append(out, "],\"capabilities\":{"...)
+		for j, key := range sortedKeys(capabilities) {
+			if j > 0 {
+				out = append(out, ',')
+			}
+			out = esc(out, key)
+			out = append(out, ':')
+			out = esc(out, capabilities[key])
+		}
+		out = append(out, "}}"...)
 	}
 	return serviceReply(v, Raw(append(out, "]}}"...)), nil)
 }
@@ -15978,6 +16003,17 @@ func (d *ChatDispatcher) DescribeService() (contract string, ready bool, why str
 		return "abstraction.inference/chat@1", ready, why
 	}
 	return "abstraction.inference/chat@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *ChatDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
@@ -16220,6 +16256,17 @@ func (d *EmbedderDispatcher) DescribeService() (contract string, ready bool, why
 	return "abstraction.inference/embed@1", true, ""
 }
 
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *EmbedderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
+}
+
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
 func (d *EmbedderDispatcher) ServiceContract() string { return "abstraction.inference/embed@1" }
 func (d *EmbedderDispatcher) WriteFrame(frame []byte) error {
@@ -16452,6 +16499,17 @@ func (d *TranscriptionDispatcher) DescribeService() (contract string, ready bool
 		return "abstraction.inference/transcription@1", ready, why
 	}
 	return "abstraction.inference/transcription@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *TranscriptionDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
@@ -16780,6 +16838,17 @@ func (d *SpeechDispatcher) DescribeService() (contract string, ready bool, why s
 		return "abstraction.inference/speech@1", ready, why
 	}
 	return "abstraction.inference/speech@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *SpeechDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
@@ -17192,6 +17261,17 @@ func (d *LiveDispatcher) DescribeService() (contract string, ready bool, why str
 		return "abstraction.inference/live@1", ready, why
 	}
 	return "abstraction.inference/live@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *LiveDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
@@ -17612,6 +17692,17 @@ func (d *ImageDispatcher) DescribeService() (contract string, ready bool, why st
 		return "abstraction.inference/image@1", ready, why
 	}
 	return "abstraction.inference/image@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *ImageDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
@@ -18196,6 +18287,17 @@ func (d *OperatorDispatcher) DescribeService() (contract string, ready bool, why
 		return "abstraction.inference/operator@1", ready, why
 	}
 	return "abstraction.inference/operator@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *OperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.

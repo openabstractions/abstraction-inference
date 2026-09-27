@@ -79,12 +79,13 @@ func imageRequest(ctx context.Context, client *http.Client, method, address, con
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
-	resp, err := client.Do(req)
+	resp, err := credentialRequestClient(client, headers).Do(req)
 	if err != nil {
 		return nil, imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:unreachable")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
+		//unchecked: best-effort drain for connection reuse; the outcome is already decided by the status code below
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		return nil, imageHTTPOutcome(resp.StatusCode)
 	}
@@ -338,9 +339,11 @@ func runReplicateImage(ctx context.Context, client *http.Client, host *router.Ho
 	var prediction replicatePrediction
 	delay := retryDelay(resp)
 	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&prediction) != nil {
+		//unchecked: cleanup before returning the more specific decode-failure error
 		resp.Body.Close()
 		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
 	}
+	//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 	resp.Body.Close()
 	if prediction.ID == "" {
 		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
@@ -355,6 +358,7 @@ func runReplicateImage(ctx context.Context, client *http.Client, host *router.Ho
 			defer cancel()
 			response, _ := jsonImageRequest(cancelCtx, client, http.MethodPost, strings.TrimRight(host.Base, "/")+"/v1/predictions/"+url.PathEscape(prediction.ID)+"/cancel", map[string]any{}, headers)
 			if response != nil {
+				//unchecked: best-effort close in a cleanup closure that itself is a best-effort cancel; no caller left to report the failure to
 				response.Body.Close()
 			}
 		}
@@ -381,9 +385,11 @@ func runReplicateImage(ctx context.Context, client *http.Client, host *router.Ho
 		}
 		delay = retryDelay(poll)
 		if json.NewDecoder(io.LimitReader(poll.Body, 1<<20)).Decode(&prediction) != nil {
+			//unchecked: cleanup before returning the more specific decode-failure error
 			poll.Body.Close()
 			return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
 		}
+		//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 		poll.Body.Close()
 	}
 	terminal = true
@@ -424,10 +430,12 @@ func runFalImage(ctx context.Context, client *http.Client, host *router.Host, mo
 	}
 	var state falQueueReply
 	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&state) != nil || state.RequestID == "" {
+		//unchecked: cleanup before returning the more specific decode-failure error
 		resp.Body.Close()
 		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
 	}
 	delay := retryDelay(resp)
+	//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 	resp.Body.Close()
 	statusURL := base + "/requests/" + url.PathEscape(state.RequestID) + "/status"
 	responseURL := base + "/requests/" + url.PathEscape(state.RequestID)
@@ -442,6 +450,7 @@ func runFalImage(ctx context.Context, client *http.Client, host *router.Host, mo
 			defer cancel()
 			response, _ := jsonImageRequest(cancelCtx, client, http.MethodPut, cancelURL, map[string]any{}, headers)
 			if response != nil {
+				//unchecked: best-effort close in a cleanup closure that itself is a best-effort cancel; no caller left to report the failure to
 				response.Body.Close()
 			}
 		}
@@ -460,9 +469,11 @@ func runFalImage(ctx context.Context, client *http.Client, host *router.Host, mo
 		}
 		delay = retryDelay(poll)
 		if json.NewDecoder(io.LimitReader(poll.Body, 1<<20)).Decode(&state) != nil {
+			//unchecked: cleanup before returning the more specific decode-failure error
 			poll.Body.Close()
 			return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
 		}
+		//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 		poll.Body.Close()
 		switch strings.ToUpper(state.Status) {
 		case "COMPLETED":
@@ -482,9 +493,11 @@ result:
 		return failed
 	}
 	if json.NewDecoder(io.LimitReader(resultResp.Body, 8<<20)).Decode(&state) != nil {
+		//unchecked: cleanup before returning the more specific decode-failure error
 		resultResp.Body.Close()
 		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
 	}
+	//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 	resultResp.Body.Close()
 	urls := make([]string, 0, len(state.Images))
 	for _, image := range state.Images {
@@ -519,10 +532,12 @@ func comfyWorkflow(model string, req wire.ImageRequest) map[string]any {
 	if width == 0 {
 		width, height = 512, 512
 	}
+	//unchecked: a parse failure leaves steps at zero, which the following range check already replaces with the default; malformed input intentionally falls back rather than being used
 	steps, _ := strconv.Atoi(req.Extensions["comfyui/steps"])
 	if steps < 1 || steps > 150 {
 		steps = 20
 	}
+	//unchecked: a parse failure leaves cfg at zero, which the following range check already replaces with the default; malformed input intentionally falls back rather than being used
 	cfg, _ := strconv.ParseFloat(req.Extensions["comfyui/cfg"], 64)
 	if cfg <= 0 || cfg > 30 {
 		cfg = 7
@@ -544,7 +559,10 @@ func comfyWorkflow(model string, req wire.ImageRequest) map[string]any {
 }
 
 func runComfyImage(ctx context.Context, client *http.Client, host *router.Host, model string, req wire.ImageRequest, bounds imageOutputBounds, progress func(int64, string)) imageBackendReply {
-	clientID, _ := operationID()
+	clientID, err := operationID()
+	if err != nil {
+		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:client-id")
+	}
 	resp, failed := jsonImageRequest(ctx, client, http.MethodPost, strings.TrimRight(host.Base, "/")+"/prompt", map[string]any{"prompt": comfyWorkflow(model, req), "client_id": clientID}, nil)
 	if resp == nil {
 		return failed
@@ -553,10 +571,12 @@ func runComfyImage(ctx context.Context, client *http.Client, host *router.Host, 
 		PromptID string `json:"prompt_id"`
 	}
 	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&accepted) != nil || accepted.PromptID == "" {
+		//unchecked: cleanup before returning the more specific decode-failure error
 		resp.Body.Close()
 		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
 	}
 	delay := retryDelay(resp)
+	//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 	resp.Body.Close()
 	callerCtx := ctx
 	ctx, stopPolling := imagePollContext(ctx)
@@ -570,6 +590,7 @@ func runComfyImage(ctx context.Context, client *http.Client, host *router.Host, 
 		defer cancel()
 		cancelResp, _ := jsonImageRequest(cancelCtx, client, http.MethodPost, strings.TrimRight(host.Base, "/")+"/queue", map[string]any{"delete": []string{accepted.PromptID}}, nil)
 		if cancelResp != nil {
+			//unchecked: best-effort close in a cleanup closure that itself is a best-effort cancel; no caller left to report the failure to
 			cancelResp.Body.Close()
 		}
 	}()
@@ -601,9 +622,11 @@ func runComfyImage(ctx context.Context, client *http.Client, host *router.Host, 
 			} `json:"outputs"`
 		}
 		if json.NewDecoder(io.LimitReader(history.Body, 8<<20)).Decode(&records) != nil {
+			//unchecked: cleanup before returning the more specific decode-failure error
 			history.Body.Close()
 			return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
 		}
+		//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 		history.Body.Close()
 		record, ok := records[accepted.PromptID]
 		if !ok || !record.Status.Completed {
@@ -636,6 +659,7 @@ func runComfyImage(ctx context.Context, client *http.Client, host *router.Host, 
 				return failed
 			}
 			data, ok := readBoundedImage(view.Body, limit)
+			//unchecked: closing a response body already fully read via readBoundedImage; whether the read was valid is reported through ok, not through Close
 			view.Body.Close()
 			if !ok {
 				return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:image")
@@ -657,9 +681,11 @@ func runSwarmImage(ctx context.Context, client *http.Client, host *router.Host, 
 		SessionID string `json:"session_id"`
 	}
 	if json.NewDecoder(io.LimitReader(sessionResp.Body, 1<<20)).Decode(&session) != nil || session.SessionID == "" {
+		//unchecked: cleanup before returning the more specific decode-failure error
 		sessionResp.Body.Close()
 		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
 	}
+	//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 	sessionResp.Body.Close()
 	width, height, _ := imageDimensions(req.Size)
 	body := map[string]any{"session_id": session.SessionID, "model": model, "prompt": req.Prompt, "images": req.Count}
@@ -677,9 +703,11 @@ func runSwarmImage(ctx context.Context, client *http.Client, host *router.Host, 
 		Images []string `json:"images"`
 	}
 	if json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&payload) != nil {
+		//unchecked: cleanup before returning the more specific decode-failure error
 		resp.Body.Close()
 		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:response")
 	}
+	//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 	resp.Body.Close()
 	if int64(len(payload.Images)) != req.Count {
 		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:count")
@@ -712,6 +740,7 @@ func runSwarmImage(ctx context.Context, client *http.Client, host *router.Host, 
 			}
 			var ok bool
 			data, ok = readBoundedImage(view.Body, limit)
+			//unchecked: closing a response body already fully read via readBoundedImage; whether the read was valid is reported through ok, not through Close
 			view.Body.Close()
 			if !ok {
 				return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:image")

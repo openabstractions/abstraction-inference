@@ -76,7 +76,7 @@ func (w *Window) imageWriteFailure(rw http.ResponseWriter, b Bound, model string
 	s := b.Subject()
 	switch outcome {
 	case inference.ContentForbidden:
-		w.record(inference.Record{Profile: "image", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "forbidden", Reason: "content:write"})
+		w.record(inference.Record{Profile: "image", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "forbidden", Reason: "content:write:forbidden"})
 		writeError(rw, http.StatusForbidden, "forbidden", "content write is not permitted")
 	case inference.ContentTooLarge, inference.ContentUnknown:
 		w.record(inference.Record{Profile: "image", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "invalid", Reason: "content:invalid"})
@@ -120,6 +120,7 @@ func (w *Window) openAIImageEdit(rw http.ResponseWriter, r *http.Request, b Boun
 			data, err = io.ReadAll(io.LimitReader(part, 32769))
 			fields[part.FormName()] = string(data)
 		}
+		//unchecked: mime/multipart.Part.Close always returns nil
 		part.Close()
 		if err != nil {
 			w.badRequest(rw, b, fields["model"], errField("multipart"))
@@ -218,5 +219,6 @@ func (w *Window) finishOpenAIImage(rw http.ResponseWriter, r *http.Request, b Bo
 		data = append(data, map[string]string{"b64_json": base64.StdEncoding.EncodeToString(bytes)})
 	}
 	rw.Header().Set("Content-Type", "application/json")
+	//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to (matches writeError and the other Encode calls in this package)
 	_ = json.NewEncoder(rw).Encode(map[string]any{"data": data})
 }

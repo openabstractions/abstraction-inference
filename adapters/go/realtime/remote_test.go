@@ -1,4 +1,4 @@
-package inference_test
+package realtime_test
 
 import (
 	"bytes"
@@ -23,8 +23,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coder/websocket"
+	websocket "github.com/openabstractions/abstraction-inference/adapters/go/transportws"
 	identityremote "github.com/openabstractions/abstraction-identity/remote"
+	"github.com/openabstractions/abstraction-inference/adapters/go/realtime"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	infservice "github.com/openabstractions/abstraction-inference/go/service"
@@ -115,7 +116,7 @@ func newRemoteLiveFixture(t *testing.T) *remoteLiveFixture {
 	remoteRoutes.Survey()
 	remoteSubject := inference.Subject{Account: "trusted-runtime", Program: "/services/openabstractions"}
 	remoteProvider, err := inference.New(inference.Config{
-		Router: remoteRoutes, HTTP: upstream.Client(), SurveyAge: time.Hour, Idle: 5 * time.Second, Ceilings: remoteCeilings,
+		Router: remoteRoutes, HTTP: upstream.Client(), LiveDialer: realtime.Dial, SurveyAge: time.Hour, Idle: 5 * time.Second, Ceilings: remoteCeilings,
 		Decide: func(_ context.Context, subject inference.Subject, action, resource string) (string, error) {
 			if subject != remoteSubject || action != inference.ActionComplete || resource != "host:voice" {
 				return "not_granted", nil

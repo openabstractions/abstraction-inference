@@ -75,6 +75,10 @@ type ImageGenerator interface {
 // compatibility window. The browser-facing WebSocket remains a gateway wire;
 // provider state and upstream transport stay behind these native calls.
 type LiveProvider interface {
+	// PreflightLive decides host routing, wire support and
+	// abstraction.inference/complete for the request's model, admitting
+	// nothing. The window calls it before it completes the upgrade.
+	PreflightLive(context.Context, inference.Subject, wire.LiveRequest) wire.Admission
 	StartLive(context.Context, inference.Subject, wire.LiveRequest) wire.Admission
 	AppendLive(context.Context, inference.Subject, string, int64, []byte) wire.LiveInputResult
 	ObserveLive(context.Context, inference.Subject, string, int64, int64, int64, int64) wire.DeltaPage
@@ -174,6 +178,7 @@ func (w *Window) Addr() net.Addr { return w.listener.Addr() }
 
 // Serve accepts connections until Close or ctx ends.
 func (w *Window) Serve(ctx context.Context) error {
+	//unchecked: best-effort shutdown triggered asynchronously by context cancellation; Serve already returns its own error and has no way to receive a second one from this later callback
 	stop := context.AfterFunc(ctx, func() { w.Close() })
 	defer stop()
 	err := w.server.Serve(w.listener)
@@ -258,9 +263,13 @@ func (l *boundListener) Accept() (net.Conn, error) {
 // refuseConnection answers before reading: the peer's request stays unread in
 // the socket, and closing discards it.
 func refuseConnection(c net.Conn, word string, cause error) {
+	//unchecked: errorBody returns a map of plain strings; json.Marshal on plain data types cannot fail
 	body, _ := json.Marshal(errorBody(http.StatusForbidden, "forbidden", "the window could not bind the program on this connection ("+word+"): "+cause.Error()))
+	//unchecked: best-effort raw refusal write before closing; this helper returns nothing and there is no caller left to report a failed deadline to
 	c.SetWriteDeadline(time.Now().Add(time.Second))
+	//unchecked: best-effort raw refusal write before closing; this helper returns nothing and there is no caller left to report a failed write to
 	fmt.Fprintf(c, "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s", len(body), body)
+	//unchecked: best-effort close after the refusal write; this helper returns nothing and there is no caller left to report the failure to
 	c.Close()
 }
 
@@ -308,10 +317,12 @@ func BindLoopback(c net.Conn, at time.Time, account string) (Bound, error) {
 	}
 	subject, rung, err := subjectOf(b)
 	if err != nil {
+		//unchecked: cleanup of a binding this function is abandoning before returning subjectOf's more specific error
 		b.Close()
 		return nil, err
 	}
 	if subject.Account != account {
+		//unchecked: cleanup of a binding this function is abandoning before returning the more specific errOtherAccount
 		b.Close()
 		return nil, errOtherAccount
 	}
@@ -459,6 +470,7 @@ func (w *Window) models(rw http.ResponseWriter, r *http.Request, b Bound, _ Gran
 		if len(names) > 0 {
 			out["first_id"], out["last_id"] = names[0], names[len(names)-1]
 		}
+		//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to (matches writeError and the other Encode calls in this package)
 		json.NewEncoder(rw).Encode(out)
 		return
 	}
@@ -466,6 +478,7 @@ func (w *Window) models(rw http.ResponseWriter, r *http.Request, b Bound, _ Gran
 	for _, name := range names {
 		data = append(data, map[string]any{"id": name, "object": "model", "created": 0, "owned_by": "openabstractions"})
 	}
+	//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to (matches writeError and the other Encode calls in this package)
 	json.NewEncoder(rw).Encode(map[string]any{"object": "list", "data": data})
 }
 
@@ -572,6 +585,7 @@ func errorBody(status int, code, message string) map[string]any {
 func writeError(rw http.ResponseWriter, status int, code, message string) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(status)
+	//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to
 	json.NewEncoder(rw).Encode(errorBody(status, code, message))
 }
 

@@ -79,6 +79,20 @@ func failed(outcome wire.ReplyOutcome, reason string) wire.Reply {
 	return wire.Reply{Outcome: outcome, Reason: reason, StopReason: wire.StopReasonNoStop}
 }
 
+// A credential is applied to the declared model server for one request.
+// Refuse redirects before net/http copies a custom credential header to a
+// target the credentials holder has not approved.
+func credentialRequestClient(client *http.Client, headers map[string]string) *http.Client {
+	if len(headers) == 0 {
+		return client
+	}
+	copy := *client
+	copy.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return errors.New("upstream credential redirect refused")
+	}
+	return &copy
+}
+
 // post sends one request. The returned reply is set when no stream follows.
 func post(ctx context.Context, client *http.Client, address string, body any, headers map[string]string) (*http.Response, *wire.Reply) {
 	raw, err := json.Marshal(body)
@@ -96,13 +110,15 @@ func post(ctx context.Context, client *http.Client, address string, body any, he
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := client.Do(req)
+	resp, err := credentialRequestClient(client, headers).Do(req)
 	if err != nil {
 		r := failed(wire.ReplyOutcomeUnavailable, "upstream:unreachable")
 		return nil, &r
 	}
 	if resp.StatusCode != http.StatusOK {
+		//unchecked: best-effort drain for connection reuse; the outcome is already decided by the status code below
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		//unchecked: cleanup before returning the more specific status-code error
 		resp.Body.Close()
 		outcome := wire.ReplyOutcomeRefused
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {

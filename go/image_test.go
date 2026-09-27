@@ -319,7 +319,7 @@ func TestImageInputDenialPrecedesOutputAndUpstream(t *testing.T) {
 	req := imageRequestFixture(wire.ImageModeEdit, 1)
 	req.ImageDigest, req.ImageMediaType = digest, "image/png"
 	a := f.provider.StartImage(context.Background(), caller, req)
-	if a.Outcome != wire.StartOutcomeForbidden || a.Reason != "content:forbidden" {
+	if a.Outcome != wire.StartOutcomeForbidden || a.Reason != "content:read:forbidden" {
 		t.Fatalf("admission %+v", a)
 	}
 	f.store.mu.Lock()

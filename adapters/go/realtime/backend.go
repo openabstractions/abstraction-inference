@@ -1,4 +1,4 @@
-package inference
+package realtime
 
 import (
 	"context"
@@ -11,77 +11,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coder/websocket"
+	websocket "github.com/openabstractions/abstraction-inference/adapters/go/transportws"
+	inference "github.com/openabstractions/abstraction-inference/go"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 )
 
 const (
-	livePCM16At24KHz       = "pcm16_24000"
+	livePCM16At24KHz       = wire.LiveFormatPcm1624000
 	maxLiveAudioBytes      = 64 << 10
 	maxLiveTranscriptBytes = 16 << 10
 	maxLiveServerFrame     = 128 << 10
 	liveHandshakeTimeout   = 10 * time.Second
 )
-
-type liveBackend interface {
-	append(context.Context, []byte) error
-	commit(context.Context) error
-	read(context.Context) (liveBackendEvent, error)
-	close()
-}
-
-type liveBackendEventKind string
-
-const (
-	liveBackendEventAudio      liveBackendEventKind = "audio"
-	liveBackendEventTranscript liveBackendEventKind = "transcript"
-	liveBackendEventTerminal   liveBackendEventKind = "terminal"
-)
-
-type liveBackendUsage struct {
-	inputTokens       int64
-	outputTokens      int64
-	inputAudioTokens  int64
-	outputAudioTokens int64
-}
-
-type liveBackendEvent struct {
-	kind       liveBackendEventKind
-	audio      []byte
-	transcript string
-	final      bool
-	outcome    string
-	reason     string
-	usage      liveBackendUsage
-	remoteEnd  *wire.LiveReply
-}
-
-type liveBackendErrorCode string
-
-const (
-	liveBackendCancelled    liveBackendErrorCode = "cancelled"
-	liveBackendUnavailable  liveBackendErrorCode = "unavailable"
-	liveBackendRefused      liveBackendErrorCode = "refused"
-	liveBackendMalformed    liveBackendErrorCode = "malformed"
-	liveBackendTooLarge     liveBackendErrorCode = "too_large"
-	liveBackendInvalid      liveBackendErrorCode = "invalid"
-	liveBackendInvalidState liveBackendErrorCode = "invalid_state"
-)
-
-// liveBackendError is deliberately content-free. Upstream errors can include
-// request URLs and headers, and those values must stay out of provider errors.
-type liveBackendError struct{ code liveBackendErrorCode }
-
-func (e *liveBackendError) Error() string { return "live backend: " + string(e.code) }
-
-func liveError(code liveBackendErrorCode) error { return &liveBackendError{code: code} }
-
-func liveErrorForContext(ctx context.Context, fallback liveBackendErrorCode) error {
-	if ctx.Err() != nil {
-		return liveError(liveBackendCancelled)
-	}
-	return liveError(fallback)
-}
 
 type openAIRealtimeBackend struct {
 	conn *websocket.Conn
@@ -95,21 +36,21 @@ type openAIRealtimeBackend struct {
 	closeOnce sync.Once
 }
 
-// dialLiveBackend opens the service-owned upstream Realtime connection and
+// Dial opens the service-owned upstream Realtime connection and
 // waits for the server to acknowledge the complete GA session configuration.
-func dialLiveBackend(ctx context.Context, client *http.Client, address, model, voice, format string, headers map[string]string) (liveBackend, error) {
+func Dial(ctx context.Context, client *http.Client, address, model, voice string, format wire.LiveFormat, headers map[string]string) (inference.LiveConnection, error) {
 	if client == nil || ctx == nil || format != livePCM16At24KHz || model == "" || len(model) > 256 || voice == "" || len(voice) > 256 {
-		return nil, liveError(liveBackendInvalid)
+		return nil, inference.NewLiveError(inference.LiveErrorInvalid)
 	}
 	u, err := url.Parse(address)
 	if err != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" || u.User != nil {
-		return nil, liveError(liveBackendInvalid)
+		return nil, inference.NewLiveError(inference.LiveErrorInvalid)
 	}
 
 	h := make(http.Header, len(headers))
 	for k, v := range headers {
 		if strings.TrimSpace(k) == "" || strings.ContainsAny(k, "\r\n") || strings.ContainsAny(v, "\r\n") {
-			return nil, liveError(liveBackendInvalid)
+			return nil, inference.NewLiveError(inference.LiveErrorInvalid)
 		}
 		h.Set(k, v)
 	}
@@ -121,9 +62,10 @@ func dialLiveBackend(ctx context.Context, client *http.Client, address, model, v
 	})
 	if err != nil {
 		if response != nil && response.Body != nil {
+			//unchecked: cleanup of the failed handshake's response body before returning the more specific dial error
 			response.Body.Close()
 		}
-		return nil, liveErrorForContext(handshakeCtx, liveBackendUnavailable)
+		return nil, errorForContext(handshakeCtx, inference.LiveErrorUnavailable)
 	}
 	b := &openAIRealtimeBackend{conn: conn}
 	conn.SetReadLimit(maxLiveServerFrame)
@@ -140,38 +82,38 @@ func dialLiveBackend(ctx context.Context, client *http.Client, address, model, v
 	update.Session.Audio.Output.Format = liveAudioFormat{Type: "audio/pcm", Rate: 24000}
 	update.Session.Audio.Output.Voice = voice
 	if err := b.writeJSON(handshakeCtx, update); err != nil {
-		b.close()
+		b.Close()
 		return nil, err
 	}
 	for messages := 0; messages < 16; messages++ {
 		typ, payload, err := conn.Read(handshakeCtx)
 		if err != nil {
-			b.close()
+			b.Close()
 			return nil, liveReadError(handshakeCtx, err)
 		}
 		if typ != websocket.MessageText {
-			b.close()
-			return nil, liveError(liveBackendMalformed)
+			b.Close()
+			return nil, inference.NewLiveError(inference.LiveErrorMalformed)
 		}
 		var event struct {
 			Type string `json:"type"`
 		}
 		if json.Unmarshal(payload, &event) != nil || event.Type == "" {
-			b.close()
-			return nil, liveError(liveBackendMalformed)
+			b.Close()
+			return nil, inference.NewLiveError(inference.LiveErrorMalformed)
 		}
 		switch event.Type {
 		case "session.updated":
 			return b, nil
 		case "error":
-			b.close()
-			return nil, liveError(liveBackendRefused)
+			b.Close()
+			return nil, inference.NewLiveError(inference.LiveErrorRefused)
 		case "session.created":
 		default:
 		}
 	}
-	b.close()
-	return nil, liveError(liveBackendMalformed)
+	b.Close()
+	return nil, inference.NewLiveError(inference.LiveErrorMalformed)
 }
 
 type liveAudioFormat struct {
@@ -195,69 +137,69 @@ type liveSessionSettings struct {
 	} `json:"audio"`
 }
 
-func (b *openAIRealtimeBackend) append(ctx context.Context, audio []byte) error {
+func (b *openAIRealtimeBackend) Append(ctx context.Context, audio []byte) error {
 	if len(audio) == 0 {
-		return liveError(liveBackendInvalid)
+		return inference.NewLiveError(inference.LiveErrorInvalid)
 	}
 	if len(audio) > maxLiveAudioBytes {
-		return liveError(liveBackendTooLarge)
+		return inference.NewLiveError(inference.LiveErrorTooLarge)
 	}
 	b.writeMu.Lock()
 	defer b.writeMu.Unlock()
 	if b.ended(true) {
-		return liveError(liveBackendInvalidState)
+		return inference.NewLiveError(inference.LiveErrorInvalidState)
 	}
 	event := struct {
 		Type  string `json:"type"`
 		Audio string `json:"audio"`
 	}{Type: "input_audio_buffer.append", Audio: base64.StdEncoding.EncodeToString(audio)}
 	if err := b.writeJSON(ctx, event); err != nil {
-		b.close()
+		b.Close()
 		return err
 	}
 	return nil
 }
 
-func (b *openAIRealtimeBackend) commit(ctx context.Context) error {
+func (b *openAIRealtimeBackend) Commit(ctx context.Context) error {
 	b.writeMu.Lock()
 	defer b.writeMu.Unlock()
 	b.stateMu.Lock()
 	if b.closed || b.committed || b.terminal {
 		b.stateMu.Unlock()
-		return liveError(liveBackendInvalidState)
+		return inference.NewLiveError(inference.LiveErrorInvalidState)
 	}
 	b.committed = true
 	b.stateMu.Unlock()
 	if err := b.writeJSON(ctx, struct {
 		Type string `json:"type"`
 	}{Type: "input_audio_buffer.commit"}); err != nil {
-		b.close()
+		b.Close()
 		return err
 	}
 	if err := b.writeJSON(ctx, struct {
 		Type string `json:"type"`
 	}{Type: "response.create"}); err != nil {
-		b.close()
+		b.Close()
 		return err
 	}
 	return nil
 }
 
-func (b *openAIRealtimeBackend) read(ctx context.Context) (liveBackendEvent, error) {
+func (b *openAIRealtimeBackend) Read(ctx context.Context) (inference.LiveEvent, error) {
 	b.readMu.Lock()
 	defer b.readMu.Unlock()
 	for {
 		if b.ended(false) {
-			return liveBackendEvent{}, liveError(liveBackendInvalidState)
+			return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorInvalidState)
 		}
 		typ, payload, err := b.conn.Read(ctx)
 		if err != nil {
-			b.close()
-			return liveBackendEvent{}, liveReadError(ctx, err)
+			b.Close()
+			return inference.LiveEvent{}, liveReadError(ctx, err)
 		}
 		if typ != websocket.MessageText {
-			b.close()
-			return liveBackendEvent{}, liveError(liveBackendMalformed)
+			b.Close()
+			return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorMalformed)
 		}
 		var event struct {
 			Type     string `json:"type"`
@@ -277,49 +219,49 @@ func (b *openAIRealtimeBackend) read(ctx context.Context) (liveBackendEvent, err
 			} `json:"response"`
 		}
 		if json.Unmarshal(payload, &event) != nil || event.Type == "" {
-			b.close()
-			return liveBackendEvent{}, liveError(liveBackendMalformed)
+			b.Close()
+			return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorMalformed)
 		}
 		switch event.Type {
 		case "response.output_audio.delta":
 			if event.Delta == "" || base64.StdEncoding.DecodedLen(len(event.Delta)) > maxLiveAudioBytes {
-				b.close()
-				return liveBackendEvent{}, liveError(liveBackendTooLarge)
+				b.Close()
+				return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorTooLarge)
 			}
 			audio, err := base64.StdEncoding.Strict().DecodeString(event.Delta)
 			if err != nil {
-				b.close()
-				return liveBackendEvent{}, liveError(liveBackendMalformed)
+				b.Close()
+				return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorMalformed)
 			}
 			if len(audio) == 0 || len(audio) > maxLiveAudioBytes {
-				b.close()
-				return liveBackendEvent{}, liveError(liveBackendTooLarge)
+				b.Close()
+				return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorTooLarge)
 			}
-			return liveBackendEvent{kind: liveBackendEventAudio, audio: audio}, nil
+			return inference.LiveEvent{Kind: inference.LiveEventAudio, Audio: audio}, nil
 		case "response.output_audio_transcript.delta":
 			if event.Delta == "" || len(event.Delta) > maxLiveTranscriptBytes {
-				b.close()
-				return liveBackendEvent{}, liveError(liveBackendTooLarge)
+				b.Close()
+				return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorTooLarge)
 			}
-			return liveBackendEvent{kind: liveBackendEventTranscript, transcript: event.Delta}, nil
+			return inference.LiveEvent{Kind: inference.LiveEventTranscript, Transcript: event.Delta}, nil
 		case "response.output_audio_transcript.done":
 			// The done event can repeat the complete transcript. Deltas already
 			// carry that text, so expose only the completion marker.
-			return liveBackendEvent{kind: liveBackendEventTranscript, final: true}, nil
+			return inference.LiveEvent{Kind: inference.LiveEventTranscript, Final: true}, nil
 		case "response.done":
 			terminal, err := terminalLiveEvent(event.Response)
 			if err != nil {
-				b.close()
-				return liveBackendEvent{}, err
+				b.Close()
+				return inference.LiveEvent{}, err
 			}
 			b.stateMu.Lock()
 			b.terminal = true
 			b.stateMu.Unlock()
-			b.close()
+			b.Close()
 			return terminal, nil
 		case "error":
-			b.close()
-			return liveBackendEvent{}, liveError(liveBackendRefused)
+			b.Close()
+			return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorRefused)
 		default:
 		}
 	}
@@ -337,25 +279,31 @@ func terminalLiveEvent(response *struct {
 			AudioTokens int64 `json:"audio_tokens"`
 		} `json:"output_token_details"`
 	} `json:"usage"`
-}) (liveBackendEvent, error) {
+}) (inference.LiveEvent, error) {
 	if response == nil || response.Status == "" {
-		return liveBackendEvent{}, liveError(liveBackendMalformed)
+		return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorMalformed)
 	}
-	e := liveBackendEvent{kind: liveBackendEventTerminal, final: true, outcome: response.Status, reason: "upstream:" + response.Status}
+	e := inference.LiveEvent{Kind: inference.LiveEventTerminal, Final: true, Reason: "upstream:" + response.Status}
 	switch response.Status {
 	case "completed":
-		e.reason = ""
-	case "cancelled", "failed", "incomplete":
+		e.Outcome = inference.LiveCompleted
+		e.Reason = ""
+	case "cancelled":
+		e.Outcome = inference.LiveCancelled
+	case "failed":
+		e.Outcome = inference.LiveFailed
+	case "incomplete":
+		e.Outcome = inference.LiveIncomplete
 	default:
-		return liveBackendEvent{}, liveError(liveBackendMalformed)
+		return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorMalformed)
 	}
 	if response.Usage != nil {
 		u := response.Usage
 		if u.InputTokens < 0 || u.OutputTokens < 0 || u.InputTokenDetails.AudioTokens < 0 || u.OutputTokenDetails.AudioTokens < 0 {
-			return liveBackendEvent{}, liveError(liveBackendMalformed)
+			return inference.LiveEvent{}, inference.NewLiveError(inference.LiveErrorMalformed)
 		}
-		e.usage = liveBackendUsage{inputTokens: u.InputTokens, outputTokens: u.OutputTokens,
-			inputAudioTokens: u.InputTokenDetails.AudioTokens, outputAudioTokens: u.OutputTokenDetails.AudioTokens}
+		e.Usage = inference.LiveUsage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens,
+			InputAudioTokens: u.InputTokenDetails.AudioTokens, OutputAudioTokens: u.OutputTokenDetails.AudioTokens}
 	}
 	return e, nil
 }
@@ -363,10 +311,10 @@ func terminalLiveEvent(response *struct {
 func (b *openAIRealtimeBackend) writeJSON(ctx context.Context, value any) error {
 	payload, err := json.Marshal(value)
 	if err != nil {
-		return liveError(liveBackendInvalid)
+		return inference.NewLiveError(inference.LiveErrorInvalid)
 	}
 	if err := b.conn.Write(ctx, websocket.MessageText, payload); err != nil {
-		return liveErrorForContext(ctx, liveBackendUnavailable)
+		return errorForContext(ctx, inference.LiveErrorUnavailable)
 	}
 	return nil
 }
@@ -377,26 +325,29 @@ func (b *openAIRealtimeBackend) ended(includeCommitted bool) bool {
 	return b.closed || b.terminal || includeCommitted && b.committed
 }
 
-func (b *openAIRealtimeBackend) close() {
+func (b *openAIRealtimeBackend) Close() {
 	b.closeOnce.Do(func() {
 		b.stateMu.Lock()
 		b.closed = true
 		b.stateMu.Unlock()
+		//unchecked: best-effort close in a sync.Once teardown helper that returns nothing; no caller left to report the failure to
 		_ = b.conn.CloseNow()
 	})
 }
 
-func liveBackendErrorIs(err error, code liveBackendErrorCode) bool {
-	var target *liveBackendError
-	return errors.As(err, &target) && target.code == code
-}
-
 func liveReadError(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
-		return liveError(liveBackendCancelled)
+		return inference.NewLiveError(inference.LiveErrorCancelled)
 	}
 	if errors.Is(err, websocket.ErrMessageTooBig) {
-		return liveError(liveBackendTooLarge)
+		return inference.NewLiveError(inference.LiveErrorTooLarge)
 	}
-	return liveError(liveBackendUnavailable)
+	return inference.NewLiveError(inference.LiveErrorUnavailable)
+}
+
+func errorForContext(ctx context.Context, fallback inference.LiveErrorCode) error {
+	if ctx.Err() != nil {
+		return inference.NewLiveError(inference.LiveErrorCancelled)
+	}
+	return inference.NewLiveError(fallback)
 }

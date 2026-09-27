@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	cas "github.com/openabstractions/abstraction-cas/go"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 )
 
@@ -155,14 +156,12 @@ func (j *Journal) compact() error {
 		if err != nil {
 			return err
 		}
+		//unchecked: bytes.Buffer.Write never returns a non-nil error
 		b.Write(raw)
+		//unchecked: bytes.Buffer.WriteByte never returns a non-nil error
 		b.WriteByte('\n')
 	}
-	tmp := j.path + ".tmp"
-	if err := os.WriteFile(tmp, b.Bytes(), 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, j.path); err != nil {
+	if err := cas.Change(j.path, func([]byte) ([]byte, error) { return b.Bytes(), nil }); err != nil {
 		return fmt.Errorf("inference: compact journal: %w", err)
 	}
 	j.written = len(j.lines)

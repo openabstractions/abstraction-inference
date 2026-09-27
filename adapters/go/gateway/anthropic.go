@@ -107,7 +107,8 @@ func fromAnthropic(in antRequest) (wire.Request, error) {
 					if ib.Type != "text" {
 						return req, errUnsupported{inference.FeatureVision}
 					}
-					text.WriteString(ib.Text)
+					//unchecked: strings.Builder.WriteString never returns a non-nil error
+				text.WriteString(ib.Text)
 				}
 				results = append(results, wire.Part{Kind: wire.PartKindToolResult, CallID: b.ToolUseID, Text: text.String()})
 			case "image", "document":
@@ -220,6 +221,7 @@ func (w *Window) anthropicMessages(rw http.ResponseWriter, r *http.Request, b Bo
 			}
 		}
 		rw.Header().Set("Content-Type", "application/json")
+		//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to (matches writeError and the other Encode calls in this package)
 		json.NewEncoder(rw).Encode(map[string]any{"id": id, "type": "message", "role": "assistant", "model": reply.Model, "content": content,
 			"stop_reason": anthropicStop(reply.StopReason), "stop_sequence": nil, "usage": anthropicUsage(reply.Usage)})
 		return

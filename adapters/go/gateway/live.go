@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/coder/websocket"
+	websocket "github.com/openabstractions/abstraction-inference/adapters/go/transportws"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 )
@@ -22,6 +22,9 @@ const (
 	maxRealtimeAudioBytes      = 64 << 10
 	maxRealtimeTranscriptBytes = 1 << 20
 	realtimeAuthorityInterval  = 500 * time.Millisecond
+	// realtimeFallbackBudget bounds a connection whose preflight reported no
+	// idle_ms. It is the provider's own default idle.
+	realtimeFallbackBudget = 10 * time.Second
 )
 
 type liveWindowSession struct {
@@ -61,6 +64,7 @@ func (s *liveWindowSession) stop() {
 		s.ended = true
 		s.operation = ""
 		s.mu.Unlock()
+		//unchecked: best-effort close in a sync.Once teardown helper that returns nothing; no caller left to report the failure to
 		_ = s.conn.CloseNow()
 		if operation != "" && !ended {
 			s.provider.CancelLive(s.subject, operation)
@@ -135,9 +139,40 @@ type liveObserved struct {
 	err   error
 }
 
+// liveGuarantees puts the key's grant on a live request: a key issued with a
+// credential name spends under it, a key without one stays local (INF-W5).
+func liveGuarantees(req *wire.LiveRequest, grant Grant) {
+	if grant.Credential != "" {
+		req.Guarantees, req.Credential = []wire.RequestGuarantee{wire.RequestGuaranteeHostedAllowed}, grant.Credential
+		return
+	}
+	req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
+}
+
 func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound Bound, grant Grant) {
 	provider := w.cfg.Chat.(LiveProvider)
 	key, _ := r.Context().Value(verifiedKeyContext{}).(string)
+	subject := bound.Subject()
+	// The model names the host, and the host is what complete is decided on.
+	// The Realtime wire carries it in the URL, so the decision is made here,
+	// with an HTTP status still available, rather than on an upgraded socket.
+	model := r.URL.Query().Get("model")
+	if model == "" || len(model) > 256 {
+		rw.Header().Set("Connection", "close")
+		w.record(inference.Record{Rung: bound.Rung(), Account: subject.Account, Program: subject.Program, Model: model, Outcome: "invalid", Reason: "window:model"})
+		writeError(rw, http.StatusBadRequest, "invalid", "GET /v1/realtime names its model in the query: /v1/realtime?model=<name>")
+		return
+	}
+	preflight := wire.LiveRequest{Model: model, Format: wire.LiveFormatPcm1624000}
+	liveGuarantees(&preflight, grant)
+	routed := inference.WithRoute(r.Context(), inference.RouteWindow, bound.Rung())
+	decision := provider.PreflightLive(routed, subject, preflight)
+	if decision.Outcome != wire.StartOutcomeAccepted {
+		word := decision.Outcome.String()
+		rw.Header().Set("Connection", "close")
+		writeError(rw, status(word), word, refusalMessage(word, decision.Reason))
+		return
+	}
 	conn, err := websocket.Accept(rw, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
 		return
@@ -206,6 +241,26 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 		return true
 	}
 
+	// The wait budget is the contract's own idle rule (INF-Q3), which the
+	// preflight reports before the upgrade: a connection that says nothing
+	// and receives nothing for idle_ms is closed and its session cancelled,
+	// the same outcome the provider gives an operation nobody observes.
+	budget := time.Duration(decision.IdleMs) * time.Millisecond
+	if budget <= 0 {
+		budget = realtimeFallbackBudget
+	}
+	waited := time.NewTimer(budget)
+	defer waited.Stop()
+	spend := func() {
+		if !waited.Stop() {
+			select {
+			case <-waited.C:
+			default:
+			}
+		}
+		waited.Reset(budget)
+	}
+
 	configured, inputClosed, responseStarted := false, false, false
 	sequence := int64(0)
 	var operation, responseID, itemID string
@@ -215,6 +270,15 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-waited.C:
+			if responseStarted {
+				// The turn is under way. From here the provider's own idle
+				// rule and the terminal delta bound the wait, and the window
+				// is observing continuously.
+				continue
+			}
+			fail("cancelled", "the connection sent no client event within the window's wait budget")
 			return
 		case <-authority.C:
 			if !checkAuthority() {
@@ -230,6 +294,7 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 			if !checkAuthority() {
 				return
 			}
+			spend()
 			var envelope struct {
 				Type string `json:"type"`
 			}
@@ -244,16 +309,12 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 					return
 				}
 				var update realtimeSessionUpdate
-				if decodeRealtime(message.payload, &update) != nil || !supportedRealtimeSession(update.Session) {
-					fail("unsupported_session", "the window supports realtime audio/pcm at 24000 Hz, manual turn detection and audio output")
+				if decodeRealtime(message.payload, &update) != nil || !supportedRealtimeSession(update.Session, model) {
+					fail("unsupported_session", "the window supports realtime audio/pcm at 24000 Hz, manual turn detection, audio output and the model named in the connection URL")
 					return
 				}
-				req := wire.LiveRequest{Model: update.Session.Model, Voice: update.Session.Audio.Output.Voice, Format: wire.LiveFormatPcm1624000}
-				if grant.Credential != "" {
-					req.Guarantees, req.Credential = []wire.RequestGuarantee{wire.RequestGuaranteeHostedAllowed}, grant.Credential
-				} else {
-					req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
-				}
+				req := wire.LiveRequest{Model: model, Voice: update.Session.Audio.Output.Voice, Format: wire.LiveFormatPcm1624000}
+				liveGuarantees(&req, grant)
 				admission := provider.StartLive(inference.WithRoute(ctx, inference.RouteWindow, bound.Rung()), bound.Subject(), req)
 				if admission.Outcome != wire.StartOutcomeAccepted {
 					fail(admission.Outcome.String(), refusalMessage(admission.Outcome.String(), admission.Reason))
@@ -386,6 +447,7 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 					return
 				}
 				session.finish()
+				//unchecked: best-effort close after the session has already sent its final message; the handler returns nothing and has no caller left to report the failure to
 				_ = conn.Close(websocket.StatusNormalClosure, statusWord)
 				return
 			}
@@ -393,8 +455,12 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 	}
 }
 
-func supportedRealtimeSession(session realtimeSession) bool {
-	return session.Type == "realtime" && session.Model != "" && len(session.Model) <= 256 && session.Audio.Output.Voice != "" && len(session.Audio.Output.Voice) <= 256 &&
+// supportedRealtimeSession accepts the session shape the window maps onto
+// live@1. The model is fixed by the connection URL, which the complete
+// decision was made against; a session.update may repeat it or leave it out,
+// and may not name another one.
+func supportedRealtimeSession(session realtimeSession, model string) bool {
+	return session.Type == "realtime" && (session.Model == "" || session.Model == model) && session.Audio.Output.Voice != "" && len(session.Audio.Output.Voice) <= 256 &&
 		len(session.OutputModalities) == 1 && session.OutputModalities[0] == "audio" &&
 		session.Audio.Input.Format == (realtimeFormat{Type: "audio/pcm", Rate: 24000}) && bytes.Equal(bytes.TrimSpace(session.Audio.Input.TurnDetection), []byte("null")) &&
 		session.Audio.Output.Format == (realtimeFormat{Type: "audio/pcm", Rate: 24000})

@@ -1,4 +1,4 @@
-package inference
+package realtime
 
 import (
 	"context"
@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coder/websocket"
+	websocket "github.com/openabstractions/abstraction-inference/adapters/go/transportws"
+	inference "github.com/openabstractions/abstraction-inference/go"
+	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 )
 
 func TestLiveBackendHandshakeAudioAndCommit(t *testing.T) {
@@ -108,38 +110,38 @@ func TestLiveBackendHandshakeAudioAndCommit(t *testing.T) {
 	defer server.Close()
 
 	headers := map[string]string{"Authorization": "Bearer test-secret"}
-	b, err := dialLiveBackend(context.Background(), server.Client(), websocketURL(server.URL), "gpt-realtime", "marin", livePCM16At24KHz, headers)
+	b, err := Dial(context.Background(), server.Client(), websocketURL(server.URL), "gpt-realtime", "marin", livePCM16At24KHz, headers)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer b.close()
+	defer b.Close()
 	if headers["Authorization"] != "Bearer test-secret" || len(headers) != 1 {
 		t.Fatal("dial mutated caller headers")
 	}
-	if err := b.append(context.Background(), []byte("input-pcm")); err != nil {
+	if err := b.Append(context.Background(), []byte("input-pcm")); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.commit(context.Background()); err != nil {
+	if err := b.Commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.append(context.Background(), []byte("late")); !liveBackendErrorIs(err, liveBackendInvalidState) {
+	if err := b.Append(context.Background(), []byte("late")); !inference.IsLiveError(err, inference.LiveErrorInvalidState) {
 		t.Fatalf("append after commit: %v", err)
 	}
-	audio, err := b.read(context.Background())
-	if err != nil || audio.kind != liveBackendEventAudio || string(audio.audio) != "output-pcm" {
+	audio, err := b.Read(context.Background())
+	if err != nil || audio.Kind != inference.LiveEventAudio || string(audio.Audio) != "output-pcm" {
 		t.Fatalf("audio = %#v, %v", audio, err)
 	}
-	transcript, err := b.read(context.Background())
-	if err != nil || transcript.kind != liveBackendEventTranscript || transcript.transcript != "hello" {
+	transcript, err := b.Read(context.Background())
+	if err != nil || transcript.Kind != inference.LiveEventTranscript || transcript.Transcript != "hello" {
 		t.Fatalf("transcript = %#v, %v", transcript, err)
 	}
-	transcriptDone, err := b.read(context.Background())
-	if err != nil || transcriptDone.kind != liveBackendEventTranscript || transcriptDone.transcript != "" || !transcriptDone.final {
+	transcriptDone, err := b.Read(context.Background())
+	if err != nil || transcriptDone.Kind != inference.LiveEventTranscript || transcriptDone.Transcript != "" || !transcriptDone.Final {
 		t.Fatalf("transcript done = %#v, %v", transcriptDone, err)
 	}
-	end, err := b.read(context.Background())
-	if err != nil || end.kind != liveBackendEventTerminal || !end.final || end.outcome != "completed" || end.reason != "" ||
-		end.usage.inputTokens != 5 || end.usage.outputTokens != 7 || end.usage.inputAudioTokens != 3 || end.usage.outputAudioTokens != 4 {
+	end, err := b.Read(context.Background())
+	if err != nil || end.Kind != inference.LiveEventTerminal || !end.Final || end.Outcome != inference.LiveCompleted || end.Reason != "" ||
+		end.Usage.InputTokens != 5 || end.Usage.OutputTokens != 7 || end.Usage.InputAudioTokens != 3 || end.Usage.OutputAudioTokens != 4 {
 		t.Fatalf("terminal = %#v, %v", end, err)
 	}
 	if err := <-serverErr; err != nil {
@@ -153,11 +155,14 @@ func TestLiveBackendRejectsInvalidBeforeDial(t *testing.T) {
 		t.Fatal("invalid request reached network")
 		return nil, errors.New("unexpected")
 	})}
-	for _, tc := range []struct{ address, format string }{
+	for _, tc := range []struct {
+		address string
+		format  wire.LiveFormat
+	}{
 		{"https://example.test/realtime", livePCM16At24KHz},
-		{"ws://example.test/realtime", "audio/pcm"},
+		{"ws://example.test/realtime", wire.LiveFormat(0)},
 	} {
-		if _, err := dialLiveBackend(context.Background(), client, tc.address, "model", "voice", tc.format, nil); !liveBackendErrorIs(err, liveBackendInvalid) {
+		if _, err := Dial(context.Background(), client, tc.address, "model", "voice", tc.format, nil); !inference.IsLiveError(err, inference.LiveErrorInvalid) {
 			t.Fatalf("dial(%q, %q) = %v", tc.address, tc.format, err)
 		}
 	}
@@ -167,13 +172,13 @@ func TestLiveBackendMalformedAndOversizedEvents(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name, message string
-		code          liveBackendErrorCode
+		code          inference.LiveErrorCode
 	}{
-		{"malformed json", `{`, liveBackendMalformed},
-		{"bad audio", `{"type":"response.output_audio.delta","delta":"%%%"}`, liveBackendMalformed},
-		{"oversized decoded audio", `{"type":"response.output_audio.delta","delta":"` + base64.StdEncoding.EncodeToString(make([]byte, maxLiveAudioBytes+1)) + `"}`, liveBackendTooLarge},
-		{"oversized transcript", `{"type":"response.output_audio_transcript.delta","delta":"` + strings.Repeat("x", maxLiveTranscriptBytes+1) + `"}`, liveBackendTooLarge},
-		{"malformed terminal", `{"type":"response.done","response":{"status":"surprising"}}`, liveBackendMalformed},
+		{"malformed json", `{`, inference.LiveErrorMalformed},
+		{"bad audio", `{"type":"response.output_audio.delta","delta":"%%%"}`, inference.LiveErrorMalformed},
+		{"oversized decoded audio", `{"type":"response.output_audio.delta","delta":"` + base64.StdEncoding.EncodeToString(make([]byte, maxLiveAudioBytes+1)) + `"}`, inference.LiveErrorTooLarge},
+		{"oversized transcript", `{"type":"response.output_audio_transcript.delta","delta":"` + strings.Repeat("x", maxLiveTranscriptBytes+1) + `"}`, inference.LiveErrorTooLarge},
+		{"malformed terminal", `{"type":"response.done","response":{"status":"surprising"}}`, inference.LiveErrorMalformed},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -183,9 +188,9 @@ func TestLiveBackendMalformedAndOversizedEvents(t *testing.T) {
 			})
 			defer server.Close()
 			b := dialTestLiveBackend(t, server)
-			defer b.close()
-			if _, err := b.read(context.Background()); !liveBackendErrorIs(err, tc.code) {
-				t.Fatalf("read = %v, want %s", err, tc.code)
+			defer b.Close()
+			if _, err := b.Read(context.Background()); !inference.IsLiveError(err, tc.code) {
+				t.Fatalf("read = %v, want code %d", err, tc.code)
 			}
 		})
 	}
@@ -202,7 +207,7 @@ func TestLiveBackendReadCancellationClosesConnection(t *testing.T) {
 	b := dialTestLiveBackend(t, server)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if _, err := b.read(ctx); !liveBackendErrorIs(err, liveBackendCancelled) {
+	if _, err := b.Read(ctx); !inference.IsLiveError(err, inference.LiveErrorCancelled) {
 		t.Fatalf("read = %v", err)
 	}
 	select {
@@ -226,7 +231,7 @@ func TestLiveBackendHandshakeCancellationIsSafe(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if _, err := dialLiveBackend(ctx, server.Client(), websocketURL(server.URL), "model", "voice", livePCM16At24KHz, nil); !liveBackendErrorIs(err, liveBackendCancelled) {
+	if _, err := Dial(ctx, server.Client(), websocketURL(server.URL), "model", "voice", livePCM16At24KHz, nil); !inference.IsLiveError(err, inference.LiveErrorCancelled) {
 		t.Fatalf("dial = %v", err)
 	}
 }
@@ -250,9 +255,9 @@ func liveTestServer(t *testing.T, afterHandshake func(context.Context, *websocke
 	}))
 }
 
-func dialTestLiveBackend(t *testing.T, server *httptest.Server) liveBackend {
+func dialTestLiveBackend(t *testing.T, server *httptest.Server) inference.LiveConnection {
 	t.Helper()
-	b, err := dialLiveBackend(context.Background(), server.Client(), websocketURL(server.URL), "model", "voice", livePCM16At24KHz, nil)
+	b, err := Dial(context.Background(), server.Client(), websocketURL(server.URL), "model", "voice", livePCM16At24KHz, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +280,7 @@ func TestLiveBackendConcurrentClose(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
-		go func() { defer wg.Done(); b.close() }()
+		go func() { defer wg.Done(); b.Close() }()
 	}
 	wg.Wait()
 }

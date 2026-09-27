@@ -49,6 +49,7 @@ func (remoteChat) run(ctx context.Context, _ *http.Client, host *router.Host, mo
 	cancel := func() {
 		stop, done := context.WithTimeout(context.Background(), 5*time.Second)
 		defer done()
+		//unchecked: best-effort cancel in a cleanup closure; the caller already has its own error and nothing left to receive a second one
 		wire.NewChatClient(transport.WithContext(stop)).Cancel(admission.Operation)
 	}
 	cursor := int64(0)

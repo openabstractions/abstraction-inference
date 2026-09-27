@@ -13,8 +13,8 @@ export interface Delivery {
 
 // Exactly one of request or result is present. Request documents are opaque job
 // submission spec bytes. Result documents are immutable operation result bytes
-// read through abstraction.job/operation@1. The job layer does not parse either
-// variant.
+// read through abstraction.job/operations@1. The job layer does not parse
+// either variant.
 export interface Document {
   request: Request | null;
   result: JobResult | null;
