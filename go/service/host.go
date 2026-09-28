@@ -8,9 +8,7 @@ import (
 	"errors"
 	"os/user"
 	"path/filepath"
-	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -281,7 +279,7 @@ func (r *receiver) bound() (inference.Subject, string) {
 	if len(r.host.designated) > 0 {
 		matched := false
 		for _, allowed := range r.host.designated {
-			if subject.Program == allowed || runtime.GOOS == "windows" && strings.EqualFold(subject.Program, allowed) {
+			if identity.SameSubjectProgram(subject.Program, allowed) {
 				matched = true
 				break
 			}
