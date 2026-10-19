@@ -19,6 +19,7 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	"github.com/openabstractions/abstraction-inference/go/imagemask"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
@@ -173,7 +174,14 @@ func TestImageProgressAndResultsMatchCommittedDigests(t *testing.T) {
 }
 
 func TestImageEditSendsAuthorizedImageAndMask(t *testing.T) {
-	image, mask := pngOne, pngTwo
+	// INF-SD2 reads each input's PNG header before an OpenAI-compatible edit;
+	// [INF-I1] the mask is the input's size and reaches the route in its
+	// alpha form.
+	image, mask := pngHeader(512, 512), contractMask(t, 512, 512)
+	sent, _, _, err := imagemask.Convert(imagemask.Alpha, mask)
+	if err != nil {
+		t.Fatal(err)
+	}
 	imageSum, maskSum := sha256.Sum256(image), sha256.Sum256(mask)
 	imageDigest, maskDigest := "sha256:"+hex.EncodeToString(imageSum[:]), "sha256:"+hex.EncodeToString(maskSum[:])
 	f := newImageFixture(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
@@ -198,7 +206,7 @@ func TestImageEditSendsAuthorizedImageAndMask(t *testing.T) {
 			}
 			seen[part.FormName()], _ = io.ReadAll(part)
 		}
-		if !bytes.Equal(seen["image"], image) || !bytes.Equal(seen["mask"], mask) {
+		if !bytes.Equal(seen["image"], image) || !bytes.Equal(seen["mask"], sent) {
 			t.Errorf("multipart image=%d mask=%d", len(seen["image"]), len(seen["mask"]))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(pngOne)}}})
@@ -322,11 +330,19 @@ func TestImageInputDenialPrecedesOutputAndUpstream(t *testing.T) {
 	if a.Outcome != wire.StartOutcomeForbidden || a.Reason != "content:read:forbidden" {
 		t.Fatalf("admission %+v", a)
 	}
+	// The output is still decided, so a missing output grant is named in the
+	// same refusal (INF-V4); its authorization is only a preparation, and
+	// nothing is published.
 	f.store.mu.Lock()
-	prepared := len(f.store.data)
+	for i, data := range f.store.data {
+		if data != nil {
+			t.Errorf("output %d published after denied input", i)
+		}
+	}
+	f.store.deny = true
 	f.store.mu.Unlock()
-	if prepared != 0 {
-		t.Fatalf("prepared %d outputs after denied input", prepared)
+	if a := f.provider.StartImage(context.Background(), caller, req); a.Outcome != wire.StartOutcomeForbidden || a.Reason != "content:read:forbidden output:forbidden" {
+		t.Fatalf("admission without the input and the output %+v", a)
 	}
 }
 

@@ -165,12 +165,11 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 	}
 	preflight := wire.LiveRequest{Model: model, Format: wire.LiveFormatPcm1624000}
 	liveGuarantees(&preflight, grant)
-	routed := inference.WithRoute(r.Context(), inference.RouteWindow, bound.Rung())
-	decision := provider.PreflightLive(routed, subject, preflight)
+	decision := provider.PreflightLive(routed(r.Context(), bound), subject, preflight)
 	if decision.Outcome != wire.StartOutcomeAccepted {
 		word := decision.Outcome.String()
 		rw.Header().Set("Connection", "close")
-		writeError(rw, status(word), word, refusalMessage(word, decision.Reason))
+		refusalOf(word, decision.Reason).write(rw)
 		return
 	}
 	conn, err := websocket.Accept(rw, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
@@ -315,9 +314,10 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 				}
 				req := wire.LiveRequest{Model: model, Voice: update.Session.Audio.Output.Voice, Format: wire.LiveFormatPcm1624000}
 				liveGuarantees(&req, grant)
-				admission := provider.StartLive(inference.WithRoute(ctx, inference.RouteWindow, bound.Rung()), bound.Subject(), req)
+				admission := provider.StartLive(routed(ctx, bound), bound.Subject(), req)
 				if admission.Outcome != wire.StartOutcomeAccepted {
-					fail(admission.Outcome.String(), refusalMessage(admission.Outcome.String(), admission.Reason))
+					refused := refusalOf(admission.Outcome.String(), admission.Reason)
+					fail(refused.code, refused.message)
 					return
 				}
 				operation = admission.Operation

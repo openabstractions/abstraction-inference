@@ -1,5 +1,7 @@
 # Inference provider adapters
 
+*For provider authors and runtime maintainers writing Go.*
+
 This module contains the vendor Realtime WebSocket connector and the
 OpenAI/Anthropic-compatible loopback gateway. The inference core module owns
 admission, rights, budgets, credential application and redirect protection. The

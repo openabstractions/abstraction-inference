@@ -3,7 +3,6 @@ package gateway
 import (
 	"net/http"
 
-	inference "github.com/openabstractions/abstraction-inference/go"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 )
 
@@ -43,10 +42,10 @@ func (w *Window) openAISpeech(rw http.ResponseWriter, r *http.Request, b Bound, 
 		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
 	}
 	provider := w.cfg.Chat.(SpeechSynthesizer)
-	ctx := inference.WithRoute(r.Context(), inference.RouteWindow, b.Rung())
+	ctx := routed(r.Context(), b)
 	a := provider.StartSpeech(ctx, b.Subject(), req)
 	if a.Outcome != wire.StartOutcomeAccepted {
-		writeError(rw, status(a.Outcome.String()), a.Outcome.String(), refusalMessage(a.Outcome.String(), a.Reason))
+		refusalOf(a.Outcome.String(), a.Reason).write(rw)
 		return
 	}
 	rw.Header().Set("Content-Type", speechContentType(format))
@@ -78,7 +77,7 @@ func (w *Window) openAISpeech(rw http.ResponseWriter, r *http.Request, b Bound, 
 			}
 			if d.SpeechEnd != nil {
 				if d.SpeechEnd.Outcome != wire.ReplyOutcomeCompleted && !wrote {
-					writeError(rw, status(d.SpeechEnd.Outcome.String()), d.SpeechEnd.Outcome.String(), refusalMessage(d.SpeechEnd.Outcome.String(), d.SpeechEnd.Reason))
+					refusalOf(d.SpeechEnd.Outcome.String(), d.SpeechEnd.Reason).write(rw)
 				}
 				return
 			}

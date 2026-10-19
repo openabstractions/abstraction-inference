@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
 	job "github.com/openabstractions/abstraction-job/go"
@@ -37,16 +38,19 @@ type fakeDurableBackend struct {
 	poll           durableJobStatus
 	pollHook       func()
 	polled         chan struct{}
+	// pollErrs is how many polls fail before the first that answers.
+	pollErrs int
 }
 
+func (*fakeDurableBackend) Profile(jobwire.Request) string              { return router.ProfileImage }
 func (*fakeDurableBackend) Supports(*router.Host, jobwire.Request) bool { return true }
-func (b *fakeDurableBackend) Reconcile(context.Context, *router.Host, string, jobwire.Request, map[string]string) (durableJobStatus, error) {
+func (b *fakeDurableBackend) Reconcile(context.Context, durableJobSubmission) (durableJobStatus, error) {
 	b.mu.Lock()
 	b.reconciles++
 	b.mu.Unlock()
 	return durableJobStatus{State: durableJobUnknown}, nil
 }
-func (b *fakeDurableBackend) Submit(ctx context.Context, _ *router.Host, _ string, _ string, _ jobwire.Request, _ map[string]string) (durableJobStatus, error) {
+func (b *fakeDurableBackend) Submit(ctx context.Context, _ durableJobSubmission) (durableJobStatus, error) {
 	b.mu.Lock()
 	b.submits++
 	block, started, canceled := b.blockSubmit, b.submitStarted, b.submitCanceled
@@ -109,6 +113,11 @@ func (s *failingRenewStore) Renew(id string, epoch int64, ttl time.Duration) (*j
 func (b *fakeDurableBackend) Poll(context.Context, *router.Host, string, jobwire.Request, map[string]string) (durableJobStatus, error) {
 	b.mu.Lock()
 	b.polls++
+	if b.pollErrs > 0 {
+		b.pollErrs--
+		b.mu.Unlock()
+		return durableJobStatus{}, errors.New("upstream unreachable")
+	}
 	result := b.poll
 	hook := b.pollHook
 	b.pollHook = nil
@@ -141,7 +150,9 @@ type durableFixture struct {
 	permitted         bool
 	policyUnavailable bool
 	consumer          string
-	mu                sync.Mutex
+	// decided holds the peer each rights decision carried.
+	decided []*identity.Peer
+	mu      sync.Mutex
 }
 
 func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixture {
@@ -154,9 +165,10 @@ func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixtur
 	routes.Survey()
 	fixture := &durableFixture{backend: backend, permitted: true, recorded: make(chan struct{}, 16)}
 	provider, err := New(Config{Router: routes,
-		Decide: func(context.Context, Subject, string, string) (string, error) {
+		Decide: func(ctx context.Context, _ Subject, _, _ string) (string, error) {
 			fixture.mu.Lock()
 			defer fixture.mu.Unlock()
+			fixture.decided = append(fixture.decided, PeerFromContext(ctx))
 			if fixture.policyUnavailable {
 				return "", errors.New("rights backend unavailable")
 			}
@@ -172,7 +184,9 @@ func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixtur
 			return map[string]string{"Authorization": "Bearer execution"}, "applied"
 		},
 		PrepareContentWrite: func(_ context.Context, subject Subject, profile, media string, _ int64) (ContentCommitter, ContentOutcome) {
-			if subject != caller || profile != "image" || (media != "image/*" && media != "video/*") {
+			// An image batch writes under output:image, a video job's clip
+			// under output:video (INF-S7).
+			if subject != caller || !(profile == OutputImage && media == "image/*" || profile == OutputVideo && media == "video/*") {
 				return nil, ContentForbidden
 			}
 			return func(_ context.Context, _ string, data []byte) ContentOutcome {
@@ -203,7 +217,7 @@ func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixtur
 		}
 		return caller, ContentResolved
 	}, nil)
-	execution.backend, execution.pollInterval = backend, time.Millisecond
+	execution.backends, execution.pollInterval = []durableJobBackend{backend}, time.Millisecond
 	fixture.execution = execution
 	return fixture
 }
@@ -211,7 +225,103 @@ func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixtur
 type boundInferenceExecutor struct{ *JobExecution }
 
 func (e boundInferenceExecutor) CheckSubjectAdmission(binding acceptanceprovider.Binding, kind string, spec []byte, required []string) (acceptance.AcceptanceOutcome, string) {
-	return e.CheckAdmissionForSubject(binding.Scope, kind, spec, required, Subject{Account: binding.Subject.Account, Program: binding.Subject.Program})
+	return e.CheckAdmissionForSubject(binding.Scope, kind, spec, required, Subject{Account: binding.Subject.Account, Program: binding.Subject.Program}, binding.Peer)
+}
+
+func (e boundInferenceExecutor) PrepareSubjectScoped(binding acceptanceprovider.Binding, id, kind string, spec []byte, required []string) ([]byte, []string, error) {
+	return e.PrepareForPeer(binding.Scope, id, kind, spec, required, binding.Peer)
+}
+
+// TestSubmitterPeersOutliveOnlyTheirWork: a sweep keeps the peer of an
+// unfinished operation and of one prepared moments ago, and drops one whose
+// operation left the store's unfinished work longer ago than the grace.
+func TestSubmitterPeersOutliveOnlyTheirWork(t *testing.T) {
+	peer := &identity.Peer{Platform: "fixture"}
+	e := &JobExecution{peers: map[string]submitterPeer{
+		"running":   {peer: peer, at: time.Now().Add(-2 * submitterPeerGrace)},
+		"preparing": {peer: peer, at: time.Now()},
+		"gone":      {peer: peer, at: time.Now().Add(-2 * submitterPeerGrace)},
+	}}
+	e.forgetSubmitters(map[string]bool{"running": true})
+	if e.submitter("running") != peer || e.submitter("preparing") != peer || e.submitter("gone") != nil {
+		t.Fatalf("kept %v", e.peers)
+	}
+}
+
+// TestInferenceJobDecidesWithTheSubmittersPeer: a native submission's
+// admission and its execution each decide with the peer its local binding
+// was derived from, and the executor keeps no peer once the job ends. A
+// remote submission's decisions carry none.
+func TestInferenceJobDecidesWithTheSubmittersPeer(t *testing.T) {
+	video := []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+	fixture := newDurableFixture(t, &fakeDurableBackend{poll: durableJobStatus{State: durableJobSucceeded, Outputs: []durableJobOutput{{Data: video, MediaType: "video/mp4"}}}})
+	fixture.execution.SetOperationSubjectResolver(func(context.Context, string, string, string) (Subject, ContentOutcome) {
+		return caller, ContentResolved
+	})
+	p, err := acceptanceprovider.OpenWithExecutor(t.TempDir(), "owner", boundInferenceExecutor{fixture.execution})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := executeUntilCleanup(t, p)
+	defer stop()
+
+	executable := filepath.Join(t.TempDir(), "caller")
+	subject := acceptanceprovider.AuthenticatedSubject{AccountKind: "posix", Account: caller.Account, Executable: executable, Program: caller.Program}
+	scope, err := acceptanceprovider.LocalSubjectScope(subject.AccountKind, subject.Account, executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := &identity.Peer{Platform: "fixture"}
+	remoteSubject := acceptanceprovider.AuthenticatedSubject{AccountKind: "posix", Account: caller.Account, Program: caller.Program}
+	for _, c := range []struct {
+		name    string
+		binding acceptanceprovider.Binding
+		want    *identity.Peer
+	}{
+		{"native", acceptanceprovider.Binding{Scope: scope, Subject: &subject, Origin: "local", Peer: peer}, peer},
+		{"remote", acceptanceprovider.Binding{Scope: "remote-scope", Subject: &remoteSubject, Origin: "remote", Evidence: strings.Repeat("ab", 32)}, nil},
+	} {
+		fixture.mu.Lock()
+		fixture.decided = nil
+		fixture.mu.Unlock()
+		submission := durableSubmission(t, p, c.name, jobwire.ProfileVideo)
+		accepted, err := p.BindBinding(c.binding).Submit(submission)
+		if err != nil || accepted.Receipt == nil {
+			t.Fatalf("%s submit %+v %v", c.name, accepted, err)
+		}
+		if final := waitDurable(t, p.BindOperations(c.binding.Scope), submission.Identity, true); final.State != acceptance.WorkStateComplete {
+			t.Fatalf("%s final %+v", c.name, final)
+		}
+		// The terminal record is visible before store.Update returns and
+		// finish drops the peer. The completed audit follows that cleanup.
+		// Match this operation because notifications can remain buffered.
+		recorded := false
+		deadline := time.NewTimer(5 * time.Second)
+		for !recorded {
+			select {
+			case <-fixture.recorded:
+				fixture.mu.Lock()
+				recorded = slices.ContainsFunc(fixture.records, func(record Record) bool {
+					return record.Operation == accepted.Receipt.OperationID && record.Outcome == "completed"
+				})
+				fixture.mu.Unlock()
+			case <-deadline.C:
+				t.Fatalf("%s: completed audit was not attempted for %s", c.name, accepted.Receipt.OperationID)
+			}
+		}
+		deadline.Stop()
+		fixture.mu.Lock()
+		decided := slices.Clone(fixture.decided)
+		fixture.mu.Unlock()
+		// Admission, the execution's plan and each poll's standing decision
+		// (INF-A6) all decide with the submitter's peer.
+		if len(decided) < 3 || slices.ContainsFunc(decided, func(got *identity.Peer) bool { return got != c.want }) {
+			t.Fatalf("%s: admission, execution and polls decided with peers %v, want %v each", c.name, decided, c.want)
+		}
+		if kept := fixture.execution.submitter(accepted.Receipt.OperationID); kept != nil {
+			t.Fatalf("%s: the finished job still keeps peer %v", c.name, kept)
+		}
+	}
 }
 
 func TestInferenceBoundAdmissionRefusesBeforeJournalAndDuplicateKeepsReceipt(t *testing.T) {
@@ -233,7 +343,7 @@ func TestInferenceBoundAdmissionRefusesBeforeJournalAndDuplicateKeepsReceipt(t *
 	fixture.permitted = false
 	fixture.mu.Unlock()
 	result, err := p.BindBinding(binding).Submit(submission)
-	if err != nil || result.Outcome != acceptance.AcceptanceOutcomeInvalid || result.Reason != "rights:denied" || result.Receipt != nil {
+	if err != nil || result.Outcome != acceptance.AcceptanceOutcomeForbidden || result.Reason != "rights:denied" || result.Receipt != nil {
 		t.Fatalf("permanent refusal %+v %v", result, err)
 	}
 	entries, err := os.ReadDir(filepath.Join(root, "acceptance", "requests"))
@@ -314,9 +424,8 @@ func TestInferenceJobSurvivesCallerExitAndDuplicateReturnsReceipt(t *testing.T) 
 	if err != nil || duplicate.Receipt == nil || duplicate.Receipt.OperationID != first.Receipt.OperationID {
 		t.Fatalf("duplicate %+v %v", duplicate, err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = provider.Execute(ctx) }()
+	stop := executeUntilCleanup(t, provider)
+	defer stop()
 	final := waitDurable(t, provider.BindOperations("caller-scope"), submission.Identity, true)
 	if final.State != acceptance.WorkStateComplete {
 		t.Fatalf("final %+v", final)
@@ -436,9 +545,8 @@ func TestInferenceJobRejectsOversizedOutputBeforeCommit(t *testing.T) {
 	if accepted, submitErr := provider.Bind("caller-scope").Submit(submission); submitErr != nil || accepted.Receipt == nil {
 		t.Fatalf("submit %+v %v", accepted, submitErr)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = provider.Execute(ctx) }()
+	stop := executeUntilCleanup(t, provider)
+	defer stop()
 	final := waitDurable(t, provider.BindOperations("caller-scope"), submission.Identity, true)
 	if final.State != acceptance.WorkStateFailed {
 		t.Fatalf("final %+v", final)
@@ -484,9 +592,8 @@ func TestInferenceJobRetriesResultAccountingBeforeTerminal(t *testing.T) {
 	if accepted, submitErr := provider.Bind("caller-scope").Submit(submission); submitErr != nil || accepted.Receipt == nil {
 		t.Fatalf("submit %+v %v", accepted, submitErr)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = provider.Execute(ctx) }()
+	stop := executeUntilCleanup(t, provider)
+	defer stop()
 	select {
 	case <-blocked:
 	case <-time.After(3 * time.Second):
@@ -541,9 +648,8 @@ func TestInferenceJobRetriesAttemptAccountingBeforeFirstSubmit(t *testing.T) {
 	if accepted, submitErr := provider.Bind("caller-scope").Submit(submission); submitErr != nil || accepted.Receipt == nil {
 		t.Fatalf("submit %+v %v", accepted, submitErr)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = provider.Execute(ctx) }()
+	stop := executeUntilCleanup(t, provider)
+	defer stop()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		observed := waitDurable(t, provider.BindOperations("caller-scope"), submission.Identity, false)
@@ -586,8 +692,7 @@ func TestInferenceJobUncertainSubmissionIsNeverReplayed(t *testing.T) {
 	if accepted, err := provider.Bind("caller-scope").Submit(submission); err != nil || accepted.Receipt == nil {
 		t.Fatalf("submit %+v %v", accepted, err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() { _ = provider.Execute(ctx) }()
+	cancel := executeUntilCleanup(t, provider)
 	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
 		observed := waitDurable(t, provider.BindOperations("caller-scope"), submission.Identity, false)
 		if observed.Waiting == "upstream:uncertain" {
@@ -767,9 +872,8 @@ func TestInferenceJobCancellationStopsRecordedUpstream(t *testing.T) {
 	if accepted, err := provider.Bind("caller-scope").Submit(submission); err != nil || accepted.Receipt == nil {
 		t.Fatalf("submit %+v %v", accepted, err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = provider.Execute(ctx) }()
+	stop := executeUntilCleanup(t, provider)
+	defer stop()
 	select {
 	case <-backend.polled:
 	case <-time.After(3 * time.Second):
@@ -816,13 +920,13 @@ func TestInferenceJobAdmissionUsesReceiverSubjectWithoutScopeInversion(t *testin
 	if outcome, _ := fixture.execution.CheckAdmission("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}); outcome != acceptance.AcceptanceOutcomeForbidden {
 		t.Fatalf("legacy scope inversion outcome %s", outcome)
 	}
-	if outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller); outcome != acceptance.AcceptanceOutcomeAccepted {
+	if outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller, nil); outcome != acceptance.AcceptanceOutcomeAccepted {
 		t.Fatalf("receiver subject admission %s %s", outcome, reason)
 	}
 	fixture.mu.Lock()
 	fixture.permitted = false
 	fixture.mu.Unlock()
-	if outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller); outcome != acceptance.AcceptanceOutcomeInvalid || reason != "rights:denied" {
+	if outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller, nil); outcome != acceptance.AcceptanceOutcomeForbidden || reason != "rights:denied" {
 		t.Fatalf("permanent refusal was not reported before acceptance: %s %s", outcome, reason)
 	}
 }
@@ -873,9 +977,8 @@ func TestInferenceJobRevokedRightsFailWithoutUpstreamSpend(t *testing.T) {
 	fixture.mu.Lock()
 	fixture.permitted = false
 	fixture.mu.Unlock()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = provider.Execute(ctx) }()
+	stop := executeUntilCleanup(t, provider)
+	defer stop()
 	final := waitDurable(t, provider.BindOperations("caller-scope"), submission.Identity, true)
 	if final.State != acceptance.WorkStateFailed || final.Failure == nil {
 		t.Fatalf("final %+v", final)
@@ -917,7 +1020,7 @@ func TestReplicateDurableBackendUsesAsyncHandle(t *testing.T) {
 	backend := replicateJobBackend{client: server.Client(), maxEach: 1 << 20, maxTotal: 1 << 20}
 	host := router.NewHosted("replicate", server.URL, router.WireReplicatePredictions, "replicate")
 	request := jobwire.Request{Profile: jobwire.ProfileVideo, DurationMs: 8000, Image: jobwire.ImageRequest{Mode: jobwire.ModeGenerate, Prompt: "test", Size: "1024x1024", Count: 1, Extensions: map[string]string{}}}
-	status, err := backend.Submit(context.Background(), host, "operation", "owner/model", request, map[string]string{"Authorization": "Bearer secret"})
+	status, err := backend.Submit(context.Background(), durableJobSubmission{host: host, operation: "operation", model: "owner/model", request: request, headers: map[string]string{"Authorization": "Bearer secret"}})
 	if err != nil || status.Handle != "prediction-1" || status.State != durableJobRunning {
 		t.Fatalf("status %+v %v", status, err)
 	}

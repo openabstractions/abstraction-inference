@@ -77,6 +77,8 @@ func speechAdapterFor(host *router.Host) string {
 	switch {
 	case host.Wire == router.WireRemote:
 		return "remote"
+	case host.Wire == router.WireNative:
+		return "native"
 	case host.Wire == router.WireElevenLabsStream:
 		return "elevenlabs"
 	case host.Name == "piper":
@@ -89,9 +91,8 @@ func speechAdapterFor(host *router.Host) string {
 
 func (p *Provider) StartSpeech(ctx context.Context, subject Subject, req wire.SpeechRequest) wire.Admission {
 	started, via := p.cfg.Now(), routeOf(ctx)
-	if via.name == RouteRemote {
-		via.claim = req.Extensions[ClaimExtension]
-	}
+	extensions := separateExtensions(ctx, req.Extensions, nil)
+	via.claim = extensions.claim
 	refuse := func(outcome wire.StartOutcome, reason string, host *router.Host, model string) wire.Admission {
 		r := Record{Profile: router.ProfileSpeech, Route: via.name, Rung: via.rung, Account: subject.Account, Program: subject.Program, Model: req.Model,
 			Family: familyOf(req.Model), Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
@@ -114,47 +115,54 @@ func (p *Provider) StartSpeech(ctx context.Context, subject Subject, req wire.Sp
 	if reason != "" {
 		return refuse(wire.StartOutcomeInvalid, reason, nil, "")
 	}
+	req.Extensions = extensions.vendor
 	host, model, reason := p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileSpeech)
 	if host == nil {
 		return refuse(wire.StartOutcomeNoHost, reason, nil, "")
 	}
 	kind := speechAdapterFor(host)
+	engine := p.speechEngineFor(host)
+	if engine != nil {
+		kind = "engine"
+	}
 	if kind == "" || host.SpeechURL() == "" {
 		return refuse(wire.StartOutcomeUnsupportedFeature, "wire:"+host.Wire, host, model)
 	}
+	// The router answers which formats a server produces; a native provider
+	// decides its own at its own admission, and an engine narrows them below.
 	if !host.SupportsSpeechFormat(speechFormatWord(req.Format)) {
 		return refuse(wire.StartOutcomeUnsupportedFeature, "format:"+speechFormatWord(req.Format), host, model)
 	}
-	word, err := p.cfg.Decide(ctx, subject, ActionComplete, ResourceHost(host.Name))
-	if err != nil || ctx.Err() != nil {
-		p.report(err)
+	if engine != nil {
+		if reason := engine.Unsupported(engineSpeechRequest(req, model)); reason != "" {
+			return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
+		}
+	}
+	// Complete on the host and the speech output are decided together: a call
+	// missing both is refused once, naming each, with both first-use
+	// questions admitted in the same pass (INF-V4, grantRefusal).
+	var grants grantRefusal
+	if !p.decideComplete(ctx, subject, host, "", &grants) {
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
 	}
-	switch word {
-	case "permitted":
-	case "denied", "not_granted", "unknown_action":
-		return refuse(wire.StartOutcomeNotPermitted, "rights:"+word, host, model)
-	default:
-		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
+	if grants.final {
+		return refuse(grants.startOutcome(), grants.reason(), host, model)
 	}
 	remote := host.Wire == router.WireRemote
 	var commit ContentCommitter
 	if !remote {
-		if p.cfg.PrepareContentWrite == nil {
+		commits, ok := p.prepareOutputs(ctx, subject, OutputSpeech, speechMediaType(req.Format), p.cfg.MaxSpeechBytes, 1, &grants)
+		switch {
+		case !ok && grants.refused():
+			return refuse(grants.startOutcome(), grants.reason(), host, model)
+		case !ok:
 			return refuse(wire.StartOutcomeUnavailable, "output:unavailable", host, model)
+		case len(commits) == 1:
+			commit = commits[0]
 		}
-		var outcome ContentOutcome
-		commit, outcome = p.cfg.PrepareContentWrite(ctx, subject, "speech", speechMediaType(req.Format), p.cfg.MaxSpeechBytes)
-		switch outcome {
-		case ContentResolved:
-		case ContentForbidden:
-			return refuse(wire.StartOutcomeForbidden, "output:forbidden", host, model)
-		default:
-			return refuse(wire.StartOutcomeUnavailable, "output:unavailable", host, model)
-		}
-		if commit == nil {
-			return refuse(wire.StartOutcomeUnavailable, "output:unavailable", host, model)
-		}
+	}
+	if grants.refused() {
+		return refuse(grants.startOutcome(), grants.reason(), host, model)
 	}
 	credential := ""
 	if host.Hosted {
@@ -171,6 +179,7 @@ func (p *Provider) StartSpeech(ctx context.Context, subject Subject, req wire.Sp
 		return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
 	}
 	var headers map[string]string
+	var word string
 	if credential != "" && !remote {
 		headers, word = p.cfg.Apply(ctx, subject, SpeechContract, credential, router.Target(host.Base))
 		switch word {
@@ -186,18 +195,24 @@ func (p *Provider) StartSpeech(ctx context.Context, subject Subject, req wire.Sp
 		clear(headers)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
+	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileSpeech, model, &subject)
+	if !ok {
+		clear(headers)
+		if capacityRefusal {
+			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
+		}
+		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+	}
+	defer p.releaseModelActivity(activity)
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
 	op.profile, op.route, op.remote = router.ProfileSpeech, via, remote
+	p.bindOperation(ctx, op)
 	runCtx, cancel := context.WithCancel(p.ctx)
 	op.cancel = cancel
-	if outcome := p.admitOperation(op); outcome != wire.StartOutcomeAccepted {
+	if outcome, admitReason := p.admitOperationWithActivity(ctx, op, activity); outcome != wire.StartOutcomeAccepted {
 		cancel()
 		clear(headers)
-		reason = "capacity"
-		if outcome == wire.StartOutcomeUnavailable {
-			reason = "provider:closed"
-		}
-		return refuse(outcome, reason, host, model)
+		return refuse(outcome, admitReason, host, model)
 	}
 	go p.runSpeech(runCtx, op, kind, req, characters, headers, commit)
 	a := wire.Admission{Outcome: wire.StartOutcomeAccepted, Operation: id, Host: host.Name, Model: model}
@@ -223,9 +238,14 @@ func (p *Provider) runSpeech(ctx context.Context, op *operation, kind string, re
 		index++
 	}
 	var end wire.SpeechReply
-	if kind == "remote" {
+	switch kind {
+	case "remote":
 		end = p.runRemoteSpeech(ctx, op, req, emit)
-	} else {
+	case "engine":
+		end = p.runSpeechEngine(ctx, op, req, commit, emit)
+	case "native":
+		end = p.runNativeSpeech(ctx, op, req, commit, emit)
+	default:
 		end = runSpeechHTTP(ctx, p.cfg.HTTP, op.host, op.model, kind, req, headers, p.cfg.MaxSpeechBytes, commit, op.beginCompletion, emit)
 	}
 	clear(headers)
@@ -343,19 +363,25 @@ func runSpeechHTTP(ctx context.Context, client *http.Client, host *router.Host, 
 	if input.Format == wire.SpeechFormatWav && (whole.Len() < 12 || string(whole.Bytes()[:4]) != "RIFF" || string(whole.Bytes()[8:12]) != "WAVE") {
 		return speechFailed(wire.ReplyOutcomeUnavailable, "upstream:media-type")
 	}
-	sum := sha256.Sum256(whole.Bytes())
+	return publishSpeech(ctx, whole.Bytes(), expected, commit, beginCompletion)
+}
+
+// publishSpeech commits complete speech audio under the caller's output
+// authorization and returns the completed reply with its local delivery.
+func publishSpeech(ctx context.Context, audio []byte, media string, commit ContentCommitter, beginCompletion func() bool) wire.SpeechReply {
+	sum := sha256.Sum256(audio)
 	digest := "sha256:" + hex.EncodeToString(sum[:])
 	if !beginCompletion() {
 		return speechFailed(wire.ReplyOutcomeCancelled, "cancel")
 	}
-	switch outcome := commit(ctx, digest, whole.Bytes()); outcome {
+	switch outcome := commit(ctx, digest, audio); outcome {
 	case ContentResolved:
 	case ContentForbidden:
 		return speechFailed(wire.ReplyOutcomeForbidden, "output:forbidden")
 	default:
 		return speechFailed(wire.ReplyOutcomeUnavailable, "output:unavailable")
 	}
-	return wire.SpeechReply{Outcome: wire.ReplyOutcomeCompleted, Delivery: wire.Delivery{Digest: digest, MediaType: expected, Size: int64(whole.Len()), Location: "local"}}
+	return wire.SpeechReply{Outcome: wire.ReplyOutcomeCompleted, Delivery: wire.Delivery{Digest: digest, MediaType: media, Size: int64(len(audio)), Location: "local"}}
 }
 
 func elevenFormat(format wire.SpeechFormat) string {

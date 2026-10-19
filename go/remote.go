@@ -2,7 +2,6 @@ package inference
 
 import (
 	"context"
-	"maps"
 	"net/http"
 	"time"
 
@@ -17,7 +16,8 @@ import (
 // its own holder, and its deltas are relayed. No header or key crosses.
 type remoteChat struct{}
 
-// unsupported leaves feature checks to the remote, which refuses before spend.
+// unsupported leaves non-extension feature checks to the remote. The selected
+// registration's required extension inventory is checked before authority.
 func (remoteChat) unsupported(wire.Request) string { return "" }
 
 // remoteObserveWaitMS is how long one relayed Observe waits at the remote.
@@ -30,11 +30,7 @@ func (remoteChat) run(ctx context.Context, _ *http.Client, host *router.Host, mo
 	}
 	forwarded := req
 	forwarded.Model = model
-	forwarded.Extensions = maps.Clone(req.Extensions)
-	if forwarded.Extensions == nil {
-		forwarded.Extensions = map[string]string{}
-	}
-	forwarded.Extensions[ClaimExtension] = s.op.subject.Program
+	forwarded.Extensions, forwarded.RequiredExtensions = forwardedNativeExtensions(req.Extensions, req.RequiredExtensions, s.op.subject.Program)
 	admission, err := wire.NewChatClient(transport.WithContext(ctx)).Start(forwarded)
 	if err != nil {
 		return streamBroken(ctx, err)

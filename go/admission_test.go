@@ -61,9 +61,12 @@ func TestStartAfterCloseRefusesBeforeUpstream(t *testing.T) {
 		f.provider.Start(context.Background(), caller, hostedRequest("openrouter")),
 		f.provider.StartTranscription(context.Background(), caller, transcriptionRequest(audio)),
 	} {
-		if r.Outcome != wire.StartOutcomeUnavailable {
+		if r.Outcome != wire.StartOutcomeUnavailable || r.Reason != "provider:closed" {
 			t.Fatalf("closed provider admitted: %+v", r)
 		}
+	}
+	if result := f.provider.Embed(context.Background(), caller, embedRequest("hello")); result.Outcome != wire.EmbedOutcomeUnavailable || result.Reason != "provider:closed" {
+		t.Fatalf("closed provider embedding: %+v", result)
 	}
 	if n := len(f.up.posts()); n != 0 {
 		t.Fatalf("closed provider sent %d upstream requests", n)

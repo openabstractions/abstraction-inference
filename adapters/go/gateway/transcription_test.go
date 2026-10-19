@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 )
@@ -47,6 +48,7 @@ type fixedBound struct{ subject inference.Subject }
 
 func (b fixedBound) Subject() inference.Subject { return b.subject }
 func (fixedBound) Rung() string                 { return "fixture/bound" }
+func (fixedBound) Peer() *identity.Peer         { return nil }
 func (fixedBound) Recheck() error               { return nil }
 func (fixedBound) Close() error                 { return nil }
 
@@ -96,15 +98,21 @@ func TestGatewayTranscriptionStoresForOriginalCallerAndReturnsSegments(t *testin
 	}
 }
 
+// INF-V1, INF-V4: an upload the runtime refuses (no input:audio profile and no
+// exact-digest rule) is content:write:forbidden and starts nothing.
 func TestGatewayTranscriptionWriteDenialStartsNoOperation(t *testing.T) {
 	provider := &fakeTranscriber{}
+	var records []inference.Record
 	w := &Window{cfg: Config{Chat: provider, StoreContent: func(context.Context, inference.Subject, string, []byte) inference.ContentOutcome {
 		return inference.ContentForbidden
-	}}}
+	}, Record: func(r inference.Record) { records = append(records, r) }}}
 	r, _ := multipartAudio(t)
 	rw := httptest.NewRecorder()
 	w.openAITranscription(rw, r, fixedBound{inference.Subject{Account: "account", Program: "/apps/recorder"}}, Grant{})
 	if rw.Code != http.StatusForbidden || provider.starts != 0 {
 		t.Fatalf("code %d starts %d body %s", rw.Code, provider.starts, rw.Body.String())
+	}
+	if len(records) != 1 || records[0].Reason != "content:write:forbidden" {
+		t.Fatalf("records %+v", records)
 	}
 }

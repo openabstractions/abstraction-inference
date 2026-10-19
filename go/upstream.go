@@ -60,7 +60,8 @@ func usesFeatures(req wire.Request) []string {
 }
 
 // unsupportedBy checks features against a wire's set and required extensions
-// against the keys it knows.
+// against the keys it knows. A nil known set leaves extension checks to the
+// selected native or remote host's registered profile inventory.
 func unsupportedBy(req wire.Request, served map[string]bool, known map[string]bool) string {
 	for _, f := range usesFeatures(req) {
 		if !served[f] {
@@ -68,7 +69,7 @@ func unsupportedBy(req wire.Request, served map[string]bool, known map[string]bo
 		}
 	}
 	for _, key := range req.RequiredExtensions {
-		if !known[key] {
+		if known != nil && !known[key] {
 			return "extension:" + key
 		}
 	}
@@ -116,10 +117,18 @@ func post(ctx context.Context, client *http.Client, address string, body any, he
 		return nil, &r
 	}
 	if resp.StatusCode != http.StatusOK {
-		//unchecked: best-effort drain for connection reuse; the outcome is already decided by the status code below
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		// The body is read only to recognise a context-window refusal and its
+		// two numbers (INF-Q7); nothing else from it is kept.
+		//unchecked: a short or failed read leaves the status-code outcome below
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 		//unchecked: cleanup before returning the more specific status-code error
 		resp.Body.Close()
+		window, input, overflow := contextOverflow(body)
+		clear(body)
+		if overflow && resp.StatusCode != http.StatusTooManyRequests {
+			r := overflowed(window, input)
+			return nil, &r
+		}
 		outcome := wire.ReplyOutcomeRefused
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			outcome = wire.ReplyOutcomeUnavailable

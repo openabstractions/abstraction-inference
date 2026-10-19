@@ -1,5 +1,8 @@
 # abstraction-inference
 
+*For applications that call models. Provider authors start at
+[Implement a provider or gateway](#implement-a-provider-or-gateway).*
+
 Call text, embedding, speech, transcription, image or live-voice models without
 putting a provider key or vendor protocol in the application. The application
 names a model family and the behavior it needs. The runtime chooses an allowed
@@ -7,6 +10,10 @@ local engine such as Ollama or Lemonade, or a hosted server such as
 OpenRouter, then applies the named credential inside the service.
 Video generation and image batches use durable jobs, with retained results and
 recovery after the application reconnects.
+
+**What's new here:** Applications call local and hosted models with no API key
+and no vendor protocol in the application: the service holds the credential,
+checks the person's rule and records each call.
 
 [CONTRACT.md](CONTRACT.md) states the obligations. `inference.thrift` is the
 definition. The generated Go, C++, Python, Rust and JavaScript protocol code
@@ -18,6 +25,8 @@ credential name. A reply streams as bounded pages: `Start` admits the call,
 `Observe` reads deltas from a cursor with a long-poll wait, and `Cancel` stops
 it. A request nobody observes is closed, because a stream nobody reads is
 spend.
+
+The example is in [Chat with a model](#chat-with-a-model).
 
 ## Choose an entrypoint
 
@@ -126,11 +135,61 @@ scans a port or listens for multicast. llama-swap records its listen address
 only in its command line, with no default configuration path, and an
 operator names it explicitly with `inference server add`.
 
-## List this machine's models, then chat with one
+## Chat with a model
 
-A chat completion needs inference alone. The router is optional, for
-choosing a model name from what this machine can already serve; the model
-layer is for acquiring weights that are not on the machine yet.
+A chat completion needs inference alone. Name the model and call `Complete`:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	facade "github.com/openabstractions/abstraction-facade/go"
+	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	chat, err := facade.Discover().ResolveInference(ctx, facade.Requirements{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	reply, err := chat.Complete(ctx, wire.Request{
+		Model: os.Args[1], // the model to ask; the next example lists them
+		Messages: []wire.Message{{Role: wire.RoleUser, Parts: []wire.Part{
+			{Kind: wire.PartKindText, Text: "Say hello in five words."},
+		}}},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	if reply.Outcome != wire.ReplyOutcomeCompleted {
+		log.Fatalf("chat %s: %s", reply.Outcome, reply.Reason)
+	}
+	for _, part := range reply.Message.Parts {
+		fmt.Print(part.Text)
+	}
+}
+```
+
+`chat.Complete` starts the request, follows it to its end and returns the
+reply; `chat.Stream` yields the same reply in pieces as it arrives. A missing
+[Set up a model server](#set-up-a-model-server) grant refuses inside the call:
+resolution succeeds, and `reply.Outcome` reads
+`wire.ReplyOutcomeNotPermitted`, the check CONTRACT.md INF-A2 defines.
+
+## List the models this machine can serve
+
+A chat@1 request must name its model, and no default model exists yet, so an
+application that does not know a name asks the router for the ones this
+machine can already serve:
 
 ```go
 package main
@@ -142,7 +201,6 @@ import (
 	"time"
 
 	facade "github.com/openabstractions/abstraction-facade/go"
-	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 )
 
 func main() {
@@ -153,65 +211,23 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	models, err := route.ModelsContext(ctx, false) // false: the cached list; true asks every model server again
+	models, err := route.ModelsContext(ctx, false) // false: the cached list
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	var name string
-find:
 	for _, family := range models.Models {
 		for _, alias := range family.Names {
 			if alias.Servable {
-				name = alias.Name
-				break find
+				fmt.Println(alias.Name)
 			}
-		}
-	}
-	if name == "" {
-		log.Fatal("no servable model on this machine")
-	}
-
-	chat, err := facade.Discover().ResolveInference(ctx, facade.Requirements{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	request := wire.Request{
-		Model: name,
-		Messages: []wire.Message{
-			{Role: wire.RoleUser, Parts: []wire.Part{
-				{Kind: wire.PartKindText, Text: "Say hello in five words."},
-			}},
-		},
-	}
-	for delta, err := range chat.Stream(ctx, request) {
-		if err != nil {
-			log.Fatal(err)
-		}
-		if delta.Kind != wire.DeltaKindEnd {
-			continue
-		}
-		reply := delta.End
-		if reply.Outcome == wire.ReplyOutcomeNotPermitted {
-			log.Fatalf("no rights rule lets this program use this model server: %s", reply.Reason)
-		}
-		if reply.Outcome != wire.ReplyOutcomeCompleted {
-			log.Fatalf("chat %s: %s", reply.Outcome, reply.Reason)
-		}
-		for _, part := range reply.Message.Parts {
-			fmt.Print(part.Text)
 		}
 	}
 }
 ```
 
 `route.ModelsContext` names every model this machine's model servers can
-already serve; `alias.Servable` is true for one this router could route a
-call to. `chat.Stream` then takes that name the same way
-[the facade README's inference example](https://github.com/openabstractions/abstraction-facade/blob/main/README.md#go)
-does. A missing [Set up a model server](#set-up-a-model-server) grant refuses
-inside the call itself, not at resolution: `reply.Outcome` above reads
-`wire.ReplyOutcomeNotPermitted`, the check CONTRACT.md INF-A2 defines.
+already serve; `alias.Servable` is true for one the router could route a call
+to. The model layer is for acquiring weights that are not on the machine yet.
 
 ## Capabilities
 
@@ -220,11 +236,19 @@ The current source provides these contracts through the runtime:
 | Contract | Application receives |
 | --- | --- |
 | `chat@1` | Text and tool-call deltas, including vision input by digest |
+| `chat@2` | An explicit model or a named, caller-scoped selection policy for a chat call |
 | `embed@1` | Bounded embedding vectors |
 | `transcription@1` | Text and timestamped segments from stored audio |
 | `speech@1` | Streamed audio and a digest-addressed final delivery |
-| `image@1` | Generation or edit progress and typed image deliveries |
+| `image@1` | Generation or edit for an explicit model, with progress and typed image deliveries |
+| `image@2` | The same image operation with an explicit model or a named selection policy |
 | `live@1` | One voice turn with ordered PCM input, transcript and audio output |
+| `selection-operator@2` | Read and edit policies with an optional logical provider pin; a separate `selection.manage_for` grant permits configuring another program in the bound account |
+
+An `image@2` policy target leaves inline guarantees and credential empty; the
+stored candidates provide placement and credential names. The optional provider
+pin names a current logical declaration. Exact engine binary and model artifact
+hashes belong to the installed adapter's configuration and provenance.
 
 The Thrift definition generates API types and protocol bindings for Go, C++,
 Python, Rust and JavaScript. The Go service owns provider communication,
@@ -246,9 +270,10 @@ SDK coverage.
   server-sent events.
 - `inference.Ceilings` counts tokens, spend and every other configured unit
   per credential per UTC day in an explicit state file (CONTRACT.md INF-C2).
-- `inference.Config.Admit` runs after the model server is picked and before
-  the rights decision, for a provider whose own program has work to do on
-  that model server first, such as loading an object. A false answer keeps
+- `inference.Config.Admit` runs after request, rights, content, budget and
+  credential preflight, before accepted execution, for a provider whose own
+  program has work to do on the selected model server, such as loading an
+  object. A false answer keeps
   the provider's own reason word instead of turning into an upstream failure
   (CONTRACT.md INF-A5); the model host uses it in place of its own
   dispatcher.
@@ -330,9 +355,44 @@ The required `abstraction.inference/recoverable-upstream@1` guarantee records
 submission intent and provider handles durably. A known handle resumes after
 restart. A lost create reply remains visibly `upstream:uncertain` when the
 backend cannot look up the caller's request; the runtime preserves that
-uncertainty without submitting duplicate work. Result documents contain
+uncertainty without submitting duplicate work. Each claimed job runs in its
+own goroutine under its lease. A local model server runs one job at a time
+and a hosted service four by default (`JobExecution.SetHostConcurrency`); a
+job queued behind them shows the waiting word `host:busy` and is planned
+again once its turn comes (CONTRACT.md INF-G9). Result documents contain
 authorized content references. The job contract page retains its
 provider-independent vocabulary.
+
+## Packing model files
+
+`openabstractions models pack` turns a safetensors or GGUF file, or a whole
+model folder, into an OpenAbstractions model archive: a zip of STORED,
+64 KiB-aligned entries that standard zip tools open, led by `oa-archive.json`
+with every file's digest, 16 MiB span digests and tensor table (CONTRACT.md
+INF-MP6, INF-MP9). BF16 and F16 tensors are cut into 512 KiB units, each
+coded where this machine loads it faster than the plain bytes (INF-MP2);
+quantised tensors, F32 and every other file are stored as they are, under
+their own names. The command works on files and reaches no service.
+
+```sh
+openabstractions models pack measure model.safetensors     # this machine's rates, as --rates takes them
+openabstractions models pack model.safetensors model.oa.zip
+openabstractions models pack info model.oa.zip             # digests, units per encoding, bytes kept
+openabstractions models pack verify model.oa.zip --digest sha256:<hex>
+openabstractions models pack restore model.oa.zip model.safetensors   # byte for byte
+openabstractions models pack ./my-model my-model.oa.zip    # a folder: one archive
+openabstractions models pack restore my-model.oa.zip ./my-model-again
+```
+
+Without `--rates`, `pack` measures for a few seconds first. Each unit takes
+`stored`, `exp-huffman-v1` (about 0.67 of BF16 kept) or, for BF16,
+`exp-fixed3-v1` (about 0.70 kept, several times faster to decode per core),
+whichever loads soonest on this machine. A file with encoded units is the
+entry `<path>.oa-units`, which `restore` turns back into the file; a file
+whose units all stay stored is its own entry, which any zip tool extracts as
+the file. An archive moved to another machine stays valid there and may be
+packed again with that machine's rates. Pickles (`.pth`, `.pt`, `.ckpt`,
+`.bin`) are refused: loading one runs code.
 
 ## Runtime configuration
 
@@ -437,3 +497,22 @@ The gateway's current import is
 `github.com/openabstractions/abstraction-inference/adapters/go/gateway`.
 See the [adapter README](adapters/go/README.md) for migration and dependency
 status. The [contract](CONTRACT.md) defines the behavior each provider must keep.
+
+<!-- BEGIN GENERATED PERMISSION DEFINITIONS -->
+
+## Permission definitions
+
+Generated from the existing compiled catalogue. [RIGHTS.json](RIGHTS.json) contains the complete action/profile records, disclosure, lifecycle, first-use behavior, selector support and finite bundles.
+
+This reference records compiled receiving support; RIGHTS.json names the compilation context. A connected runtime advertises current availability and selector support. These definitions supply no grant.
+
+| Action | Resource profile | Owning operations | First-use targets | Compiled receiver |
+|---|---|---|---|---|
+| `abstraction.inference/audit.read` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/operator@1#Audit` | `none` | served in compiled context |
+| `abstraction.inference/complete` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/chat@1#Start`, `abstraction.inference/chat@2#Start`, `abstraction.inference/preload@1#Preload`, `abstraction.inference/embed@1#Embed`, `abstraction.inference/transcription@1#Start`, `abstraction.inference/speech@1#Start`, `abstraction.inference/live@1#Start`, `abstraction.inference/image@1#Start`, `abstraction.inference/image@2#Start`, `abstraction.inference/video@1#Start` | Legacy `exact` | served in compiled context |
+| `abstraction.inference/host.manage` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/operator@1#Hosts`, `abstraction.inference/operator@1#AddHost`, `abstraction.inference/operator@1#RemoveHost`, `abstraction.inference/operator@1#Gateway`, `abstraction.inference/operator@1#SetGateway` | `none` | served in compiled context |
+| `abstraction.inference/key.issue` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/operator@1#Keys`, `abstraction.inference/operator@1#IssueKey`, `abstraction.inference/operator@1#RevokeKey` | `none` | served in compiled context |
+| `abstraction.inference/selection.manage` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/selection-operator@2#Read`, `abstraction.inference/selection-operator@2#Put`, `abstraction.inference/selection-operator@2#DeletePolicy` | `none` | served in compiled context |
+| `abstraction.inference/selection.manage_for` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/selection-operator@2#Read`, `abstraction.inference/selection-operator@2#Put`, `abstraction.inference/selection-operator@2#DeletePolicy` | `none` | served in compiled context |
+
+<!-- END GENERATED PERMISSION DEFINITIONS -->

@@ -12,6 +12,10 @@ import (
 	"unicode/utf8"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
+	"github.com/openabstractions/abstraction-inference/go/imagemask"
+	"github.com/openabstractions/abstraction-inference/go/mediationcontent"
+	"github.com/openabstractions/abstraction-inference/go/providerhost/sdcpp"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
@@ -59,6 +63,13 @@ func validateImageRequest(req wire.ImageRequest) string {
 	if req.Prompt == "" || len(req.Prompt) > 32768 || !utf8.ValidString(req.Prompt) {
 		return "prompt"
 	}
+	// INF-SD1: no image text carries sd-server's engine directive, whichever
+	// host the router picks; an OpenAI-compatible host may be sd-server or
+	// Lemonade in front of it, and a provider may forward an extension value
+	// as its negative prompt.
+	if sdcpp.HasDirective(req.Prompt) {
+		return sdcpp.ReasonEngineDirective
+	}
 	if _, _, ok := imageDimensions(req.Size); !ok {
 		return "size"
 	}
@@ -81,6 +92,9 @@ func validateImageRequest(req wire.ImageRequest) string {
 		owner, name, ok := strings.Cut(key, "/")
 		if !ok || owner == "" || name == "" || len(key) > 128 || len(req.Extensions[key]) > 32768 {
 			return "extensions"
+		}
+		if sdcpp.HasDirective(req.Extensions[key]) {
+			return sdcpp.ReasonEngineDirective
 		}
 	}
 	for _, key := range req.RequiredExtensions {
@@ -125,11 +139,26 @@ func imageDimensions(size string) (int, int, bool) {
 }
 
 func generatedInputMedia(media string) bool {
-	return media == "image/png" || media == "image/jpeg" || media == "image/webp"
+	return mediationcontent.ImageMedia(media)
+}
+
+// generatedJobMedia is the one rule for the media type of a durable job's
+// delivery: a video job delivers an MP4, WebM or AVI container, an image batch
+// delivers PNG, JPEG or WebP. media is the name net/http's DetectContentType
+// gives the bytes; mediationcontent.SniffedMedia maps an engine's declared name.
+func generatedJobMedia(profile jobwire.Profile, media string) bool {
+	if profile == jobwire.ProfileVideo {
+		return mediationcontent.VideoMedia(media)
+	}
+	return profile == jobwire.ProfileImageBatch && mediationcontent.ImageMedia(media)
 }
 
 func imageAdapterFor(host *router.Host) string {
 	switch {
+	case host.Wire == router.WireImageEngine:
+		return "engine"
+	case host.Wire == router.WireNative:
+		return "native"
 	case host.Wire == router.WireRemote:
 		return "remote"
 	case host.Name == "comfyui":
@@ -149,6 +178,16 @@ func imageAdapterFor(host *router.Host) string {
 }
 
 func unsupportedImage(kind string, host *router.Host, req wire.ImageRequest) string {
+	return unsupportedImageFor(kind, host, req, router.ProfileImage)
+}
+
+// unsupportedImageFor judges an image-shaped request on host, reading a native
+// or remote host's extension inventory under profile, the one it was selected
+// for: image for image@1 and image batches, video@1 for a native video job.
+func unsupportedImageFor(kind string, host *router.Host, req wire.ImageRequest, profile string) string {
+	if kind == "engine" {
+		return ""
+	}
 	known := map[string]bool{}
 	switch kind {
 	case "comfyui":
@@ -157,6 +196,8 @@ func unsupportedImage(kind string, host *router.Host, req wire.ImageRequest) str
 		known = map[string]bool{"swarmui/negative-prompt": true}
 	case "replicate":
 		known = map[string]bool{"replicate/version": true}
+	case "native", "remote":
+		known = host.SupportedExtensions[profile]
 	}
 	for _, key := range req.RequiredExtensions {
 		if !known[key] {
@@ -171,6 +212,11 @@ func unsupportedImage(kind string, host *router.Host, req wire.ImageRequest) str
 				return "size:" + req.Size
 			}
 		}
+		// INF-SD2: Lemonade and sd-server decode request images against
+		// this size; the bound keeps their allocation from wrapping.
+		if req.Size != "auto" && sdcpp.CheckOpenAISize(req.Size) != nil {
+			return "size:" + req.Size
+		}
 	case "stability":
 		if req.Count != 1 || req.Size != "auto" || req.Mode == wire.ImageModeEdit && req.MaskDigest == "" {
 			return "image:request"
@@ -179,18 +225,102 @@ func unsupportedImage(kind string, host *router.Host, req wire.ImageRequest) str
 		if req.Mode != wire.ImageModeGenerate {
 			return "mode:edit"
 		}
-	case "remote":
+	case "remote", "native":
 	default:
 		return "wire"
 	}
 	return ""
 }
 
+// openAIEditInput bounds an edit input sent to an OpenAI-compatible host
+// (INF-SD2). Lemonade and sd-server decode it against the request's size, or
+// take the size from it when the request says "auto", so its header must
+// name a size within the bound.
+func openAIEditInput(input resolvedImageInput) (wire.StartOutcome, string) {
+	switch err := sdcpp.CheckImageInput(input.mediaType, input.data); sdcpp.Reason(err) {
+	case "":
+		return 0, ""
+	case sdcpp.ReasonImageSize:
+		return wire.StartOutcomeUnsupportedFeature, sdcpp.ReasonImageSize
+	}
+	return wire.StartOutcomeInvalid, "content:media-type"
+}
+
+// Stability's documented limits on an edit's image, which its mask matches:
+// each side at least 64 pixels, 4,096 to 9,437,184 pixels in all, and an
+// aspect ratio between 1:2.5 and 2.5:1 (v2beta stable-image edit routes).
+const (
+	stabilityMinSide   = 64
+	stabilityMinPixels = 4096
+	stabilityMaxPixels = 9437184
+)
+
+// maskWithinBound reports whether a mask of width × height is within the
+// bound of the route that decodes it (INF-I1): Stability's documented edit
+// limit on its route, and stable-diffusion.cpp's on an OpenAI-compatible
+// route (Lemonade and sd-server decode it) and an image engine.
+func maskWithinBound(kind string, width, height int) bool {
+	if kind == "stability" {
+		pixels := width * height
+		return width >= stabilityMinSide && height >= stabilityMinSide && pixels >= stabilityMinPixels &&
+			pixels <= stabilityMaxPixels && 2*width <= 5*height && 2*height <= 5*width
+	}
+	return sdcpp.CheckSize(max(width, sdcpp.MinDimension), max(height, sdcpp.MinDimension)) == nil
+}
+
+// maskForms are the mask forms of the adapters that send a mask themselves
+// (INF-I1): an OpenAI-compatible edit reads alpha, Stability's inpaint route
+// reads brightness. The native and remote relays pass the contract mask by
+// digest to a service that converts it, and an engine adapter converts its
+// own; the other adapters refuse an edit.
+var maskForms = map[string]imagemask.Form{"openai": imagemask.Alpha, "stability": imagemask.Luminance}
+
+// editMask holds INF-I1 for every route once both inputs are read: the mask
+// names the input image's pixel size, and a route that sends it receives it
+// converted to its form, under the mask's digest.
+func editMask(kind string, req wire.ImageRequest, inputs map[string]resolvedImageInput) (wire.StartOutcome, string) {
+	if req.MaskDigest == req.ImageDigest {
+		return wire.StartOutcomeInvalid, "mask"
+	}
+	input, mask := inputs[req.ImageDigest], inputs[req.MaskDigest]
+	width, height, err := sdcpp.InputSize(input.mediaType, input.data)
+	maskWidth, maskHeight, maskErr := sdcpp.InputSize(mask.mediaType, mask.data)
+	if err != nil || maskErr != nil || width != maskWidth || height != maskHeight {
+		return wire.StartOutcomeInvalid, "mask"
+	}
+	// The native relay compares the header sizes only: the receiving
+	// provider decodes the mask under its own bound when its route runs
+	// this check.
+	if kind == "native" {
+		return 0, ""
+	}
+	// Every other route decodes the mask once, its header bounded first by
+	// the route's bound since decoding allocates its pixels: a mask whose
+	// pixels do not decode, or that marks no pixel to change, is refused.
+	if !maskWithinBound(kind, maskWidth, maskHeight) {
+		return wire.StartOutcomeUnsupportedFeature, sdcpp.ReasonImageSize
+	}
+	if _, _, changed, err := imagemask.Inspect(mask.data); err != nil || changed == 0 {
+		return wire.StartOutcomeInvalid, "mask"
+	}
+	form, converts := maskForms[kind]
+	if !converts {
+		return 0, ""
+	}
+	converted, _, _, err := imagemask.Convert(form, mask.data)
+	if err != nil {
+		return wire.StartOutcomeInvalid, "mask"
+	}
+	mask.data = converted
+	inputs[req.MaskDigest] = mask
+	return 0, ""
+}
+
 func (p *Provider) resolveImageInput(ctx context.Context, subject Subject, digest, media string) (resolvedImageInput, wire.StartOutcome, string) {
 	if p.cfg.ResolveContent == nil {
 		return resolvedImageInput{}, wire.StartOutcomeUnavailable, "content:unavailable"
 	}
-	data, outcome := p.cfg.ResolveContent(ctx, subject, digest, p.cfg.MaxImageBytes)
+	data, outcome := p.cfg.ResolveContent(WithInputProfile(ctx, InputImage), subject, digest, p.cfg.MaxImageBytes)
 	if ctx.Err() != nil {
 		return resolvedImageInput{}, wire.StartOutcomeUnavailable, "content:unavailable"
 	}
@@ -199,6 +329,7 @@ func (p *Provider) resolveImageInput(ctx context.Context, subject Subject, diges
 	case ContentUnknown:
 		return resolvedImageInput{}, wire.StartOutcomeInvalid, "content:unknown"
 	case ContentForbidden:
+		p.askInput(ctx, subject, InputImage)
 		return resolvedImageInput{}, wire.StartOutcomeForbidden, "content:read:forbidden"
 	case ContentTooLarge:
 		return resolvedImageInput{}, wire.StartOutcomeInvalid, "content:too-large"
@@ -219,10 +350,15 @@ func (p *Provider) resolveImageInput(ctx context.Context, subject Subject, diges
 }
 
 func (p *Provider) StartImage(ctx context.Context, subject Subject, req wire.ImageRequest) wire.Admission {
+	return p.startImage(ctx, subject, req, nil)
+}
+
+// startImage accepts a route chosen by the bounded selection policy. The
+// selected route enters the same admission and operation path as image@1.
+func (p *Provider) startImage(ctx context.Context, subject Subject, req wire.ImageRequest, selected *selectedRoute) wire.Admission {
 	started, via := p.cfg.Now(), routeOf(ctx)
-	if via.name == RouteRemote {
-		via.claim = req.Extensions[ClaimExtension]
-	}
+	extensions := separateExtensions(ctx, req.Extensions, req.RequiredExtensions)
+	via.claim = extensions.claim
 	refuse := func(outcome wire.StartOutcome, reason string, host *router.Host, model string) wire.Admission {
 		record := Record{Profile: router.ProfileImage, Route: via.name, Rung: via.rung, Account: subject.Account, Program: subject.Program, Model: req.Model,
 			Family: familyOf(req.Model), Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
@@ -244,7 +380,20 @@ func (p *Provider) StartImage(ctx context.Context, subject Subject, req wire.Ima
 	if reason := validateImageRequest(req); reason != "" {
 		return refuse(wire.StartOutcomeInvalid, reason, nil, "")
 	}
-	host, model, reason := p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileImage)
+	if extensions.required != "" {
+		return refuse(wire.StartOutcomeUnsupportedFeature, "extension:"+extensions.required, nil, "")
+	}
+	req.Extensions = extensions.vendor
+	var host *router.Host
+	var model, reason string
+	if selected != nil {
+		if selected.host == nil || selected.bindingID != selected.host.BindingID || !p.selectedHostCurrent(selected.host) {
+			return refuse(wire.StartOutcomeNoHost, "selection:provider_stale", nil, "")
+		}
+		host, model = selected.host, selected.model
+	} else {
+		host, model, reason = p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileImage)
+	}
 	if host == nil {
 		return refuse(wire.StartOutcomeNoHost, reason, nil, "")
 	}
@@ -255,56 +404,86 @@ func (p *Provider) StartImage(ctx context.Context, subject Subject, req wire.Ima
 	if kind == "" || host.ImageURL() == "" {
 		return refuse(wire.StartOutcomeUnsupportedFeature, "wire:"+host.Wire, host, model)
 	}
-	if reason := unsupportedImage(kind, host, req); reason != "" {
+	fields, checked, reason := p.imageFields(kind, host, req)
+	if reason != "" {
+		return refuse(wire.StartOutcomeInvalid, reason, host, model)
+	}
+	if reason := unsupportedImage(kind, host, checked); reason != "" {
 		return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
 	}
-	word, err := p.cfg.Decide(ctx, subject, ActionComplete, ResourceHost(host.Name))
-	if err != nil || ctx.Err() != nil {
-		p.report(err)
+	if kind == "engine" {
+		if p.cfg.ImageEngine == nil || p.cfg.ImageEngineHost != host {
+			return refuse(wire.StartOutcomeUnsupportedFeature, "wire:"+host.Wire, host, model)
+		}
+		if reason := p.cfg.ImageEngine.Unsupported(req); reason != "" {
+			return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
+		}
+	}
+	// Every grant the call needs is decided before it answers, as for a job:
+	// complete on the host, the input of an edit, the output. A call missing
+	// several is refused once, naming each, with every first-use question
+	// admitted in the same pass (INF-V4, grantRefusal).
+	var grants grantRefusal
+	editInput := ""
+	if req.Mode == wire.ImageModeEdit {
+		editInput = InputImage
+	}
+	if !p.decideComplete(ctx, subject, host, editInput, &grants) {
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
 	}
-	switch word {
-	case "permitted":
-	case "denied", "not_granted", "unknown_action":
-		return refuse(wire.StartOutcomeNotPermitted, "rights:"+word, host, model)
-	default:
-		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
+	if grants.final {
+		return refuse(grants.startOutcome(), grants.reason(), host, model)
+	}
+	// A later check that cannot answer, or finds the request itself wrong,
+	// stops the call; a grant already refused is reported instead, since
+	// only an answer to it can let the call run.
+	stop := func(outcome wire.StartOutcome, reason string) wire.Admission {
+		if grants.refused() {
+			return refuse(grants.startOutcome(), grants.reason(), host, model)
+		}
+		return refuse(outcome, reason, host, model)
 	}
 	remote := host.Wire == router.WireRemote
 	inputs := map[string]resolvedImageInput{}
 	if !remote && req.Mode == wire.ImageModeEdit {
-		input, outcome, why := p.resolveImageInput(ctx, subject, req.ImageDigest, req.ImageMediaType)
-		if why != "" {
-			return refuse(outcome, why, host, model)
-		}
-		inputs[req.ImageDigest] = input
-		if req.MaskDigest != "" {
-			mask, outcome, why := p.resolveImageInput(ctx, subject, req.MaskDigest, req.MaskMediaType)
-			if why != "" {
-				return refuse(outcome, why, host, model)
+		readable := true
+		for _, in := range []struct{ digest, media string }{{req.ImageDigest, req.ImageMediaType}, {req.MaskDigest, req.MaskMediaType}} {
+			if in.digest == "" {
+				continue
 			}
-			inputs[req.MaskDigest] = mask
+			input, outcome, why := p.resolveImageInput(ctx, subject, in.digest, in.media)
+			switch {
+			case why == "":
+				inputs[in.digest] = input
+			case outcome == wire.StartOutcomeForbidden:
+				grants.add(why)
+				readable = false
+			default:
+				return stop(outcome, why)
+			}
+		}
+		if readable && kind == "openai" {
+			for _, input := range inputs {
+				if outcome, why := openAIEditInput(input); why != "" {
+					return stop(outcome, why)
+				}
+			}
+		}
+		if readable && req.MaskDigest != "" {
+			if outcome, why := editMask(kind, req, inputs); why != "" {
+				return stop(outcome, why)
+			}
 		}
 	}
 	var commits []ContentCommitter
 	if !remote {
-		if p.cfg.PrepareContentWrite == nil {
-			return refuse(wire.StartOutcomeUnavailable, "output:unavailable", host, model)
+		var ok bool
+		if commits, ok = p.prepareOutputs(ctx, subject, OutputImage, "image/*", p.cfg.MaxGeneratedImageBytes, req.Count, &grants); !ok {
+			return stop(wire.StartOutcomeUnavailable, "output:unavailable")
 		}
-		for i := int64(0); i < req.Count; i++ {
-			commit, outcome := p.cfg.PrepareContentWrite(ctx, subject, "image", "image/*", p.cfg.MaxGeneratedImageBytes)
-			switch outcome {
-			case ContentResolved:
-			case ContentForbidden:
-				return refuse(wire.StartOutcomeForbidden, "output:forbidden", host, model)
-			default:
-				return refuse(wire.StartOutcomeUnavailable, "output:unavailable", host, model)
-			}
-			if commit == nil {
-				return refuse(wire.StartOutcomeUnavailable, "output:unavailable", host, model)
-			}
-			commits = append(commits, commit)
-		}
+	}
+	if grants.refused() {
+		return refuse(grants.startOutcome(), grants.reason(), host, model)
 	}
 	credential := ""
 	if host.Hosted {
@@ -319,6 +498,7 @@ func (p *Provider) StartImage(ctx context.Context, subject Subject, req wire.Ima
 		return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
 	}
 	var headers map[string]string
+	var word string
 	if credential != "" && !remote {
 		headers, word = p.cfg.Apply(ctx, subject, ImageContract, credential, router.Target(host.Base))
 		switch word {
@@ -334,20 +514,29 @@ func (p *Provider) StartImage(ctx context.Context, subject Subject, req wire.Ima
 		clear(headers)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
+	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileImage, model, &subject)
+	if !ok {
+		clear(headers)
+		if capacityRefusal {
+			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
+		}
+		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+	}
+	defer p.releaseModelActivity(activity)
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
 	op.profile, op.route, op.remote = router.ProfileImage, via, remote
+	if req.Mode == wire.ImageModeEdit {
+		op.inputs = namedInputs(req.ImageDigest, req.MaskDigest)
+	}
+	p.bindOperation(ctx, op)
 	runCtx, cancel := context.WithCancel(p.ctx)
 	op.cancel = cancel
-	if outcome := p.admitOperation(op); outcome != wire.StartOutcomeAccepted {
+	if outcome, admitReason := p.admitOperationWithActivity(ctx, op, activity); outcome != wire.StartOutcomeAccepted {
 		cancel()
 		clear(headers)
-		reason = "capacity"
-		if outcome == wire.StartOutcomeUnavailable {
-			reason = "provider:closed"
-		}
-		return refuse(outcome, reason, host, model)
+		return refuse(outcome, admitReason, host, model)
 	}
-	go p.runImage(runCtx, op, kind, req, inputs, commits, headers)
+	go p.runImage(runCtx, op, kind, req, inputs, fields, commits, headers)
 	admission := wire.Admission{Outcome: wire.StartOutcomeAccepted, Operation: id, Host: host.Name, Model: model}
 	p.bounds(&admission)
 	return admission
@@ -361,7 +550,54 @@ func (p *Provider) CancelImage(subject Subject, id string) wire.Cancellation {
 	return p.cancelProfile(subject, id, router.ProfileImage)
 }
 
-func (p *Provider) runImage(ctx context.Context, op *operation, kind string, req wire.ImageRequest, inputs map[string]resolvedImageInput, commits []ContentCommitter, headers map[string]string) {
+// reservedImageFields are the OpenAI-compatible image request fields
+// inference sets itself; ImageFields cannot replace them.
+var reservedImageFields = map[string]bool{"model": true, "prompt": true, "n": true, "size": true, "response_format": true, "image": true, "mask": true}
+
+// imageFields asks Config.ImageFields for the request fields of the vendor
+// extensions the selected host declares. It applies only to the configured
+// OpenAI-compatible host. It returns the fields, the request with the
+// required extensions the fields carry removed for the adapter check, and a
+// refusal reason.
+func (p *Provider) imageFields(kind string, host *router.Host, req wire.ImageRequest) (map[string]any, wire.ImageRequest, string) {
+	if kind != "openai" || p.cfg.ImageFields == nil || host != p.cfg.ImageFieldsHost {
+		return nil, req, ""
+	}
+	declared := host.SupportedExtensions[router.ProfileImage]
+	values := map[string]string{}
+	for key, value := range req.Extensions {
+		if declared[key] {
+			values[key] = value
+		}
+	}
+	var remaining []string
+	for _, key := range req.RequiredExtensions {
+		if !declared[key] {
+			remaining = append(remaining, key)
+		}
+	}
+	req.RequiredExtensions = remaining
+	if len(values) == 0 {
+		return nil, req, ""
+	}
+	fields, refused := p.cfg.ImageFields(values)
+	if refused != "" {
+		return nil, req, "extension:" + refused
+	}
+	for name, value := range fields {
+		switch value.(type) {
+		case string, int64:
+		default:
+			return nil, req, "extension:fields"
+		}
+		if reservedImageFields[name] || name == "" || len(name) > 64 || !nameChars(name, "_") {
+			return nil, req, "extension:fields"
+		}
+	}
+	return fields, req, ""
+}
+
+func (p *Provider) runImage(ctx context.Context, op *operation, kind string, req wire.ImageRequest, inputs map[string]resolvedImageInput, fields map[string]any, commits []ContentCommitter, headers map[string]string) {
 	defer p.runs.Done()
 	defer close(op.finished)
 	defer op.cancel()
@@ -374,9 +610,16 @@ func (p *Provider) runImage(ctx context.Context, op *operation, kind string, req
 	var end wire.ImageReply
 	if kind == "remote" {
 		end = p.runRemoteImage(ctx, op, req)
+	} else if kind == "native" {
+		end = p.runNativeImage(ctx, op, req, inputs, commits)
 	} else {
 		bounds := imageOutputBounds{each: p.cfg.MaxGeneratedImageBytes, total: p.cfg.MaxImageOutputBytes}
-		backend := runImageBackend(ctx, p.cfg.HTTP, op.host, op.model, kind, req, inputs, headers, bounds, emitProgress)
+		var backend imageBackendReply
+		if kind == "engine" {
+			backend = p.runImageEngine(ctx, op.host, op.model, req, inputs, emitProgress)
+		} else {
+			backend = runImageBackend(ctx, p.cfg.HTTP, op.host, op.model, kind, req, inputs, fields, headers, bounds, emitProgress)
+		}
 		if backend.outcome == wire.ReplyOutcomeCompleted {
 			emitProgress(100, "completed")
 		}
@@ -528,11 +771,7 @@ func (p *Provider) runRemoteImage(ctx context.Context, op *operation, req wire.I
 	}
 	forwarded := req
 	forwarded.Model = op.model
-	forwarded.Extensions = cloneStrings(req.Extensions)
-	if forwarded.Extensions == nil {
-		forwarded.Extensions = map[string]string{}
-	}
-	forwarded.Extensions[ClaimExtension] = op.subject.Program
+	forwarded.Extensions, forwarded.RequiredExtensions = forwardedNativeExtensions(req.Extensions, req.RequiredExtensions, op.subject.Program)
 	client := wire.NewImageClient(transport.WithContext(ctx))
 	admission, err := client.Start(forwarded)
 	if err != nil {

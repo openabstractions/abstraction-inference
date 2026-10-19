@@ -161,6 +161,26 @@ func request() wire.Request {
 		Messages: []wire.Message{{Role: wire.RoleUser, Parts: []wire.Part{{Kind: wire.PartKindText, Text: "hi"}}}}}
 }
 
+func TestChatV2SharesCallerBoundOperationRegistry(t *testing.T) {
+	s, _, _ := serve(t, false)
+	transport := listen.FrameClient{Endpoint: s.endpoint}.WithDefaults(35*time.Second, MaxFrameBytes)
+	v2 := wire.NewChatV2Client(transport)
+	legacy := request()
+	a, err := v2.Start(wire.RequestV2{Target: wire.Target{Model: legacy.Model}, Content: wire.RequestContent{
+		Messages: legacy.Messages, Tools: legacy.Tools, Options: legacy.Options, Extensions: legacy.Extensions,
+		RequiredExtensions: legacy.RequiredExtensions, Guarantees: legacy.Guarantees, Credential: legacy.Credential}})
+	if err != nil || a.Outcome != wire.StartOutcomeAccepted || a.SelectionReason == nil || *a.SelectionReason != wire.SelectionReasonExplicitModel {
+		t.Fatalf("chat@2 admission: %+v %v", a, err)
+	}
+	page, err := s.client.Observe(a.Operation, 0, 256, 65536, 2000)
+	if err != nil || page.Outcome != wire.PageOutcomePage || len(page.Deltas) == 0 {
+		t.Fatalf("chat@1 Observe of chat@2 operation: %+v %v", page, err)
+	}
+	if cancelled, err := v2.Cancel(a.Operation); err != nil || (cancelled.Outcome != wire.CancelOutcomeEnded && cancelled.Outcome != wire.CancelOutcomeCancelled) {
+		t.Fatalf("chat@2 Cancel: %+v %v", cancelled, err)
+	}
+}
+
 func TestStartObserveOverIPCBindsTheCallingProgram(t *testing.T) {
 	s, auth, mu := serve(t, false)
 	a, err := s.client.Start(request())

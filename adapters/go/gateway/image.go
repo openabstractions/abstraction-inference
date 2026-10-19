@@ -168,10 +168,10 @@ func (w *Window) openAIImageEdit(rw http.ResponseWriter, r *http.Request, b Boun
 
 func (w *Window) finishOpenAIImage(rw http.ResponseWriter, r *http.Request, b Bound, req wire.ImageRequest) {
 	provider := w.cfg.Chat.(ImageGenerator)
-	ctx := inference.WithLocalImageDelivery(inference.WithRoute(r.Context(), inference.RouteWindow, b.Rung()))
+	ctx := inference.WithLocalImageDelivery(routed(r.Context(), b))
 	admission := provider.StartImage(ctx, b.Subject(), req)
 	if admission.Outcome != wire.StartOutcomeAccepted {
-		writeError(rw, status(admission.Outcome.String()), admission.Outcome.String(), refusalMessage(admission.Outcome.String(), admission.Reason))
+		refusalOf(admission.Outcome.String(), admission.Reason).write(rw)
 		return
 	}
 	var deliveries []wire.Delivery
@@ -202,7 +202,7 @@ func (w *Window) finishOpenAIImage(rw http.ResponseWriter, r *http.Request, b Bo
 		cursor = page.Next
 	}
 	if end.Outcome != wire.ReplyOutcomeCompleted || len(deliveries) != len(end.Deliveries) {
-		writeError(rw, status(end.Outcome.String()), end.Outcome.String(), refusalMessage(end.Outcome.String(), end.Reason))
+		refusalOf(end.Outcome.String(), end.Reason).write(rw)
 		return
 	}
 	data := make([]map[string]string, 0, len(deliveries))

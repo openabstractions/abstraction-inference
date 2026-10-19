@@ -17,6 +17,7 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	"github.com/openabstractions/abstraction-inference/go/mediationcontent"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
@@ -73,29 +74,17 @@ func audioMediaType(mediaType string) bool {
 	return false
 }
 
+// audioMatches checks transcription input by its leading bytes; the check is
+// mediationcontent's, which native relays share.
 func audioMatches(data []byte, mediaType string) bool {
-	switch mediaType {
-	case "audio/wav":
-		return len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WAVE"
-	case "audio/mpeg":
-		return len(data) >= 3 && (string(data[:3]) == "ID3" || data[0] == 0xff && data[1]&0xe0 == 0xe0)
-	case "audio/mp4":
-		return len(data) >= 12 && string(data[4:8]) == "ftyp"
-	case "audio/webm":
-		return len(data) >= 4 && bytes.Equal(data[:4], []byte{0x1a, 0x45, 0xdf, 0xa3})
-	case "audio/ogg":
-		return len(data) >= 4 && string(data[:4]) == "OggS"
-	case "audio/flac":
-		return len(data) >= 4 && string(data[:4]) == "fLaC"
-	}
-	return false
+	return audioMediaType(mediaType) && mediationcontent.MediaMatches(data, mediaType)
 }
 
 func (p *Provider) resolveAudio(ctx context.Context, subject Subject, req wire.TranscriptionRequest) ([]byte, wire.StartOutcome, string) {
 	if p.cfg.ResolveContent == nil {
 		return nil, wire.StartOutcomeUnavailable, "content:unavailable"
 	}
-	data, outcome := p.cfg.ResolveContent(ctx, subject, req.AudioDigest, p.cfg.MaxAudioBytes)
+	data, outcome := p.cfg.ResolveContent(WithInputProfile(ctx, InputAudio), subject, req.AudioDigest, p.cfg.MaxAudioBytes)
 	if ctx.Err() != nil {
 		return nil, wire.StartOutcomeUnavailable, "content:unavailable"
 	}
@@ -103,6 +92,7 @@ func (p *Provider) resolveAudio(ctx context.Context, subject Subject, req wire.T
 	case ContentUnknown:
 		return nil, wire.StartOutcomeInvalid, "content:unknown"
 	case ContentForbidden:
+		p.askInput(ctx, subject, InputAudio)
 		return nil, wire.StartOutcomeForbidden, "content:read:forbidden"
 	case ContentTooLarge:
 		return nil, wire.StartOutcomeInvalid, "content:too-large"
@@ -129,6 +119,8 @@ func transcriptionAdapterFor(host *router.Host) string {
 	switch {
 	case host.Wire == router.WireRemote:
 		return "remote"
+	case host.Wire == router.WireNative:
+		return "native"
 	case host.Wire == router.WireDeepgramPrerecorded:
 		return "deepgram"
 	case host.Name == "whispercpp":
@@ -141,9 +133,8 @@ func transcriptionAdapterFor(host *router.Host) string {
 
 func (p *Provider) StartTranscription(ctx context.Context, subject Subject, req wire.TranscriptionRequest) wire.Admission {
 	started, via := p.cfg.Now(), routeOf(ctx)
-	if via.name == RouteRemote {
-		via.claim = req.Extensions[ClaimExtension]
-	}
+	extensions := separateExtensions(ctx, req.Extensions, nil)
+	via.claim = extensions.claim
 	refuse := func(outcome wire.StartOutcome, reason string, host *router.Host, model string) wire.Admission {
 		r := Record{Profile: router.ProfileTranscription, Route: via.name, Rung: via.rung, Account: subject.Account, Program: subject.Program, Model: req.Model, Family: familyOf(req.Model), Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
 		if host != nil {
@@ -164,16 +155,26 @@ func (p *Provider) StartTranscription(ctx context.Context, subject Subject, req 
 	if reason := validateTranscription(req); reason != "" {
 		return refuse(wire.StartOutcomeInvalid, reason, nil, "")
 	}
+	req.Extensions = extensions.vendor
 	host, model, reason := p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileTranscription)
 	if host == nil {
 		return refuse(wire.StartOutcomeNoHost, reason, nil, "")
 	}
 	kind := transcriptionAdapterFor(host)
+	engine := p.transcriptionEngineFor(host)
+	if engine != nil {
+		kind = "engine"
+	}
 	if kind == "" || host.TranscriptionURL() == "" {
 		return refuse(wire.StartOutcomeUnsupportedFeature, "wire:"+host.Wire, host, model)
 	}
 	if kind == "whispercpp" && req.MediaType != "audio/wav" {
 		return refuse(wire.StartOutcomeUnsupportedFeature, "format:"+req.MediaType, host, model)
+	}
+	if engine != nil {
+		if reason := engine.Unsupported(engineTranscriptionRequest(req, model)); reason != "" {
+			return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
+		}
 	}
 	word, err := p.cfg.Decide(ctx, subject, ActionComplete, ResourceHost(host.Name))
 	if err != nil || ctx.Err() != nil {
@@ -183,6 +184,9 @@ func (p *Provider) StartTranscription(ctx context.Context, subject Subject, req 
 	switch word {
 	case "permitted":
 	case "denied", "not_granted", "unknown_action":
+		if word == "not_granted" {
+			p.askInput(ctx, subject, InputAudio)
+		}
 		return refuse(wire.StartOutcomeNotPermitted, "rights:"+word, host, model)
 	default:
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
@@ -224,18 +228,25 @@ func (p *Provider) StartTranscription(ctx context.Context, subject Subject, req 
 		clear(headers)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
+	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileTranscription, model, &subject)
+	if !ok {
+		clear(headers)
+		if capacityRefusal {
+			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
+		}
+		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+	}
+	defer p.releaseModelActivity(activity)
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
 	op.profile, op.route, op.remote = router.ProfileTranscription, via, remote
+	op.inputs = namedInputs(req.AudioDigest)
+	p.bindOperation(ctx, op)
 	runCtx, cancel := context.WithCancel(p.ctx)
 	op.cancel = cancel
-	if outcome := p.admitOperation(op); outcome != wire.StartOutcomeAccepted {
+	if outcome, admitReason := p.admitOperationWithActivity(ctx, op, activity); outcome != wire.StartOutcomeAccepted {
 		cancel()
 		clear(headers)
-		reason := "capacity"
-		if outcome == wire.StartOutcomeUnavailable {
-			reason = "provider:closed"
-		}
-		return refuse(outcome, reason, host, model)
+		return refuse(outcome, admitReason, host, model)
 	}
 	go p.runTranscription(runCtx, op, kind, req, audio, headers)
 	a := wire.Admission{Outcome: wire.StartOutcomeAccepted, Operation: id, Host: host.Name, Model: model}
@@ -258,9 +269,14 @@ func (p *Provider) runTranscription(ctx context.Context, op *operation, kind str
 		op.emit(wire.Delta{Kind: wire.DeltaKindSegment, Segment: &segment}, p.cfg.Now())
 	}
 	var end wire.TranscriptionReply
-	if kind == "remote" {
+	switch kind {
+	case "remote":
 		end = p.runRemoteTranscription(ctx, op, req, emit)
-	} else {
+	case "engine":
+		end = p.runTranscriptionEngine(ctx, op, req, audio, emit)
+	case "native":
+		end = p.runNativeTranscription(ctx, op, req, audio, emit)
+	default:
 		end = runTranscriptionHTTP(ctx, p.cfg.HTTP, op.host, op.model, kind, req, audio, headers, emit)
 	}
 	clear(headers)
@@ -368,8 +384,22 @@ func runTranscriptionHTTP(ctx context.Context, client *http.Client, host *router
 		}
 		return transcriptionFailed(outcome, fmt.Sprintf("upstream:%d", resp.StatusCode))
 	}
+	return decodeTranscript(io.LimitReader(resp.Body, 8<<20), input.Timestamps, emit)
+}
+
+// DecodeTranscript reads an OpenAI-compatible verbose_json transcription
+// answer, as whisper-server and Lemonade return it, and emits its text,
+// segments or words for the requested timestamps under INF-M6's bounds. A
+// managed engine that reads the answer itself uses it, so the HTTP adapter
+// and the engine check one shape the same way.
+func DecodeTranscript(answer []byte, timestamps wire.TimestampMode, emit func(wire.TranscriptSegment)) wire.TranscriptionReply {
+	return decodeTranscript(bytes.NewReader(answer), timestamps, emit)
+}
+
+func decodeTranscript(answer io.Reader, timestamps wire.TimestampMode, emit func(wire.TranscriptSegment)) wire.TranscriptionReply {
+	input := wire.TranscriptionRequest{Timestamps: timestamps}
 	var result openAITranscript
-	if json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&result) != nil {
+	if json.NewDecoder(answer).Decode(&result) != nil {
 		return transcriptionFailed(wire.ReplyOutcomeUnavailable, "upstream:malformed")
 	}
 	durationMS, ok := safeMillis(result.Duration)

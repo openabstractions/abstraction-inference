@@ -1,0 +1,21 @@
+{
+  "scope": "synthetic test data only; no installed provider or model is named",
+  "policy": "creative-default",
+  "model": "fixture/klein-4b",
+  "programs": {
+    "comfy": "ComfyUI\\python.exe",
+    "opencode": "opencode.exe"
+  },
+  "providers": [
+    {
+      "name": "fixture-lemonade",
+      "binding_id": "fixture-declaration-lemonade-1",
+      "phase": "initial"
+    },
+    {
+      "name": "fixture-thenoise",
+      "binding_id": "fixture-declaration-thenoise-1",
+      "phase": "explicit-switch"
+    }
+  ]
+}

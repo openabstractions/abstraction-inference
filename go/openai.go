@@ -101,6 +101,7 @@ func openAIBody(model string, req wire.Request, images map[string][]byte) map[st
 }
 
 type openAIChunk struct {
+	Error   json.RawMessage `json:"error"`
 	Choices []struct {
 		Delta struct {
 			Content   *string `json:"content"`
@@ -150,6 +151,8 @@ func (openAI) run(ctx context.Context, client *http.Client, host *router.Host, m
 	textIndex := int64(-1)
 	calls := map[int]int64{}
 	done, malformed := false, false
+	var upstreamError, overflow bool
+	var window, input int64
 	err := events(resp.Body, func(_, data string) bool {
 		if data == "[DONE]" {
 			done = true
@@ -160,6 +163,11 @@ func (openAI) run(ctx context.Context, client *http.Client, host *router.Host, m
 		dec.UseNumber()
 		if dec.Decode(&chunk) != nil {
 			malformed = true
+			return false
+		}
+		if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
+			upstreamError = true
+			window, input, overflow = contextOverflow([]byte(data))
 			return false
 		}
 		for _, choice := range chunk.Choices {
@@ -198,6 +206,13 @@ func (openAI) run(ctx context.Context, client *http.Client, host *router.Host, m
 	switch {
 	case malformed:
 		return failed(wire.ReplyOutcomeUnavailable, "upstream:malformed")
+	case upstreamError:
+		failedReply := failed(wire.ReplyOutcomeUnavailable, "upstream:error")
+		if overflow {
+			failedReply = overflowed(window, input)
+		}
+		failedReply.Usage, failedReply.Cost = reply.Usage, reply.Cost
+		return failedReply
 	case err != nil || (!done && reply.StopReason == wire.StopReasonNoStop):
 		broken := streamBroken(ctx, err)
 		broken.Usage, broken.Cost = reply.Usage, reply.Cost

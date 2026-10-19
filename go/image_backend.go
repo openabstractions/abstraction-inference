@@ -19,6 +19,7 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	"github.com/openabstractions/abstraction-inference/go/providerhost/sdcpp"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
@@ -34,10 +35,10 @@ type imageOutputBounds struct {
 	total int64
 }
 
-func runImageBackend(ctx context.Context, client *http.Client, host *router.Host, model, kind string, req wire.ImageRequest, inputs map[string]resolvedImageInput, headers map[string]string, bounds imageOutputBounds, progress func(int64, string)) imageBackendReply {
+func runImageBackend(ctx context.Context, client *http.Client, host *router.Host, model, kind string, req wire.ImageRequest, inputs map[string]resolvedImageInput, fields map[string]any, headers map[string]string, bounds imageOutputBounds, progress func(int64, string)) imageBackendReply {
 	switch kind {
 	case "openai":
-		return runOpenAIImage(ctx, client, host, model, req, inputs, headers)
+		return runOpenAIImage(ctx, client, host, model, req, inputs, fields, headers)
 	case "stability":
 		return runStabilityImage(ctx, client, host, model, req, inputs, headers)
 	case "replicate":
@@ -81,6 +82,14 @@ func imageRequest(ctx context.Context, client *http.Client, method, address, con
 	}
 	resp, err := credentialRequestClient(client, headers).Do(req)
 	if err != nil {
+		// A provider's client refusing under the sd.cpp policy (INF-SD1,
+		// INF-SD2, INF-SD3) keeps its typed reason.
+		switch reason := sdcpp.Reason(err); reason {
+		case sdcpp.ReasonEngineDirective, sdcpp.ReasonRequestForm:
+			return nil, imageBackendFailure(wire.ReplyOutcomeInvalid, reason)
+		case sdcpp.ReasonImageSize:
+			return nil, imageBackendFailure(wire.ReplyOutcomeUnsupportedFeature, reason)
+		}
 		return nil, imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:unreachable")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -160,10 +169,16 @@ func decodeBase64Images(resp *http.Response) imageBackendReply {
 	return result
 }
 
-func runOpenAIImage(ctx context.Context, client *http.Client, host *router.Host, model string, req wire.ImageRequest, inputs map[string]resolvedImageInput, headers map[string]string) imageBackendReply {
+// runOpenAIImage sends one generation as JSON or one edit as form data.
+// extra holds the provider's ImageFields, each a string or int64 that the
+// admission check keeps clear of the fields set here.
+func runOpenAIImage(ctx context.Context, client *http.Client, host *router.Host, model string, req wire.ImageRequest, inputs map[string]resolvedImageInput, extra map[string]any, headers map[string]string) imageBackendReply {
 	address := host.ImageURL()
 	if req.Mode == wire.ImageModeGenerate {
 		body := map[string]any{"model": model, "prompt": req.Prompt, "n": req.Count, "size": req.Size, "response_format": "b64_json"}
+		for name, value := range extra {
+			body[name] = value
+		}
 		resp, failed := jsonImageRequest(ctx, client, http.MethodPost, address+"/generations", body, headers)
 		if resp == nil {
 			return failed
@@ -171,6 +186,14 @@ func runOpenAIImage(ctx context.Context, client *http.Client, host *router.Host,
 		return decodeBase64Images(resp)
 	}
 	fields := map[string]string{"model": model, "prompt": req.Prompt, "n": strconv.FormatInt(req.Count, 10), "size": req.Size, "response_format": "b64_json"}
+	for name, value := range extra {
+		switch v := value.(type) {
+		case string:
+			fields[name] = v
+		case int64:
+			fields[name] = strconv.FormatInt(v, 10)
+		}
+	}
 	files := map[string]resolvedImageInput{"image": inputs[req.ImageDigest]}
 	if req.MaskDigest != "" {
 		files["mask"] = inputs[req.MaskDigest]

@@ -3,7 +3,6 @@ package inference
 import (
 	"context"
 	"net/http"
-	"slices"
 	"time"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
@@ -16,7 +15,7 @@ import (
 type nativeChat struct{}
 
 func (nativeChat) unsupported(req wire.Request) string {
-	return unsupportedBy(req, map[string]bool{FeatureTools: true}, map[string]bool{})
+	return unsupportedBy(req, map[string]bool{FeatureTools: true}, nil)
 }
 
 func localGuarantees(in []wire.RequestGuarantee) []wire.RequestGuarantee {
@@ -37,8 +36,7 @@ func (nativeChat) run(ctx context.Context, _ *http.Client, host *router.Host, mo
 	forwarded := req
 	forwarded.Model = model
 	forwarded.Guarantees = localGuarantees(req.Guarantees)
-	forwarded.RequiredExtensions = slices.Clone(req.RequiredExtensions)
-	forwarded.Extensions = nil
+	forwarded.Extensions, forwarded.RequiredExtensions = forwardedNativeExtensions(req.Extensions, req.RequiredExtensions, s.op.subject.Program)
 	admission, err := wire.NewChatClient(transport.WithContext(ctx)).Start(forwarded)
 	if err != nil {
 		return streamBroken(ctx, err)

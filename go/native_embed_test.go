@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
-	"fmt"
 	"math"
 	"os"
 	"os/user"
@@ -22,7 +21,7 @@ import (
 // with a typed reason instead of reaching an address.
 func TestNativeEmbedMissingTransportReadsUnavailable(t *testing.T) {
 	host := &router.Host{Name: "unwired", Wire: router.WireNative}
-	e := nativeEmbed(context.Background(), host, "m", embedRequest("a"))
+	e := nativeEmbed(context.Background(), host, "m", embedRequest("a"), caller)
 	if e.Outcome != wire.EmbedOutcomeUnavailable || e.Reason != "native:transport" {
 		t.Fatalf("missing transport: %+v", e)
 	}
@@ -64,7 +63,7 @@ func nativeEmbedFixture(t *testing.T, name string, embed func(wire.EmbedRequest)
 		t.Fatal(err)
 	}
 	principal := principalOfThisProcess(t)
-	endpoint := listen.Endpoint(fmt.Sprintf("inf-embed-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano()))
+	endpoint := listen.Endpoint("inf-embed-" + name + "-" + fixtureSuffix())
 	l, err := listen.ListenFramed(endpoint, listen.Program)
 	if err != nil {
 		t.Fatal(err)

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math/big"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -70,6 +71,9 @@ func (imageRemoteInventory) Hosts(bool) (routerwire.HostsSnapshot, error) {
 }
 func (imageRemoteInventory) Pick(routerwire.PickRequest) (routerwire.PickResult, error) {
 	return routerwire.PickResult{}, nil
+}
+func (imageRemoteInventory) Offer(routerwire.OfferRequest) (routerwire.OfferSnapshot, error) {
+	return routerwire.OfferSnapshot{}, nil
 }
 
 type countingRemoteImage struct{ starts atomic.Int64 }
@@ -133,5 +137,84 @@ func TestImageLocalDeliveryRequirementRefusesRemoteBeforeStart(t *testing.T) {
 	}
 	if remoteImage.starts.Load() != 0 || decisions.Load() != 0 {
 		t.Fatalf("remote starts=%d rights decisions=%d", remoteImage.starts.Load(), decisions.Load())
+	}
+}
+
+// recordingRemoteImage keeps the request a remote runtime receives.
+type recordingRemoteImage struct{ started chan wire.ImageRequest }
+
+func (r *recordingRemoteImage) Start(req wire.ImageRequest) (wire.Admission, error) {
+	r.started <- req
+	return wire.Admission{Outcome: wire.StartOutcomeUnavailable, Reason: "fixture"}, nil
+}
+func (*recordingRemoteImage) Observe(string, int64, int64, int64, int64) (wire.DeltaPage, error) {
+	return wire.DeltaPage{}, nil
+}
+func (*recordingRemoteImage) Cancel(string) (wire.Cancellation, error) {
+	return wire.Cancellation{}, nil
+}
+
+// [INF-I1] The remote relay forwards the contract mask by digest: the remote
+// runtime's Start carries the same mask digest and media type, and this
+// runtime reads neither input; the receiving runtime checks and converts.
+func TestRemoteRelayForwardsTheContractMaskByDigest(t *testing.T) {
+	serverTLS, clientTLS := remoteLiveTLS(t)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteImage := &recordingRemoteImage{started: make(chan wire.ImageRequest, 1)}
+	handler := func(_ context.Context, _ identityremote.Peer, frame []byte) ([]byte, error) {
+		return wire.ServeEndpoint(frame, "remote-test", "", &routerwire.RouterDispatcher{Handler: imageRemoteInventory{}}, &wire.ImageDispatcher{Handler: remoteImage})
+	}
+	serveCtx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- (identityremote.Server{TLS: serverTLS, Handler: handler, Timeout: 5 * time.Second, MaxFrame: 8 << 20}).Serve(serveCtx, listener)
+	}()
+	t.Cleanup(func() {
+		stop()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Errorf("remote server: %v", err)
+		}
+	})
+	host, err := router.NewRemote("lab", listener.Addr().String(), clientTLS, "remote-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host.Profiles = []string{router.ProfileImage}
+	routes := router.New(host)
+	routes.Survey()
+	provider, err := inference.New(inference.Config{Router: routes, SurveyAge: time.Hour,
+		Decide: func(context.Context, inference.Subject, string, string) (string, error) { return "permitted", nil },
+		Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
+			return nil, "not_permitted"
+		},
+		ResolveContent: func(context.Context, inference.Subject, string, int64) ([]byte, inference.ContentOutcome) {
+			t.Error("the remote relay read an input locally")
+			return nil, inference.ContentUnknown
+		},
+		PrepareContentWrite: func(context.Context, inference.Subject, string, string, int64) (inference.ContentCommitter, inference.ContentOutcome) {
+			return nil, inference.ContentUnavailable
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = provider.Close() })
+	image, mask := "sha256:"+strings.Repeat("a", 64), "sha256:"+strings.Repeat("b", 64)
+	req := wire.ImageRequest{Model: "gpt-image-1", Mode: wire.ImageModeEdit, Prompt: "snow", Size: "1024x1024", Count: 1,
+		ImageDigest: image, ImageMediaType: "image/png", MaskDigest: mask, MaskMediaType: "image/png",
+		Guarantees: []wire.RequestGuarantee{wire.RequestGuaranteeHostedAllowed}, Credential: "remote-key", Extensions: map[string]string{}}
+	got := provider.StartImage(context.Background(), inference.Subject{Account: "account", Program: "/apps/images"}, req)
+	if got.Outcome != wire.StartOutcomeAccepted {
+		t.Fatalf("admission %+v", got)
+	}
+	select {
+	case forwarded := <-remoteImage.started:
+		if forwarded.ImageDigest != image || forwarded.MaskDigest != mask || forwarded.MaskMediaType != "image/png" || forwarded.ImageMediaType != "image/png" {
+			t.Fatalf("forwarded %+v", forwarded)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the remote runtime received no Start")
 	}
 }

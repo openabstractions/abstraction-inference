@@ -4,15 +4,19 @@
 // and returns a Chat over that binding. stream() is an async generator of
 // typed deltas; leaving a for-await loop early cancels the operation. start()
 // is never retried.
-import {ChatClient, DeltaKind, PageOutcome, ReplyOutcome, Role, StartOutcome, StopReason} from './js/abstraction/inference/api/index.mjs';
+import {ChatClient, ChatV2Client, DeltaKind, PageOutcome, PreloaderClient, ReplyOutcome, Role, StartOutcome, StopReason} from './js/abstraction/inference/api/index.mjs';
 
 export {
-  CancelOutcome, ChatClient, DeltaKind, DispatchError, PageOutcome, PartKind, Refusal, ReplyOutcome, Role, ServiceError,
+  CancelOutcome, ChatClient, ChatV2Client, DeltaKind, DispatchError, ImageClient, ImageV2Client, ImageMode, PageOutcome, PartKind, PreloadOutcome,
+  PreloaderClient, Refusal, ReplyOutcome, Role,
+  SelectionOperatorV2Client, ServiceError,
   StartOutcome, StopReason, credentialConsumers, decode, encode, features, newMessage, newOptions, newPart, newRequest,
   newTemperature, newTool, RequestGuarantee, resourceActions,
 } from './js/abstraction/inference/api/index.mjs';
 
 export const chatContract = 'abstraction.inference/chat@1';
+export const chatV2Contract = 'abstraction.inference/chat@2';
+export const preloadContract = 'abstraction.inference/preload@1';
 // Page bounds stream() uses for each observe.
 export const pageDeltas = 256n;
 export const pageBytes = 65536n;
@@ -74,13 +78,14 @@ function refused(admission) {
 /** Model calls performed by the runtime for this program. */
 export class Chat {
   #binding;
-  constructor(binding) { this.#binding = binding; }
+  #Client;
+  constructor(binding, Client = ChatClient) { this.#binding = binding; this.#Client = Client; }
   #client(waitMs = 0n, cancellation = this.#binding.waiting?.cancellation ?? null) {
     const binding = this.#binding.withWaiting({
       deadline: performance.now() + callMarginMs + Number(waitMs),
       cancellation,
     });
-    return new ChatClient(binding);
+    return new this.#Client(binding);
   }
   async start(request) {
     const admission = await this.#client().start(request);
@@ -105,38 +110,77 @@ export class Chat {
   }
   async cancel(operation) { return this.#client().cancel(operation); }
 
-  /**
-   * Deltas until the end delta, which carries the reply. A start refusal is one
-   * end delta carrying that outcome. Leaving the loop early, or an exception,
-   * cancels the operation. A gap or an observe refusal throws ObserveRefused.
-   */
-  async *stream(request) {
+  /** Start once and return its admission beside the managed delta stream. */
+  async startStream(request) {
     const admission = await this.start(request);
-    if (admission.outcome !== StartOutcome.Accepted) {
-      yield {sequence: 0n, kind: DeltaKind.End, index: 0n, part: null, usage: null, end: refused(admission)};
-      return;
+    const accepted = admission.outcome === StartOutcome.Accepted;
+    let ended = !accepted;
+    let cancelPromise;
+    const cancellation = this.#binding.waiting?.cancellation;
+    let listening = false;
+    const removeAbortListener = () => {
+      if (listening) cancellation.removeEventListener('abort', onAbort);
+      listening = false;
+    };
+    const cancel = () => {
+      if (!accepted || ended) {
+        removeAbortListener();
+        return Promise.resolve();
+      }
+      if (!cancelPromise) {
+        removeAbortListener();
+        cancelPromise = this.#client(0n, null).cancel(admission.operation);
+      }
+      return cancelPromise;
+    };
+    const onAbort = () => { void cancel().catch(() => undefined); };
+    if (accepted && typeof cancellation?.addEventListener === 'function') {
+      cancellation.addEventListener('abort', onAbort, {once: true});
+      listening = true;
+      if (cancellation.aborted) onAbort();
     }
-    let ended = false;
-    try {
-      let cursor = 0n;
-      for (;;) {
-        const page = await this.observe(admission.operation, cursor, pageDeltas, pageBytes, pageWaitMs);
-        if (page.outcome !== PageOutcome.Page) throw new ObserveRefused(page.outcome);
-        for (const delta of page.deltas) {
-          if (delta.kind === DeltaKind.End) ended = true;
-          yield delta;
+    const chat = this;
+    const stream = (async function* () {
+      if (!accepted) {
+        yield {sequence: 0n, kind: DeltaKind.End, index: 0n, part: null, usage: null, end: refused(admission)};
+        return;
+      }
+      try {
+        let cursor = 0n;
+        for (;;) {
+          const page = await chat.observe(admission.operation, cursor, pageDeltas, pageBytes, pageWaitMs);
+          if (page.outcome !== PageOutcome.Page) throw new ObserveRefused(page.outcome);
+          for (const delta of page.deltas) {
+            if (delta.kind === DeltaKind.End) {
+              ended = true;
+              removeAbortListener();
+            }
+            yield delta;
+          }
+          cursor = page.next;
+          if (page.atEnd) {
+            ended = true;
+            removeAbortListener();
+            return;
+          }
         }
-        cursor = page.next;
-        if (page.atEnd) { ended = true; return; }
+      } finally {
+        if (!ended) {
+          // Explicit cancel also covers an accepted operation whose stream is
+          // never consumed and therefore never enters this generator.
+          await cancel().catch(() => undefined);
+        } else {
+          removeAbortListener();
+        }
       }
-    } finally {
-      if (!ended) {
-        // Cleanup gets a fresh bounded wait after caller cancellation, like the
-        // Go client's context.WithoutCancel cleanup. If it still cannot be sent,
-        // the service's idle bound retires the operation.
-        await this.#client(0n, null).cancel(admission.operation).catch(() => undefined);
-      }
-    }
+    })();
+    return {admission, stream, cancel};
+  }
+
+  /** Deltas until the end delta; leaving early cancels the accepted operation. */
+  async *stream(request) {
+    const opened = await this.startStream(request);
+    yield* opened.stream;
   }
 
   /** Start request, observe it to its end and fold the deltas into the reply. */
@@ -152,4 +196,16 @@ export class Chat {
 /** Resolve chat@1 through a facade Machine; resolution grants nothing. */
 export async function resolveInference(machine, {guarantees = [], scope = 'any'} = {}) {
   return new Chat(await machine.resolveService(chatContract, {guarantees, scope}));
+}
+
+/** Resolve chat@2 explicitly. A missing service remains a resolution error; there is no chat@1 retry. */
+export async function resolveInferenceV2(machine, {scope = 'any'} = {}) {
+  return new Chat(await machine.resolveService(chatV2Contract, {scope}), ChatV2Client);
+}
+
+/** Resolve preload@1: a client whose preload(request) has the server a chat
+ * request would reach evaluate the request's messages and tools ahead of the
+ * caller's next request. */
+export async function resolvePreload(machine, {guarantees = [], scope = 'any'} = {}) {
+  return new PreloaderClient(await machine.resolveService(preloadContract, {guarantees, scope}));
 }

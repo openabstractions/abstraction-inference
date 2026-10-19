@@ -18,6 +18,9 @@ type replicateJobBackend struct {
 	maxEach, maxTotal int64
 }
 
+// Profile selects Replicate hosts as image hosts for both job profiles.
+func (replicateJobBackend) Profile(jobwire.Request) string { return router.ProfileImage }
+
 func (b replicateJobBackend) Supports(host *router.Host, request jobwire.Request) bool {
 	return host != nil && host.Wire == router.WireReplicatePredictions && request.Image.Mode == jobwire.ModeGenerate
 }
@@ -25,12 +28,13 @@ func (b replicateJobBackend) Supports(host *router.Host, request jobwire.Request
 // Replicate has no documented caller idempotency key or lookup by caller key.
 // A restart after submit began without a recorded prediction id therefore stays
 // uncertain and is never replayed.
-func (replicateJobBackend) Reconcile(context.Context, *router.Host, string, jobwire.Request, map[string]string) (durableJobStatus, error) {
+func (replicateJobBackend) Reconcile(context.Context, durableJobSubmission) (durableJobStatus, error) {
 	return durableJobStatus{State: durableJobUnknown}, nil
 }
 
-func (b replicateJobBackend) Submit(ctx context.Context, host *router.Host, _ string, model string, request jobwire.Request, headers map[string]string) (durableJobStatus, error) {
-	parts := strings.Split(model, "/")
+func (b replicateJobBackend) Submit(ctx context.Context, submission durableJobSubmission) (durableJobStatus, error) {
+	host, request, headers := submission.host, submission.request, submission.headers
+	parts := strings.Split(submission.model, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return durableJobStatus{}, errors.New("invalid replicate model")
 	}
@@ -99,7 +103,7 @@ func (b replicateJobBackend) status(ctx context.Context, prediction replicatePre
 			if !ok {
 				return durableJobStatus{}, errors.New("invalid upstream output")
 			}
-			if request.Profile == jobwire.ProfileVideo && output.mediaType != "video/mp4" || request.Profile == jobwire.ProfileImageBatch && !generatedInputMedia(output.mediaType) {
+			if !generatedJobMedia(request.Profile, output.mediaType) {
 				return durableJobStatus{}, errors.New("invalid upstream output media")
 			}
 			result.Outputs = append(result.Outputs, durableJobOutput{Data: output.data, MediaType: output.mediaType})

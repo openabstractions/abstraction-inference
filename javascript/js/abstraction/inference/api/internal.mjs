@@ -247,6 +247,12 @@ export const StartOutcome = Object.freeze({
   Exhausted: "exhausted",
 });
 
+export const SelectionReason = Object.freeze({
+  ExplicitModel: "explicit_model",
+  Preferred: "preferred",
+  PreferredRouteUnavailable: "preferred_route_unavailable",
+});
+
 export const PageOutcome = Object.freeze({
   Page: "page",
   Gap: "gap",
@@ -263,6 +269,19 @@ export const CancelOutcome = Object.freeze({
   Invalid: "invalid",
   Forbidden: "forbidden",
   Unavailable: "unavailable",
+});
+
+export const PreloadOutcome = Object.freeze({
+  Evaluated: "evaluated",
+  Loaded: "loaded",
+  Busy: "busy",
+  Refused: "refused",
+  NotPermitted: "not_permitted",
+  UnsupportedFeature: "unsupported_feature",
+  NoHost: "no_host",
+  Unavailable: "unavailable",
+  Invalid: "invalid",
+  Forbidden: "forbidden",
 });
 
 export const EmbedOutcome = Object.freeze({
@@ -319,6 +338,18 @@ export const ImageMode = Object.freeze({
   Edit: "edit",
 });
 
+export const VideoState = Object.freeze({
+  Queued: "queued",
+  Generating: "generating",
+  Completed: "completed",
+  Failed: "failed",
+  Cancelled: "cancelled",
+  Unknown: "unknown",
+  Invalid: "invalid",
+  Forbidden: "forbidden",
+  Unavailable: "unavailable",
+});
+
 export const ListOutcome = Object.freeze({
   Page: "page",
   Invalid: "invalid",
@@ -356,6 +387,19 @@ export const AuditOutcome = Object.freeze({
   Unavailable: "unavailable",
 });
 
+export const CandidatePlacement = Object.freeze({
+  Local: "local",
+  Hosted: "hosted",
+});
+
+export const SelectionReadOutcome = Object.freeze({
+  Found: "found",
+  Unknown: "unknown",
+  Invalid: "invalid",
+  Forbidden: "forbidden",
+  Unavailable: "unavailable",
+});
+
 export const ServiceErrorCode = Object.freeze({
   HandlerError: "handler_error",
   InvalidResult: "invalid_result",
@@ -367,7 +411,7 @@ export const ServiceErrorCode = Object.freeze({
 
 export const features = ["abstraction.inference/tools@1", "abstraction.inference/json-schema@1", "abstraction.inference/vision@1"];
 
-export const resourceActions = ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read"];
+export const resourceActions = ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read", "abstraction.inference/selection.manage", "abstraction.inference/selection.manage_for"];
 
 export const localKeyKinds = ["openabstractions/local-key@1"];
 
@@ -603,6 +647,109 @@ function writeRequest(out, v, depth) {
     out.ascii(": ");
     esc(out, v.credential);
   }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeTarget(out, v, depth) {
+  out.byte(0x7b);
+  let first = true;
+  if (v.model !== "") {
+    first = false;
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "model");
+    out.ascii(": ");
+    esc(out, v.model);
+  }
+  if (v.selectionPolicy !== "") {
+    if (!first) out.byte(0x2c);
+    first = false;
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "selection_policy");
+    out.ascii(": ");
+    esc(out, v.selectionPolicy);
+  }
+  if (!first) { out.byte(0x0a); pad(out, depth); }
+  out.byte(0x7d);
+}
+
+function writeRequestContent(out, v, depth) {
+    for (const item of v.guarantees) {
+        if (typeof item !== "string") throw new Refusal("wrong_type",0);
+    }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "messages");
+  out.ascii(": ");
+  writeList(out, v.messages, depth + 1, writeMessage);
+  if (v.tools.length !== 0) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "tools");
+    out.ascii(": ");
+    writeList(out, v.tools, depth + 1, writeTool);
+  }
+  if (v.options !== undefined && v.options !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "options");
+    out.ascii(": ");
+    writeOptions(out, v.options, depth + 1);
+  }
+  if (Object.keys(v.extensions).length !== 0) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "extensions");
+    out.ascii(": ");
+    strmap(out, v.extensions, depth + 1);
+  }
+  if (v.requiredExtensions.length !== 0) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "required_extensions");
+    out.ascii(": ");
+    strs(out, v.requiredExtensions, depth + 1);
+  }
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "guarantees");
+  out.ascii(": ");
+  strs(out, v.guarantees, depth + 1);
+  if (v.credential !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "credential");
+    out.ascii(": ");
+    esc(out, v.credential);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeRequestV2(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "target");
+  out.ascii(": ");
+  writeTarget(out, v.target, depth + 1);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "content");
+  out.ascii(": ");
+  writeRequestContent(out, v.content, depth + 1);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -890,6 +1037,82 @@ function writeAdmission(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeAdmissionV2(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "accepted" && v.outcome !== "not_permitted" && v.outcome !== "budget_exceeded" && v.outcome !== "unsupported_feature" && v.outcome !== "no_host" && v.outcome !== "unavailable" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "exhausted") { throw new Refusal("bad_enum",0); }
+    if (v.selectionReason !== null) {
+    if (typeof v.selectionReason !== "string") throw new Refusal("wrong_type",0);
+    if (v.selectionReason !== "explicit_model" && v.selectionReason !== "preferred" && v.selectionReason !== "preferred_route_unavailable") { throw new Refusal("bad_enum",0); }
+    }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "reason");
+  out.ascii(": ");
+  esc(out, v.reason);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "operation");
+  out.ascii(": ");
+  esc(out, v.operation);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "host");
+  out.ascii(": ");
+  esc(out, v.host);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "model");
+  out.ascii(": ");
+  esc(out, v.model);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "retention_ms");
+  out.ascii(": ");
+  num(out, v.retentionMs);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "idle_ms");
+  out.ascii(": ");
+  num(out, v.idleMs);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "retained_deltas");
+  out.ascii(": ");
+  num(out, v.retainedDeltas);
+  if (v.preferredModel !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "preferred_model");
+    out.ascii(": ");
+    esc(out, v.preferredModel);
+  }
+  if (v.selectionReason !== undefined && v.selectionReason !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "selection_reason");
+    out.ascii(": ");
+    esc(out, v.selectionReason);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeDeltaPage(out, v, depth) {
     if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
     if (v.outcome !== "page" && v.outcome !== "gap" && v.outcome !== "unknown" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
@@ -943,6 +1166,44 @@ function writeCancellation(out, v, depth) {
     out.ascii(": ");
     esc(out, v.replyOutcome);
   }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writePreloadReply(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "evaluated" && v.outcome !== "loaded" && v.outcome !== "busy" && v.outcome !== "refused" && v.outcome !== "not_permitted" && v.outcome !== "unsupported_feature" && v.outcome !== "no_host" && v.outcome !== "unavailable" && v.outcome !== "invalid" && v.outcome !== "forbidden") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "reason");
+  out.ascii(": ");
+  esc(out, v.reason);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "host");
+  out.ascii(": ");
+  esc(out, v.host);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "model");
+  out.ascii(": ");
+  esc(out, v.model);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "tokens");
+  out.ascii(": ");
+  num(out, v.tokens);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -1629,6 +1890,121 @@ function writeImageRequest(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeImageRequestContent(out, v, depth) {
+    if (typeof v.mode !== "string") throw new Refusal("wrong_type",0);
+    if (v.mode !== "generate" && v.mode !== "edit") { throw new Refusal("bad_enum",0); }
+    for (const item of v.guarantees) {
+        if (typeof item !== "string") throw new Refusal("wrong_type",0);
+    }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "mode");
+  out.ascii(": ");
+  esc(out, v.mode);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "prompt");
+  out.ascii(": ");
+  esc(out, v.prompt);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "size");
+  out.ascii(": ");
+  esc(out, v.size);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "count");
+  out.ascii(": ");
+  num(out, v.count);
+  if (v.imageDigest !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "image_digest");
+    out.ascii(": ");
+    esc(out, v.imageDigest);
+  }
+  if (v.imageMediaType !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "image_media_type");
+    out.ascii(": ");
+    esc(out, v.imageMediaType);
+  }
+  if (v.maskDigest !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "mask_digest");
+    out.ascii(": ");
+    esc(out, v.maskDigest);
+  }
+  if (v.maskMediaType !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "mask_media_type");
+    out.ascii(": ");
+    esc(out, v.maskMediaType);
+  }
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "guarantees");
+  out.ascii(": ");
+  strs(out, v.guarantees, depth + 1);
+  if (v.credential !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "credential");
+    out.ascii(": ");
+    esc(out, v.credential);
+  }
+  if (v.requiredExtensions.length !== 0) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "required_extensions");
+    out.ascii(": ");
+    strs(out, v.requiredExtensions, depth + 1);
+  }
+  if (Object.keys(v.extensions).length !== 0) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "extensions");
+    out.ascii(": ");
+    strmap(out, v.extensions, depth + 1);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeImageRequestV2(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "target");
+  out.ascii(": ");
+  writeTarget(out, v.target, depth + 1);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "content");
+  out.ascii(": ");
+  writeImageRequestContent(out, v.content, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeImageProgress(out, v, depth) {
   out.byte(0x7b);
   let first = true;
@@ -1721,6 +2097,176 @@ function writeImageReply(out, v, depth) {
     esc(out, "cost");
     out.ascii(": ");
     writeCost(out, v.cost, depth + 1);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeVideoRequest(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "model");
+  out.ascii(": ");
+  esc(out, v.model);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "prompt");
+  out.ascii(": ");
+  esc(out, v.prompt);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "size");
+  out.ascii(": ");
+  esc(out, v.size);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "duration_ms");
+  out.ascii(": ");
+  num(out, v.durationMs);
+  if (v.fps !== 0n) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "fps");
+    out.ascii(": ");
+    num(out, v.fps);
+  }
+  if (v.seed !== 0n) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "seed");
+    out.ascii(": ");
+    num(out, v.seed);
+  }
+  if (v.imageDigest !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "image_digest");
+    out.ascii(": ");
+    esc(out, v.imageDigest);
+  }
+  if (v.imageMediaType !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "image_media_type");
+    out.ascii(": ");
+    esc(out, v.imageMediaType);
+  }
+  if (v.requiredExtensions.length !== 0) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "required_extensions");
+    out.ascii(": ");
+    strs(out, v.requiredExtensions, depth + 1);
+  }
+  if (Object.keys(v.extensions).length !== 0) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "extensions");
+    out.ascii(": ");
+    strmap(out, v.extensions, depth + 1);
+  }
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "request_id");
+  out.ascii(": ");
+  esc(out, v.requestId);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeVideoAdmission(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "accepted" && v.outcome !== "not_permitted" && v.outcome !== "budget_exceeded" && v.outcome !== "unsupported_feature" && v.outcome !== "no_host" && v.outcome !== "unavailable" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "exhausted") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "reason");
+  out.ascii(": ");
+  esc(out, v.reason);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "operation");
+  out.ascii(": ");
+  esc(out, v.operation);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "retention_ms");
+  out.ascii(": ");
+  num(out, v.retentionMs);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeVideoObservation(out, v, depth) {
+    if (typeof v.status !== "string") throw new Refusal("wrong_type",0);
+    if (v.status !== "queued" && v.status !== "generating" && v.status !== "completed" && v.status !== "failed" && v.status !== "cancelled" && v.status !== "unknown" && v.status !== "invalid" && v.status !== "forbidden" && v.status !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "status");
+  out.ascii(": ");
+  esc(out, v.status);
+  if (v.step !== 0n) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "step");
+    out.ascii(": ");
+    num(out, v.step);
+  }
+  if (v.steps !== 0n) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "steps");
+    out.ascii(": ");
+    num(out, v.steps);
+  }
+  if (v.queuePosition !== 0n) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "queue_position");
+    out.ascii(": ");
+    num(out, v.queuePosition);
+  }
+  if (v.reason !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "reason");
+    out.ascii(": ");
+    esc(out, v.reason);
+  }
+  if (v.delivery !== undefined && v.delivery !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "delivery");
+    out.ascii(": ");
+    writeDelivery(out, v.delivery, depth + 1);
   }
   out.byte(0x0a);
   pad(out, depth);
@@ -2359,6 +2905,114 @@ function writeGatewayChange(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeSelectionChange(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "applied" && v.outcome !== "conflict" && v.outcome !== "unknown" && v.outcome !== "invalid" && v.outcome !== "no_secure_store" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "revision");
+  out.ascii(": ");
+  esc(out, v.revision);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "reason");
+  out.ascii(": ");
+  esc(out, v.reason);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeSelectionCandidateV2(out, v, depth) {
+    if (typeof v.placement !== "string") throw new Refusal("wrong_type",0);
+    if (v.placement !== "local" && v.placement !== "hosted") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "model");
+  out.ascii(": ");
+  esc(out, v.model);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "placement");
+  out.ascii(": ");
+  esc(out, v.placement);
+  if (v.credential !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "credential");
+    out.ascii(": ");
+    esc(out, v.credential);
+  }
+  if (v.provider !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "provider");
+    out.ascii(": ");
+    esc(out, v.provider);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeSelectionPolicyV2(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "name");
+  out.ascii(": ");
+  esc(out, v.name);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "candidates");
+  out.ascii(": ");
+  writeList(out, v.candidates, depth + 1, writeSelectionCandidateV2);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeSelectionReadV2(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "found" && v.outcome !== "unknown" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "revision");
+  out.ascii(": ");
+  esc(out, v.revision);
+  if (v.policy !== undefined && v.policy !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "policy");
+    out.ascii(": ");
+    writeSelectionPolicyV2(out, v.policy, depth + 1);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeOAChatStartArguments(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
@@ -2414,6 +3068,78 @@ function writeOAChatCancelArguments(out, v, depth) {
   esc(out, "operation");
   out.ascii(": ");
   esc(out, v.operation);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAChatV2StartArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "request");
+  out.ascii(": ");
+  writeRequestV2(out, v.request, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAChatV2ObserveArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "operation");
+  out.ascii(": ");
+  esc(out, v.operation);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "cursor");
+  out.ascii(": ");
+  num(out, v.cursor);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "max_deltas");
+  out.ascii(": ");
+  num(out, v.maxDeltas);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "max_bytes");
+  out.ascii(": ");
+  num(out, v.maxBytes);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "wait_ms");
+  out.ascii(": ");
+  num(out, v.waitMs);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAChatV2CancelArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "operation");
+  out.ascii(": ");
+  esc(out, v.operation);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAPreloaderPreloadArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "request");
+  out.ascii(": ");
+  writeRequest(out, v.request, depth + 1);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -2707,6 +3433,102 @@ function writeOAImageCancelArguments(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeOAImageV2StartArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "request");
+  out.ascii(": ");
+  writeImageRequestV2(out, v.request, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAImageV2ObserveArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "operation");
+  out.ascii(": ");
+  esc(out, v.operation);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "cursor");
+  out.ascii(": ");
+  num(out, v.cursor);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "max_deltas");
+  out.ascii(": ");
+  num(out, v.maxDeltas);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "max_bytes");
+  out.ascii(": ");
+  num(out, v.maxBytes);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "wait_ms");
+  out.ascii(": ");
+  num(out, v.waitMs);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAImageV2CancelArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "operation");
+  out.ascii(": ");
+  esc(out, v.operation);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAVideoStartArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "request");
+  out.ascii(": ");
+  writeVideoRequest(out, v.request, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAVideoObserveArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "operation");
+  out.ascii(": ");
+  esc(out, v.operation);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAVideoCancelArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "operation");
+  out.ascii(": ");
+  esc(out, v.operation);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeOAOperatorHostsArguments(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x7d);
@@ -2830,6 +3652,72 @@ function writeOAOperatorSetGatewayArguments(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeOASelectionOperatorV2ReadArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "target_program");
+  out.ascii(": ");
+  esc(out, v.targetProgram);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "name");
+  out.ascii(": ");
+  esc(out, v.name);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOASelectionOperatorV2PutArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "target_program");
+  out.ascii(": ");
+  esc(out, v.targetProgram);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "expected_revision");
+  out.ascii(": ");
+  esc(out, v.expectedRevision);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "policy");
+  out.ascii(": ");
+  writeSelectionPolicyV2(out, v.policy, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOASelectionOperatorV2DeletePolicyArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "target_program");
+  out.ascii(": ");
+  esc(out, v.targetProgram);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "expected_revision");
+  out.ascii(": ");
+  esc(out, v.expectedRevision);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "name");
+  out.ascii(": ");
+  esc(out, v.name);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeOAServiceFrame(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
@@ -2945,6 +3833,54 @@ function writeOAChatCancelResult(out, v, depth) {
   esc(out, "value");
   out.ascii(": ");
   writeCancellation(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAChatV2StartResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeAdmissionV2(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAChatV2ObserveResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeDeltaPage(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAChatV2CancelResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeCancellation(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAPreloaderPreloadResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writePreloadReply(out, v.value, depth + 1);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -3130,6 +4066,78 @@ function writeOAImageCancelResult(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeOAImageV2StartResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeAdmissionV2(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAImageV2ObserveResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeDeltaPage(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAImageV2CancelResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeCancellation(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAVideoStartResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeVideoAdmission(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAVideoObserveResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeVideoObservation(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAVideoCancelResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeCancellation(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeOAOperatorHostsResult(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
@@ -3233,6 +4241,42 @@ function writeOAOperatorSetGatewayResult(out, v, depth) {
   esc(out, "value");
   out.ascii(": ");
   writeGatewayChange(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOASelectionOperatorV2ReadResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeSelectionReadV2(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOASelectionOperatorV2PutResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeSelectionChange(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOASelectionOperatorV2DeletePolicyResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeSelectionChange(out, v.value, depth + 1);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -3620,6 +4664,32 @@ export function newRequest() {
   return { model: "", messages: [], tools: [], options: null, extensions: {}, requiredExtensions: [], guarantees: [], credential: "" };
 }
 
+// Exactly one nonempty member is required. model makes one explicit model
+// request. selection_policy names a policy scoped to the bound account and
+// observed program. The stored policy supplies each candidate's placement and
+// hosted credential as the caller's explicit preference, subject to live rights
+// and budget checks; it grants no authority.
+export function newTarget() {
+  return { model: "", selectionPolicy: "" };
+}
+
+// The chat@1 Request fields except model, with identical message, tool, option
+// and extension validation and limits. An explicit model target uses guarantees
+// and credential exactly as chat@1 does. A named policy target requires an
+// empty guarantees list and empty credential; its stored candidates supply
+// those choices for each attempt, and the service checks live rights and budget
+// independently. Nonempty inline values in policy mode are invalid.
+export function newRequestContent() {
+  return { messages: [], tools: [], options: null, extensions: {}, requiredExtensions: [], guarantees: [], credential: "" };
+}
+
+// One chat call. Target is exclusive and nonempty. A named policy is resolved
+// by the service for the proven caller before host selection; the caller leaves
+// content.guarantees empty and content.credential empty in policy mode.
+export function newRequestV2() {
+  return { target: newTarget(), content: newRequestContent() };
+}
+
 // Token counts the host reported: input, output, and cached input tokens
 // counted within input. Zero where the host reported none.
 export function newUsage() {
@@ -3635,16 +4705,18 @@ export function newCost() {
 
 // The result of one operation. completed carries the assistant message and
 // stop_reason other than no_stop; every other outcome carries no_stop. refused
-// means the host answered and refused the request (reason upstream:<status>).
-// not_permitted carries reason rights:<word> for the complete decision on
-// host:<name>, or credential:<outcome>:<name> for an applier refusal.
-// budget_exceeded carries ceiling:<unit>:<credential>. unsupported_feature
-// carries feature:<name> or extension:<key>. no_host carries router:<verdict>.
-// cancelled carries cancel, idle or caller. unavailable carries
-// rights:unavailable, credential:unavailable:<name> or upstream:<detail>; parts
-// already delivered stay delivered. host and model name what served it, and are
-// empty when nothing did. In the terminal delta message.parts is empty; the
-// parts arrived in the deltas before it.
+// means the host answered and refused the request: reason upstream:<status>, or
+// upstream:context_length_exceeded:<window>:<input> when the request exceeds
+// the context window, each number in tokens and 0 when unknown. not_permitted
+// carries reason rights:<word> for the complete decision on host:<name>, or
+// credential:<outcome>:<name> for an applier refusal. budget_exceeded carries
+// ceiling:<unit>:<credential>. unsupported_feature carries feature:<name> or
+// extension:<key>. no_host carries router:<verdict>. cancelled carries cancel,
+// idle or caller. unavailable carries rights:unavailable,
+// credential:unavailable:<name> or upstream:<detail>; parts already delivered
+// stay delivered. host and model name what served it, and are empty when
+// nothing did. In the terminal delta message.parts is empty; the parts arrived
+// in the deltas before it.
 export function newReply() {
   return { outcome: "", reason: "", message: newMessage(), stopReason: "", usage: newUsage(), host: "", model: "", cost: null };
 }
@@ -3670,6 +4742,18 @@ export function newAdmission() {
   return { outcome: "", reason: "", operation: "", host: "", model: "", retentionMs: 0n, idleMs: 0n, retainedDeltas: 0n };
 }
 
+// The chat@2 admission. On accepted, host and model are the actual route,
+// preferred_model is the first policy candidate or explicit model, and
+// selection_reason says why that route was selected.
+// preferred_route_unavailable requires fresh definitive pre-dispatch listing
+// unavailability and makes no claim that every host is offline. Every refusal
+// has empty operation, host and model, zero bounds, and omits both selection
+// fields. RequestContent optional tools has the same absent-or-empty meaning as
+// chat@1 Request.tools.
+export function newAdmissionV2() {
+  return { outcome: "", reason: "", operation: "", host: "", model: "", retentionMs: 0n, idleMs: 0n, retainedDeltas: 0n, preferredModel: "", selectionReason: null };
+}
+
 // page carries 0..max_deltas deltas from sequence cursor in order, within
 // max_bytes of their compact JSON encoding except that a first delta larger
 // than max_bytes is returned alone. next is the sequence after the last delta
@@ -3690,6 +4774,21 @@ export function newDeltaPage() {
 // reply_outcome; other outcomes carry none.
 export function newCancellation() {
   return { outcome: "", replyOutcome: null };
+}
+
+// evaluated means the model is loaded and its server evaluated tokens tokens of
+// the prefix. loaded means the model is loaded and the server evaluated
+// nothing, because the prefix was shorter than the provider's minimum. busy
+// means nothing was evaluated because other work comes first: the model's
+// server has served a request since it loaded (engine:used), another preload
+// runs there (preload:running), another request took the server during the
+// evaluation, or the model is not loaded and loading it would ask another
+// holder to yield (resources:held). refused carries the server's refusal of the
+// prefix in reason. Every other outcome carries the reason words of chat@1
+// Admission. host and model are the route on evaluated, loaded and busy, and
+// empty otherwise; tokens is zero except on evaluated.
+export function newPreloadReply() {
+  return { outcome: "", reason: "", host: "", model: "", tokens: 0n };
 }
 
 // model is a model family or alias as in Request. inputs is 1..64 texts of
@@ -3824,6 +4923,21 @@ export function newImageRequest() {
   return { model: "", mode: "", prompt: "", size: "", count: 0n, imageDigest: "", imageMediaType: "", maskDigest: "", maskMediaType: "", guarantees: [], credential: "", requiredExtensions: [], extensions: {} };
 }
 
+// The image@1 ImageRequest fields except model, with identical validation and
+// bounds. An explicit model target uses guarantees and credential as image@1
+// does. A named policy target requires empty guarantees and credential; each
+// stored candidate supplies these choices under live admission checks.
+export function newImageRequestContent() {
+  return { mode: "", prompt: "", size: "", count: 0n, imageDigest: "", imageMediaType: "", maskDigest: "", maskMediaType: "", guarantees: [], credential: "", requiredExtensions: [], extensions: {} };
+}
+
+// One image call with exactly one explicit model or named policy. The policy is
+// scoped to the proven account and observed program. A policy target cannot
+// override candidate placement or credential inline.
+export function newImageRequestV2() {
+  return { target: newTarget(), content: newImageRequestContent() };
+}
+
 // One bounded progress update. percent, when nonzero, is 1..100; zero means the
 // backend reported no numeric progress. message is at most 4096 UTF-8 bytes and
 // contains no submitted content or credential material.
@@ -3844,6 +4958,54 @@ export function newImageResult() {
 // name what served the call.
 export function newImageReply() {
   return { outcome: "", reason: "", deliveries: [], images: 0n, usage: newUsage(), host: "", model: "", cost: null };
+}
+
+// One video generation forwarded by a designated runtime. request_id is 1..128
+// bytes the runtime chooses for one piece of work, its job operation id; a
+// Start repeating a request_id the provider holds names that same operation
+// (INF-G7). model is a name the provider lists. prompt is 1..32768 UTF-8 bytes.
+// size is auto or WIDTHxHEIGHT with each side 64..4096 and a multiple of 8.
+// duration_ms is 1..600000. fps is 1..120, and zero selects the model preset's
+// rate. seed is 1..2^53, and zero lets the provider choose. image_digest and
+// image_media_type name one optional PNG, JPEG or WebP initial frame the
+// runtime stages in the provider's content store before Start; a provider
+// refuses a Start naming a digest its store does not hold as invalid with
+// reason content:unknown and never generates that clip from the prompt alone.
+// Steps, guidance scale, flow shift, scheduler and decoder belong to the
+// provider's preset for the model (INF-G8) and have no field here. extensions
+// carries openabstractions/claimed-program and the caller's vendor controls
+// with abstraction.inference/image@1 semantics: a provider ignores an unknown
+// key unless required_extensions names it, refuses a required key it does not
+// support as unsupported_feature with reason extension:<key>, and never applies
+// a key that would override its preset.
+export function newVideoRequest() {
+  return { model: "", prompt: "", size: "", durationMs: 0n, fps: 0n, seed: 0n, imageDigest: "", imageMediaType: "", requiredExtensions: [], extensions: {}, requestId: "" };
+}
+
+// accepted carries an operation id of 1..128 bytes and retention_ms, how long
+// the operation stays observable after it ends. An accepted operation runs
+// until it ends or Cancel stops it; it is never cancelled for want of Observe.
+// Every refusal carries the Reply reason words, an empty operation and zero
+// retention_ms.
+export function newVideoAdmission() {
+  return { outcome: "", reason: "", operation: "", retentionMs: 0n };
+}
+
+// The provider's current view of one operation. queued may carry
+// queue_position, 1 for the next to run, or zero when the engine reports none.
+// generating may carry step of steps, 1 <= step <= steps; a provider that knows
+// only a fraction reports it in its own steps, such as percent of 100.
+// completed carries exactly one local delivery: a canonical sha256 digest in
+// the provider's content store, media_type video/mp4, video/webm or video/avi
+// (video/x-msvideo is read as video/avi), and its size; the container carries
+// any audio track. failed carries reason, at most 4096 UTF-8 bytes with no
+// submitted content or credential material. unknown means no operation of that
+// id is visible to the caller: never started by it, retired after retention, or
+// lost when the provider or its engine restarted. invalid, forbidden and
+// unavailable are refusals of this call. Only completed carries a delivery;
+// only queued and generating carry progress.
+export function newVideoObservation() {
+  return { status: "", step: 0n, steps: 0n, queuePosition: 0n, reason: "", delivery: null };
 }
 
 // A credential's daily limits per UTC day: tokens (input plus output), spend in
@@ -3984,6 +5146,35 @@ export function newGatewayChange() {
   return { outcome: "", revision: "", reason: "" };
 }
 
+// applied carries the new revision. conflict carries the current revision when
+// expected_revision did not match. unknown is used by Delete for an absent
+// policy. A creation requires an empty expected_revision.
+export function newSelectionChange() {
+  return { outcome: "", revision: "", reason: "" };
+}
+
+// One ordered candidate for chat@2 or image@2. provider optionally pins the
+// logical current registry declaration ID within this candidate. The service
+// checks the current eligible host and declaration generation. A missing or
+// stale pin refuses without another provider choice. A model alias does not
+// assert binary or model artifact identity.
+export function newSelectionCandidateV2() {
+  return { model: "", placement: "", credential: "", provider: "" };
+}
+
+// A 1..8 candidate policy in the bound account and observed program. The first
+// candidate is preferred. Pinned and unpinned policies use one service-owned
+// store.
+export function newSelectionPolicyV2() {
+  return { name: "", candidates: [] };
+}
+
+// found carries the policy and its revision. Other outcomes carry no policy or
+// revision.
+export function newSelectionReadV2() {
+  return { outcome: "", revision: "", policy: null };
+}
+
 function newOAChatStartArguments() {
   return { request: newRequest() };
 }
@@ -3994,6 +5185,22 @@ function newOAChatObserveArguments() {
 
 function newOAChatCancelArguments() {
   return { operation: "" };
+}
+
+function newOAChatV2StartArguments() {
+  return { request: newRequestV2() };
+}
+
+function newOAChatV2ObserveArguments() {
+  return { operation: "", cursor: 0n, maxDeltas: 0n, maxBytes: 0n, waitMs: 0n };
+}
+
+function newOAChatV2CancelArguments() {
+  return { operation: "" };
+}
+
+function newOAPreloaderPreloadArguments() {
+  return { request: newRequest() };
 }
 
 function newOAEmbedderEmbedArguments() {
@@ -4056,6 +5263,30 @@ function newOAImageCancelArguments() {
   return { operation: "" };
 }
 
+function newOAImageV2StartArguments() {
+  return { request: newImageRequestV2() };
+}
+
+function newOAImageV2ObserveArguments() {
+  return { operation: "", cursor: 0n, maxDeltas: 0n, maxBytes: 0n, waitMs: 0n };
+}
+
+function newOAImageV2CancelArguments() {
+  return { operation: "" };
+}
+
+function newOAVideoStartArguments() {
+  return { request: newVideoRequest() };
+}
+
+function newOAVideoObserveArguments() {
+  return { operation: "" };
+}
+
+function newOAVideoCancelArguments() {
+  return { operation: "" };
+}
+
 function newOAOperatorHostsArguments() {
   return { };
 }
@@ -4092,6 +5323,18 @@ function newOAOperatorSetGatewayArguments() {
   return { expectedRevision: "", open: false, address: "" };
 }
 
+function newOASelectionOperatorV2ReadArguments() {
+  return { targetProgram: "", name: "" };
+}
+
+function newOASelectionOperatorV2PutArguments() {
+  return { targetProgram: "", expectedRevision: "", policy: newSelectionPolicyV2() };
+}
+
+function newOASelectionOperatorV2DeletePolicyArguments() {
+  return { targetProgram: "", expectedRevision: "", name: "" };
+}
+
 function newOAServiceFrame() {
   return { version: 0, service: "", method: "", arguments: "" };
 }
@@ -4114,6 +5357,22 @@ function newOAChatObserveResult() {
 
 function newOAChatCancelResult() {
   return { value: newCancellation() };
+}
+
+function newOAChatV2StartResult() {
+  return { value: newAdmissionV2() };
+}
+
+function newOAChatV2ObserveResult() {
+  return { value: newDeltaPage() };
+}
+
+function newOAChatV2CancelResult() {
+  return { value: newCancellation() };
+}
+
+function newOAPreloaderPreloadResult() {
+  return { value: newPreloadReply() };
 }
 
 function newOAEmbedderEmbedResult() {
@@ -4176,6 +5435,30 @@ function newOAImageCancelResult() {
   return { value: newCancellation() };
 }
 
+function newOAImageV2StartResult() {
+  return { value: newAdmissionV2() };
+}
+
+function newOAImageV2ObserveResult() {
+  return { value: newDeltaPage() };
+}
+
+function newOAImageV2CancelResult() {
+  return { value: newCancellation() };
+}
+
+function newOAVideoStartResult() {
+  return { value: newVideoAdmission() };
+}
+
+function newOAVideoObserveResult() {
+  return { value: newVideoObservation() };
+}
+
+function newOAVideoCancelResult() {
+  return { value: newCancellation() };
+}
+
 function newOAOperatorHostsResult() {
   return { value: newHostList() };
 }
@@ -4210,6 +5493,18 @@ function newOAOperatorGatewayResult() {
 
 function newOAOperatorSetGatewayResult() {
   return { value: newGatewayChange() };
+}
+
+function newOASelectionOperatorV2ReadResult() {
+  return { value: newSelectionReadV2() };
+}
+
+function newOASelectionOperatorV2PutResult() {
+  return { value: newSelectionChange() };
+}
+
+function newOASelectionOperatorV2DeletePolicyResult() {
+  return { value: newSelectionChange() };
 }
 
 function readPart(r) {
@@ -4496,6 +5791,142 @@ function readRequest(r) {
   r.pos++;
   r.depth--;
   if (((seen & 67) >>> 0) !== 67) throw r.refuse("missing_field");
+  return v;
+}
+
+function readTarget(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newTarget();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "model") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.model = r.string();
+      } else if (key === "selection_policy") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.selectionPolicy = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  return v;
+}
+
+function readRequestContent(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newRequestContent();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "messages") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.messages = readList(r, readMessage);
+      } else if (key === "tools") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.tools = readList(r, readTool);
+      } else if (key === "options") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.options = readOptions(r);
+      } else if (key === "extensions") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.extensions = strMap(r);
+      } else if (key === "required_extensions") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.requiredExtensions = r.strList();
+      } else if (key === "guarantees") {
+        if (seen & 32) throw r.refuse("duplicate_field");
+        seen |= 32;
+        v.guarantees = r.strList();
+      } else if (key === "credential") {
+        if (seen & 64) throw r.refuse("duplicate_field");
+        seen |= 64;
+        v.credential = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 33) >>> 0) !== 33) throw r.refuse("missing_field");
+  return v;
+}
+
+function readRequestV2(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newRequestV2();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "target") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.target = readTarget(r);
+      } else if (key === "content") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.content = readRequestContent(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
   return v;
 }
 
@@ -4802,6 +6233,81 @@ function readAdmission(r) {
   return v;
 }
 
+function readAdmissionV2(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newAdmissionV2();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "reason") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.reason = r.string();
+      } else if (key === "operation") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.operation = r.string();
+      } else if (key === "host") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.host = r.string();
+      } else if (key === "model") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.model = r.string();
+      } else if (key === "retention_ms") {
+        if (seen & 32) throw r.refuse("duplicate_field");
+        seen |= 32;
+        v.retentionMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "idle_ms") {
+        if (seen & 64) throw r.refuse("duplicate_field");
+        seen |= 64;
+        v.idleMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "retained_deltas") {
+        if (seen & 128) throw r.refuse("duplicate_field");
+        seen |= 128;
+        v.retainedDeltas = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "preferred_model") {
+        if (seen & 256) throw r.refuse("duplicate_field");
+        seen |= 256;
+        v.preferredModel = r.string();
+      } else if (key === "selection_reason") {
+        if (seen & 512) throw r.refuse("duplicate_field");
+        seen |= 512;
+        v.selectionReason = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 255) >>> 0) !== 255) throw r.refuse("missing_field");
+    if (v.outcome !== "accepted" && v.outcome !== "not_permitted" && v.outcome !== "budget_exceeded" && v.outcome !== "unsupported_feature" && v.outcome !== "no_host" && v.outcome !== "unavailable" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "exhausted") { throw r.refuse("bad_enum"); }
+    if (v.selectionReason !== null) {
+    if (v.selectionReason !== "explicit_model" && v.selectionReason !== "preferred" && v.selectionReason !== "preferred_route_unavailable") { throw r.refuse("bad_enum"); }
+    }
+  return v;
+}
+
 function readDeltaPage(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -4890,6 +6396,58 @@ function readCancellation(r) {
     if (v.replyOutcome !== null) {
     if (v.replyOutcome !== "completed" && v.replyOutcome !== "refused" && v.replyOutcome !== "not_permitted" && v.replyOutcome !== "budget_exceeded" && v.replyOutcome !== "unsupported_feature" && v.replyOutcome !== "no_host" && v.replyOutcome !== "cancelled" && v.replyOutcome !== "unavailable" && v.replyOutcome !== "invalid" && v.replyOutcome !== "forbidden" && v.replyOutcome !== "exhausted") { throw r.refuse("bad_enum"); }
     }
+  return v;
+}
+
+function readPreloadReply(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newPreloadReply();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "reason") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.reason = r.string();
+      } else if (key === "host") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.host = r.string();
+      } else if (key === "model") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.model = r.string();
+      } else if (key === "tokens") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.tokens = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 31) >>> 0) !== 31) throw r.refuse("missing_field");
+    if (v.outcome !== "evaluated" && v.outcome !== "loaded" && v.outcome !== "busy" && v.outcome !== "refused" && v.outcome !== "not_permitted" && v.outcome !== "unsupported_feature" && v.outcome !== "no_host" && v.outcome !== "unavailable" && v.outcome !== "invalid" && v.outcome !== "forbidden") { throw r.refuse("bad_enum"); }
   return v;
 }
 
@@ -5685,6 +7243,125 @@ function readImageRequest(r) {
   return v;
 }
 
+function readImageRequestContent(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newImageRequestContent();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "mode") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.mode = r.string();
+      } else if (key === "prompt") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.prompt = r.string();
+      } else if (key === "size") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.size = r.string();
+      } else if (key === "count") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.count = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "image_digest") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.imageDigest = r.string();
+      } else if (key === "image_media_type") {
+        if (seen & 32) throw r.refuse("duplicate_field");
+        seen |= 32;
+        v.imageMediaType = r.string();
+      } else if (key === "mask_digest") {
+        if (seen & 64) throw r.refuse("duplicate_field");
+        seen |= 64;
+        v.maskDigest = r.string();
+      } else if (key === "mask_media_type") {
+        if (seen & 128) throw r.refuse("duplicate_field");
+        seen |= 128;
+        v.maskMediaType = r.string();
+      } else if (key === "guarantees") {
+        if (seen & 256) throw r.refuse("duplicate_field");
+        seen |= 256;
+        v.guarantees = r.strList();
+      } else if (key === "credential") {
+        if (seen & 512) throw r.refuse("duplicate_field");
+        seen |= 512;
+        v.credential = r.string();
+      } else if (key === "required_extensions") {
+        if (seen & 1024) throw r.refuse("duplicate_field");
+        seen |= 1024;
+        v.requiredExtensions = r.strList();
+      } else if (key === "extensions") {
+        if (seen & 2048) throw r.refuse("duplicate_field");
+        seen |= 2048;
+        v.extensions = strMap(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 271) >>> 0) !== 271) throw r.refuse("missing_field");
+    if (v.mode !== "generate" && v.mode !== "edit") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function readImageRequestV2(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newImageRequestV2();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "target") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.target = readTarget(r);
+      } else if (key === "content") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.content = readImageRequestContent(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+  return v;
+}
+
 function readImageProgress(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -5824,6 +7501,185 @@ function readImageReply(r) {
   r.depth--;
   if (((seen & 127) >>> 0) !== 127) throw r.refuse("missing_field");
     if (v.outcome !== "completed" && v.outcome !== "refused" && v.outcome !== "not_permitted" && v.outcome !== "budget_exceeded" && v.outcome !== "unsupported_feature" && v.outcome !== "no_host" && v.outcome !== "cancelled" && v.outcome !== "unavailable" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "exhausted") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function readVideoRequest(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newVideoRequest();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "model") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.model = r.string();
+      } else if (key === "prompt") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.prompt = r.string();
+      } else if (key === "size") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.size = r.string();
+      } else if (key === "duration_ms") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.durationMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "fps") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.fps = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "seed") {
+        if (seen & 32) throw r.refuse("duplicate_field");
+        seen |= 32;
+        v.seed = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "image_digest") {
+        if (seen & 64) throw r.refuse("duplicate_field");
+        seen |= 64;
+        v.imageDigest = r.string();
+      } else if (key === "image_media_type") {
+        if (seen & 128) throw r.refuse("duplicate_field");
+        seen |= 128;
+        v.imageMediaType = r.string();
+      } else if (key === "required_extensions") {
+        if (seen & 256) throw r.refuse("duplicate_field");
+        seen |= 256;
+        v.requiredExtensions = r.strList();
+      } else if (key === "extensions") {
+        if (seen & 512) throw r.refuse("duplicate_field");
+        seen |= 512;
+        v.extensions = strMap(r);
+      } else if (key === "request_id") {
+        if (seen & 1024) throw r.refuse("duplicate_field");
+        seen |= 1024;
+        v.requestId = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1039) >>> 0) !== 1039) throw r.refuse("missing_field");
+  return v;
+}
+
+function readVideoAdmission(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newVideoAdmission();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "reason") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.reason = r.string();
+      } else if (key === "operation") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.operation = r.string();
+      } else if (key === "retention_ms") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.retentionMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 15) >>> 0) !== 15) throw r.refuse("missing_field");
+    if (v.outcome !== "accepted" && v.outcome !== "not_permitted" && v.outcome !== "budget_exceeded" && v.outcome !== "unsupported_feature" && v.outcome !== "no_host" && v.outcome !== "unavailable" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "exhausted") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function readVideoObservation(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newVideoObservation();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "status") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.status = r.string();
+      } else if (key === "step") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.step = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "steps") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.steps = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "queue_position") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.queuePosition = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "reason") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.reason = r.string();
+      } else if (key === "delivery") {
+        if (seen & 32) throw r.refuse("duplicate_field");
+        seen |= 32;
+        v.delivery = readDelivery(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+    if (v.status !== "queued" && v.status !== "generating" && v.status !== "completed" && v.status !== "failed" && v.status !== "cancelled" && v.status !== "unknown" && v.status !== "invalid" && v.status !== "forbidden" && v.status !== "unavailable") { throw r.refuse("bad_enum"); }
   return v;
 }
 
@@ -6586,6 +8442,181 @@ function readGatewayChange(r) {
   return v;
 }
 
+function readSelectionChange(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newSelectionChange();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "revision") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.revision = r.string();
+      } else if (key === "reason") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.reason = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+    if (v.outcome !== "applied" && v.outcome !== "conflict" && v.outcome !== "unknown" && v.outcome !== "invalid" && v.outcome !== "no_secure_store" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function readSelectionCandidateV2(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newSelectionCandidateV2();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "model") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.model = r.string();
+      } else if (key === "placement") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.placement = r.string();
+      } else if (key === "credential") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.credential = r.string();
+      } else if (key === "provider") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.provider = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+    if (v.placement !== "local" && v.placement !== "hosted") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function readSelectionPolicyV2(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newSelectionPolicyV2();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "name") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.name = r.string();
+      } else if (key === "candidates") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.candidates = readList(r, readSelectionCandidateV2);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+  return v;
+}
+
+function readSelectionReadV2(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newSelectionReadV2();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "revision") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.revision = r.string();
+      } else if (key === "policy") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.policy = readSelectionPolicyV2(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+    if (v.outcome !== "found" && v.outcome !== "unknown" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
 function readOAChatStartArguments(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -6692,6 +8723,162 @@ function readOAChatCancelArguments(r) {
         if (seen & 1) throw r.refuse("duplicate_field");
         seen |= 1;
         v.operation = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAChatV2StartArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAChatV2StartArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "request") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.request = readRequestV2(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAChatV2ObserveArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAChatV2ObserveArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "operation") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.operation = r.string();
+      } else if (key === "cursor") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.cursor = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "max_deltas") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.maxDeltas = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "max_bytes") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.maxBytes = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "wait_ms") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.waitMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 31) >>> 0) !== 31) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAChatV2CancelArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAChatV2CancelArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "operation") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.operation = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAPreloaderPreloadArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAPreloaderPreloadArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "request") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.request = readRequest(r);
       } else {
         throw r.refuse("unknown_field");
       }
@@ -7304,6 +9491,232 @@ function readOAImageCancelArguments(r) {
   return v;
 }
 
+function readOAImageV2StartArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAImageV2StartArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "request") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.request = readImageRequestV2(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAImageV2ObserveArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAImageV2ObserveArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "operation") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.operation = r.string();
+      } else if (key === "cursor") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.cursor = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "max_deltas") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.maxDeltas = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "max_bytes") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.maxBytes = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "wait_ms") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.waitMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 31) >>> 0) !== 31) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAImageV2CancelArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAImageV2CancelArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "operation") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.operation = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAVideoStartArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAVideoStartArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "request") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.request = readVideoRequest(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAVideoObserveArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAVideoObserveArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "operation") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.operation = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAVideoCancelArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAVideoCancelArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "operation") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.operation = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
 function readOAOperatorHostsArguments(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -7631,6 +10044,131 @@ function readOAOperatorSetGatewayArguments(r) {
   return v;
 }
 
+function readOASelectionOperatorV2ReadArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOASelectionOperatorV2ReadArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "target_program") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.targetProgram = r.string();
+      } else if (key === "name") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.name = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOASelectionOperatorV2PutArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOASelectionOperatorV2PutArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "target_program") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.targetProgram = r.string();
+      } else if (key === "expected_revision") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.expectedRevision = r.string();
+      } else if (key === "policy") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.policy = readSelectionPolicyV2(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOASelectionOperatorV2DeletePolicyArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOASelectionOperatorV2DeletePolicyArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "target_program") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.targetProgram = r.string();
+      } else if (key === "expected_revision") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.expectedRevision = r.string();
+      } else if (key === "name") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.name = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+  return v;
+}
+
 function readOAServiceFrame(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -7858,6 +10396,146 @@ function readOAChatCancelResult(r) {
         if (seen & 1) throw r.refuse("duplicate_field");
         seen |= 1;
         v.value = readCancellation(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAChatV2StartResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAChatV2StartResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readAdmissionV2(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAChatV2ObserveResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAChatV2ObserveResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readDeltaPage(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAChatV2CancelResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAChatV2CancelResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readCancellation(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAPreloaderPreloadResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAPreloaderPreloadResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readPreloadReply(r);
       } else {
         throw r.refuse("unknown_field");
       }
@@ -8398,6 +11076,216 @@ function readOAImageCancelResult(r) {
   return v;
 }
 
+function readOAImageV2StartResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAImageV2StartResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readAdmissionV2(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAImageV2ObserveResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAImageV2ObserveResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readDeltaPage(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAImageV2CancelResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAImageV2CancelResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readCancellation(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAVideoStartResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAVideoStartResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readVideoAdmission(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAVideoObserveResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAVideoObserveResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readVideoObservation(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAVideoCancelResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAVideoCancelResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readCancellation(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
 function readOAOperatorHostsResult(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -8713,6 +11601,111 @@ function readOAOperatorSetGatewayResult(r) {
   return v;
 }
 
+function readOASelectionOperatorV2ReadResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOASelectionOperatorV2ReadResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readSelectionReadV2(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOASelectionOperatorV2PutResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOASelectionOperatorV2PutResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readSelectionChange(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOASelectionOperatorV2DeletePolicyResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOASelectionOperatorV2DeletePolicyResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readSelectionChange(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
 export function decode(data) {
   const r = new Reader(data);
   r.ws();
@@ -8789,13 +11782,18 @@ _serviceRecords["Tool"] = [["name","string","never"],["description","string","ne
 _serviceRecords["Temperature"] = [["milli","i64","never"],];
 _serviceRecords["Options"] = [["maxOutput","i64","zero"],["temperature","Temperature","absent"],["stop","list<string>","zero"],["jsonSchema","string","zero"],];
 _serviceRecords["Request"] = [["model","string","never"],["messages","list<Message>","never"],["tools","list<Tool>","zero"],["options","Options","absent"],["extensions","map<string,string>","zero"],["requiredExtensions","list<string>","zero"],["guarantees","list<string>","never"],["credential","string","zero"],];
+_serviceRecords["Target"] = [["model","string","zero"],["selectionPolicy","string","zero"],];
+_serviceRecords["RequestContent"] = [["messages","list<Message>","never"],["tools","list<Tool>","zero"],["options","Options","absent"],["extensions","map<string,string>","zero"],["requiredExtensions","list<string>","zero"],["guarantees","list<string>","never"],["credential","string","zero"],];
+_serviceRecords["RequestV2"] = [["target","Target","never"],["content","RequestContent","never"],];
 _serviceRecords["Usage"] = [["input","i64","never"],["output","i64","never"],["cached","i64","never"],];
 _serviceRecords["Cost"] = [["micros","i64","never"],["currency","string","never"],];
 _serviceRecords["Reply"] = [["outcome","string","never"],["reason","string","never"],["message","Message","never"],["stopReason","string","never"],["usage","Usage","never"],["host","string","never"],["model","string","never"],["cost","Cost","absent"],];
 _serviceRecords["Delta"] = [["sequence","i64","never"],["kind","string","never"],["index","i64","zero"],["part","Part","absent"],["usage","Usage","absent"],["end","Reply","absent"],["segment","TranscriptSegment","absent"],["transcriptionEnd","TranscriptionReply","absent"],["audio","AudioChunk","absent"],["speechEnd","SpeechReply","absent"],["transcript","LiveTranscript","absent"],["liveEnd","LiveReply","absent"],["imageProgress","ImageProgress","absent"],["imageResult","ImageResult","absent"],["imageEnd","ImageReply","absent"],];
 _serviceRecords["Admission"] = [["outcome","string","never"],["reason","string","never"],["operation","string","never"],["host","string","never"],["model","string","never"],["retentionMs","i64","never"],["idleMs","i64","never"],["retainedDeltas","i64","never"],];
+_serviceRecords["AdmissionV2"] = [["outcome","string","never"],["reason","string","never"],["operation","string","never"],["host","string","never"],["model","string","never"],["retentionMs","i64","never"],["idleMs","i64","never"],["retainedDeltas","i64","never"],["preferredModel","string","zero"],["selectionReason","string","absent"],];
 _serviceRecords["DeltaPage"] = [["outcome","string","never"],["deltas","list<Delta>","never"],["next","i64","never"],["atEnd","bool","never"],];
 _serviceRecords["Cancellation"] = [["outcome","string","never"],["replyOutcome","string","absent"],];
+_serviceRecords["PreloadReply"] = [["outcome","string","never"],["reason","string","never"],["host","string","never"],["model","string","never"],["tokens","i64","never"],];
 _serviceRecords["EmbedRequest"] = [["model","string","never"],["inputs","list<string>","never"],["dimensions","i64","zero"],["guarantees","list<string>","never"],["credential","string","zero"],["extensions","map<string,string>","zero"],];
 _serviceRecords["Embeddings"] = [["outcome","string","never"],["reason","string","never"],["vectors","list<string>","never"],["dimensions","i64","never"],["usage","Usage","never"],["host","string","never"],["model","string","never"],["cost","Cost","absent"],];
 _serviceRecords["TranscriptionRequest"] = [["model","string","never"],["audioDigest","string","never"],["mediaType","string","never"],["language","string","zero"],["timestamps","string","never"],["guarantees","list<string>","never"],["credential","string","zero"],["extensions","map<string,string>","zero"],];
@@ -8810,9 +11808,14 @@ _serviceRecords["LiveInputResult"] = [["outcome","string","never"],["nextSequenc
 _serviceRecords["LiveTranscript"] = [["text","string","never"],["isFinal","bool","never"],];
 _serviceRecords["LiveReply"] = [["outcome","string","never"],["reason","string","never"],["delivery","Delivery","never"],["usage","Usage","never"],["inputAudioBytes","i64","never"],["outputAudioBytes","i64","never"],["host","string","never"],["model","string","never"],];
 _serviceRecords["ImageRequest"] = [["model","string","never"],["mode","string","never"],["prompt","string","never"],["size","string","never"],["count","i64","never"],["imageDigest","string","zero"],["imageMediaType","string","zero"],["maskDigest","string","zero"],["maskMediaType","string","zero"],["guarantees","list<string>","never"],["credential","string","zero"],["requiredExtensions","list<string>","zero"],["extensions","map<string,string>","zero"],];
+_serviceRecords["ImageRequestContent"] = [["mode","string","never"],["prompt","string","never"],["size","string","never"],["count","i64","never"],["imageDigest","string","zero"],["imageMediaType","string","zero"],["maskDigest","string","zero"],["maskMediaType","string","zero"],["guarantees","list<string>","never"],["credential","string","zero"],["requiredExtensions","list<string>","zero"],["extensions","map<string,string>","zero"],];
+_serviceRecords["ImageRequestV2"] = [["target","Target","never"],["content","ImageRequestContent","never"],];
 _serviceRecords["ImageProgress"] = [["percent","i64","zero"],["message","string","never"],];
 _serviceRecords["ImageResult"] = [["index","i64","never"],["delivery","Delivery","never"],];
 _serviceRecords["ImageReply"] = [["outcome","string","never"],["reason","string","never"],["deliveries","list<Delivery>","never"],["images","i64","never"],["usage","Usage","never"],["host","string","never"],["model","string","never"],["cost","Cost","absent"],];
+_serviceRecords["VideoRequest"] = [["model","string","never"],["prompt","string","never"],["size","string","never"],["durationMs","i64","never"],["fps","i64","zero"],["seed","i64","zero"],["imageDigest","string","zero"],["imageMediaType","string","zero"],["requiredExtensions","list<string>","zero"],["extensions","map<string,string>","zero"],["requestId","string","never"],];
+_serviceRecords["VideoAdmission"] = [["outcome","string","never"],["reason","string","never"],["operation","string","never"],["retentionMs","i64","never"],];
+_serviceRecords["VideoObservation"] = [["status","string","never"],["step","i64","zero"],["steps","i64","zero"],["queuePosition","i64","zero"],["reason","string","zero"],["delivery","Delivery","absent"],];
 _serviceRecords["CeilingLimit"] = [["tokensPerDay","i64","zero"],["microsPerDay","i64","zero"],["requestsPerDay","i64","zero"],["imagesPerDay","i64","zero"],["audioSecondsPerDay","i64","zero"],["charactersPerDay","i64","zero"],];
 _serviceRecords["HostEntry"] = [["name","string","never"],["hosted","bool","never"],["kind","string","never"],["base","string","never"],["credential","string","zero"],["ceiling","CeilingLimit","absent"],["profiles","list<string>","zero"],["declaredBy","string","zero"],];
 _serviceRecords["Spend"] = [["day","string","never"],["tokens","i64","never"],["micros","i64","never"],["requests","i64","zero"],["audioSeconds","i64","zero"],["characters","i64","zero"],["images","i64","zero"],];
@@ -8827,9 +11830,17 @@ _serviceRecords["AuditEntry"] = [["sequence","i64","never"],["unixMs","i64","nev
 _serviceRecords["AuditPage"] = [["outcome","string","never"],["entries","list<AuditEntry>","never"],["next","i64","never"],["atEnd","bool","never"],];
 _serviceRecords["GatewayState"] = [["outcome","string","never"],["revision","string","never"],["open","bool","never"],["address","string","never"],["listening","bool","never"],["listeningAddress","string","never"],["why","string","never"],];
 _serviceRecords["GatewayChange"] = [["outcome","string","never"],["revision","string","never"],["reason","string","never"],];
+_serviceRecords["SelectionChange"] = [["outcome","string","never"],["revision","string","never"],["reason","string","never"],];
+_serviceRecords["SelectionCandidateV2"] = [["model","string","never"],["placement","string","never"],["credential","string","zero"],["provider","string","zero"],];
+_serviceRecords["SelectionPolicyV2"] = [["name","string","never"],["candidates","list<SelectionCandidateV2>","never"],];
+_serviceRecords["SelectionReadV2"] = [["outcome","string","never"],["revision","string","never"],["policy","SelectionPolicyV2","absent"],];
 _serviceRecords["OAChatStartArguments"] = [["request","Request","never"],];
 _serviceRecords["OAChatObserveArguments"] = [["operation","string","never"],["cursor","i64","never"],["maxDeltas","i64","never"],["maxBytes","i64","never"],["waitMs","i64","never"],];
 _serviceRecords["OAChatCancelArguments"] = [["operation","string","never"],];
+_serviceRecords["OAChatV2StartArguments"] = [["request","RequestV2","never"],];
+_serviceRecords["OAChatV2ObserveArguments"] = [["operation","string","never"],["cursor","i64","never"],["maxDeltas","i64","never"],["maxBytes","i64","never"],["waitMs","i64","never"],];
+_serviceRecords["OAChatV2CancelArguments"] = [["operation","string","never"],];
+_serviceRecords["OAPreloaderPreloadArguments"] = [["request","Request","never"],];
 _serviceRecords["OAEmbedderEmbedArguments"] = [["request","EmbedRequest","never"],];
 _serviceRecords["OATranscriptionStartArguments"] = [["request","TranscriptionRequest","never"],];
 _serviceRecords["OATranscriptionObserveArguments"] = [["operation","string","never"],["cursor","i64","never"],["maxDeltas","i64","never"],["maxBytes","i64","never"],["waitMs","i64","never"],];
@@ -8845,6 +11856,12 @@ _serviceRecords["OALiveCancelArguments"] = [["operation","string","never"],];
 _serviceRecords["OAImageStartArguments"] = [["request","ImageRequest","never"],];
 _serviceRecords["OAImageObserveArguments"] = [["operation","string","never"],["cursor","i64","never"],["maxDeltas","i64","never"],["maxBytes","i64","never"],["waitMs","i64","never"],];
 _serviceRecords["OAImageCancelArguments"] = [["operation","string","never"],];
+_serviceRecords["OAImageV2StartArguments"] = [["request","ImageRequestV2","never"],];
+_serviceRecords["OAImageV2ObserveArguments"] = [["operation","string","never"],["cursor","i64","never"],["maxDeltas","i64","never"],["maxBytes","i64","never"],["waitMs","i64","never"],];
+_serviceRecords["OAImageV2CancelArguments"] = [["operation","string","never"],];
+_serviceRecords["OAVideoStartArguments"] = [["request","VideoRequest","never"],];
+_serviceRecords["OAVideoObserveArguments"] = [["operation","string","never"],];
+_serviceRecords["OAVideoCancelArguments"] = [["operation","string","never"],];
 _serviceRecords["OAOperatorHostsArguments"] = [];
 _serviceRecords["OAOperatorAddHostArguments"] = [["expectedRevision","string","never"],["host","HostEntry","never"],];
 _serviceRecords["OAOperatorRemoveHostArguments"] = [["expectedRevision","string","never"],["name","string","never"],];
@@ -8854,12 +11871,19 @@ _serviceRecords["OAOperatorRevokeKeyArguments"] = [["program","string","never"],
 _serviceRecords["OAOperatorAuditArguments"] = [["cursor","i64","never"],["maxEntries","i64","never"],];
 _serviceRecords["OAOperatorGatewayArguments"] = [];
 _serviceRecords["OAOperatorSetGatewayArguments"] = [["expectedRevision","string","never"],["open","bool","never"],["address","string","never"],];
+_serviceRecords["OASelectionOperatorV2ReadArguments"] = [["targetProgram","string","never"],["name","string","never"],];
+_serviceRecords["OASelectionOperatorV2PutArguments"] = [["targetProgram","string","never"],["expectedRevision","string","never"],["policy","SelectionPolicyV2","never"],];
+_serviceRecords["OASelectionOperatorV2DeletePolicyArguments"] = [["targetProgram","string","never"],["expectedRevision","string","never"],["name","string","never"],];
 _serviceRecords["OAServiceFrame"] = [["version","i32","never"],["service","string","never"],["method","string","never"],["arguments","json","never"],];
 _serviceRecords["OAServiceReply"] = [["version","i32","never"],["service","string","never"],["method","string","never"],["ok","bool","never"],["payload","json","never"],];
 _serviceRecords["OAServiceError"] = [["code","string","never"],["message","string","never"],];
 _serviceRecords["OAChatStartResult"] = [["value","Admission","never"],];
 _serviceRecords["OAChatObserveResult"] = [["value","DeltaPage","never"],];
 _serviceRecords["OAChatCancelResult"] = [["value","Cancellation","never"],];
+_serviceRecords["OAChatV2StartResult"] = [["value","AdmissionV2","never"],];
+_serviceRecords["OAChatV2ObserveResult"] = [["value","DeltaPage","never"],];
+_serviceRecords["OAChatV2CancelResult"] = [["value","Cancellation","never"],];
+_serviceRecords["OAPreloaderPreloadResult"] = [["value","PreloadReply","never"],];
 _serviceRecords["OAEmbedderEmbedResult"] = [["value","Embeddings","never"],];
 _serviceRecords["OATranscriptionStartResult"] = [["value","Admission","never"],];
 _serviceRecords["OATranscriptionObserveResult"] = [["value","DeltaPage","never"],];
@@ -8875,6 +11899,12 @@ _serviceRecords["OALiveCancelResult"] = [["value","Cancellation","never"],];
 _serviceRecords["OAImageStartResult"] = [["value","Admission","never"],];
 _serviceRecords["OAImageObserveResult"] = [["value","DeltaPage","never"],];
 _serviceRecords["OAImageCancelResult"] = [["value","Cancellation","never"],];
+_serviceRecords["OAImageV2StartResult"] = [["value","AdmissionV2","never"],];
+_serviceRecords["OAImageV2ObserveResult"] = [["value","DeltaPage","never"],];
+_serviceRecords["OAImageV2CancelResult"] = [["value","Cancellation","never"],];
+_serviceRecords["OAVideoStartResult"] = [["value","VideoAdmission","never"],];
+_serviceRecords["OAVideoObserveResult"] = [["value","VideoObservation","never"],];
+_serviceRecords["OAVideoCancelResult"] = [["value","Cancellation","never"],];
 _serviceRecords["OAOperatorHostsResult"] = [["value","HostList","never"],];
 _serviceRecords["OAOperatorAddHostResult"] = [["value","HostChange","never"],];
 _serviceRecords["OAOperatorRemoveHostResult"] = [["value","HostChange","never"],];
@@ -8884,6 +11914,9 @@ _serviceRecords["OAOperatorRevokeKeyResult"] = [["value","KeyRevoked","never"],]
 _serviceRecords["OAOperatorAuditResult"] = [["value","AuditPage","never"],];
 _serviceRecords["OAOperatorGatewayResult"] = [["value","GatewayState","never"],];
 _serviceRecords["OAOperatorSetGatewayResult"] = [["value","GatewayChange","never"],];
+_serviceRecords["OASelectionOperatorV2ReadResult"] = [["value","SelectionReadV2","never"],];
+_serviceRecords["OASelectionOperatorV2PutResult"] = [["value","SelectionChange","never"],];
+_serviceRecords["OASelectionOperatorV2DeletePolicyResult"] = [["value","SelectionChange","never"],];
 
 function _serviceRequest(service, method, argumentsBytes) {
   return _serviceEncode(writeOAServiceFrame, {
@@ -8948,6 +11981,68 @@ export class ChatClient {
   }
 }
 export const ChatService = Object.freeze({wireName:"abstraction.inference/chat@1",Client:ChatClient});
+
+export class ChatV2Client {
+  constructor(transport) { this._transport = transport; }
+
+  async start(request) {
+    const _args = newOAChatV2StartArguments();
+    _args.request = request;
+    _serviceCheck("OAChatV2StartArguments", _args);
+    const _payload = _serviceEncode(writeOAChatV2StartArguments, _args, 1);
+    _serviceDecode(readOAChatV2StartArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/chat@2", "Start", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/chat@2", "Start");
+    const _result = _serviceDecode(readOAChatV2StartResult, _reply, 1);
+    return _result.value;
+  }
+
+  async observe(operation, cursor, maxDeltas, maxBytes, waitMs) {
+    const _args = newOAChatV2ObserveArguments();
+    _args.operation = operation;
+    _args.cursor = cursor;
+    _args.maxDeltas = maxDeltas;
+    _args.maxBytes = maxBytes;
+    _args.waitMs = waitMs;
+    _serviceCheck("OAChatV2ObserveArguments", _args);
+    const _payload = _serviceEncode(writeOAChatV2ObserveArguments, _args, 1);
+    _serviceDecode(readOAChatV2ObserveArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/chat@2", "Observe", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/chat@2", "Observe");
+    const _result = _serviceDecode(readOAChatV2ObserveResult, _reply, 1);
+    return _result.value;
+  }
+
+  async cancel(operation) {
+    const _args = newOAChatV2CancelArguments();
+    _args.operation = operation;
+    _serviceCheck("OAChatV2CancelArguments", _args);
+    const _payload = _serviceEncode(writeOAChatV2CancelArguments, _args, 1);
+    _serviceDecode(readOAChatV2CancelArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/chat@2", "Cancel", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/chat@2", "Cancel");
+    const _result = _serviceDecode(readOAChatV2CancelResult, _reply, 1);
+    return _result.value;
+  }
+}
+export const ChatV2Service = Object.freeze({wireName:"abstraction.inference/chat@2",Client:ChatV2Client});
+
+export class PreloaderClient {
+  constructor(transport) { this._transport = transport; }
+
+  async preload(request) {
+    const _args = newOAPreloaderPreloadArguments();
+    _args.request = request;
+    _serviceCheck("OAPreloaderPreloadArguments", _args);
+    const _payload = _serviceEncode(writeOAPreloaderPreloadArguments, _args, 1);
+    _serviceDecode(readOAPreloaderPreloadArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/preload@1", "Preload", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/preload@1", "Preload");
+    const _result = _serviceDecode(readOAPreloaderPreloadResult, _reply, 1);
+    return _result.value;
+  }
+}
+export const PreloaderService = Object.freeze({wireName:"abstraction.inference/preload@1",Client:PreloaderClient});
 
 export class EmbedderClient {
   constructor(transport) { this._transport = transport; }
@@ -9172,6 +12267,92 @@ export class ImageClient {
 }
 export const ImageService = Object.freeze({wireName:"abstraction.inference/image@1",Client:ImageClient});
 
+export class ImageV2Client {
+  constructor(transport) { this._transport = transport; }
+
+  async start(request) {
+    const _args = newOAImageV2StartArguments();
+    _args.request = request;
+    _serviceCheck("OAImageV2StartArguments", _args);
+    const _payload = _serviceEncode(writeOAImageV2StartArguments, _args, 1);
+    _serviceDecode(readOAImageV2StartArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/image@2", "Start", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/image@2", "Start");
+    const _result = _serviceDecode(readOAImageV2StartResult, _reply, 1);
+    return _result.value;
+  }
+
+  async observe(operation, cursor, maxDeltas, maxBytes, waitMs) {
+    const _args = newOAImageV2ObserveArguments();
+    _args.operation = operation;
+    _args.cursor = cursor;
+    _args.maxDeltas = maxDeltas;
+    _args.maxBytes = maxBytes;
+    _args.waitMs = waitMs;
+    _serviceCheck("OAImageV2ObserveArguments", _args);
+    const _payload = _serviceEncode(writeOAImageV2ObserveArguments, _args, 1);
+    _serviceDecode(readOAImageV2ObserveArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/image@2", "Observe", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/image@2", "Observe");
+    const _result = _serviceDecode(readOAImageV2ObserveResult, _reply, 1);
+    return _result.value;
+  }
+
+  async cancel(operation) {
+    const _args = newOAImageV2CancelArguments();
+    _args.operation = operation;
+    _serviceCheck("OAImageV2CancelArguments", _args);
+    const _payload = _serviceEncode(writeOAImageV2CancelArguments, _args, 1);
+    _serviceDecode(readOAImageV2CancelArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/image@2", "Cancel", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/image@2", "Cancel");
+    const _result = _serviceDecode(readOAImageV2CancelResult, _reply, 1);
+    return _result.value;
+  }
+}
+export const ImageV2Service = Object.freeze({wireName:"abstraction.inference/image@2",Client:ImageV2Client});
+
+export class VideoClient {
+  constructor(transport) { this._transport = transport; }
+
+  async start(request) {
+    const _args = newOAVideoStartArguments();
+    _args.request = request;
+    _serviceCheck("OAVideoStartArguments", _args);
+    const _payload = _serviceEncode(writeOAVideoStartArguments, _args, 1);
+    _serviceDecode(readOAVideoStartArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/video@1", "Start", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/video@1", "Start");
+    const _result = _serviceDecode(readOAVideoStartResult, _reply, 1);
+    return _result.value;
+  }
+
+  async observe(operation) {
+    const _args = newOAVideoObserveArguments();
+    _args.operation = operation;
+    _serviceCheck("OAVideoObserveArguments", _args);
+    const _payload = _serviceEncode(writeOAVideoObserveArguments, _args, 1);
+    _serviceDecode(readOAVideoObserveArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/video@1", "Observe", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/video@1", "Observe");
+    const _result = _serviceDecode(readOAVideoObserveResult, _reply, 1);
+    return _result.value;
+  }
+
+  async cancel(operation) {
+    const _args = newOAVideoCancelArguments();
+    _args.operation = operation;
+    _serviceCheck("OAVideoCancelArguments", _args);
+    const _payload = _serviceEncode(writeOAVideoCancelArguments, _args, 1);
+    _serviceDecode(readOAVideoCancelArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/video@1", "Cancel", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/video@1", "Cancel");
+    const _result = _serviceDecode(readOAVideoCancelResult, _reply, 1);
+    return _result.value;
+  }
+}
+export const VideoService = Object.freeze({wireName:"abstraction.inference/video@1",Client:VideoClient});
+
 export class OperatorClient {
   constructor(transport) { this._transport = transport; }
 
@@ -9287,3 +12468,49 @@ export class OperatorClient {
   }
 }
 export const OperatorService = Object.freeze({wireName:"abstraction.inference/operator@1",Client:OperatorClient});
+
+export class SelectionOperatorV2Client {
+  constructor(transport) { this._transport = transport; }
+
+  async read(targetProgram, name) {
+    const _args = newOASelectionOperatorV2ReadArguments();
+    _args.targetProgram = targetProgram;
+    _args.name = name;
+    _serviceCheck("OASelectionOperatorV2ReadArguments", _args);
+    const _payload = _serviceEncode(writeOASelectionOperatorV2ReadArguments, _args, 1);
+    _serviceDecode(readOASelectionOperatorV2ReadArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/selection-operator@2", "Read", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/selection-operator@2", "Read");
+    const _result = _serviceDecode(readOASelectionOperatorV2ReadResult, _reply, 1);
+    return _result.value;
+  }
+
+  async put(targetProgram, expectedRevision, policy) {
+    const _args = newOASelectionOperatorV2PutArguments();
+    _args.targetProgram = targetProgram;
+    _args.expectedRevision = expectedRevision;
+    _args.policy = policy;
+    _serviceCheck("OASelectionOperatorV2PutArguments", _args);
+    const _payload = _serviceEncode(writeOASelectionOperatorV2PutArguments, _args, 1);
+    _serviceDecode(readOASelectionOperatorV2PutArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/selection-operator@2", "Put", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/selection-operator@2", "Put");
+    const _result = _serviceDecode(readOASelectionOperatorV2PutResult, _reply, 1);
+    return _result.value;
+  }
+
+  async deletePolicy(targetProgram, expectedRevision, name) {
+    const _args = newOASelectionOperatorV2DeletePolicyArguments();
+    _args.targetProgram = targetProgram;
+    _args.expectedRevision = expectedRevision;
+    _args.name = name;
+    _serviceCheck("OASelectionOperatorV2DeletePolicyArguments", _args);
+    const _payload = _serviceEncode(writeOASelectionOperatorV2DeletePolicyArguments, _args, 1);
+    _serviceDecode(readOASelectionOperatorV2DeletePolicyArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.inference/selection-operator@2", "DeletePolicy", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.inference/selection-operator@2", "DeletePolicy");
+    const _result = _serviceDecode(readOASelectionOperatorV2DeletePolicyResult, _reply, 1);
+    return _result.value;
+  }
+}
+export const SelectionOperatorV2Service = Object.freeze({wireName:"abstraction.inference/selection-operator@2",Client:SelectionOperatorV2Client});

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	websocket "github.com/openabstractions/abstraction-inference/adapters/go/transportws"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
@@ -111,6 +112,7 @@ type liveGatewayBound struct {
 
 func (b *liveGatewayBound) Subject() inference.Subject { return b.subject }
 func (*liveGatewayBound) Rung() string                 { return "fixture/live" }
+func (*liveGatewayBound) Peer() *identity.Peer         { return nil }
 func (b *liveGatewayBound) Recheck() error {
 	b.checks.Add(1)
 	if b.revoked.Load() {

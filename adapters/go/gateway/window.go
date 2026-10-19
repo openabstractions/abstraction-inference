@@ -105,6 +105,9 @@ type KeyCheck func(ctx context.Context, subject inference.Subject, key string) (
 type Bound interface {
 	Subject() inference.Subject
 	Rung() string
+	// Peer is the identity evidence Subject was bound from, code included,
+	// or nil when the binder kept none.
+	Peer() *identity.Peer
 	// Recheck returns an error once the connection no longer answers for the
 	// peer it was bound to.
 	Recheck() error
@@ -166,7 +169,7 @@ func Listen(address string, cfg Config) (*Window, error) {
 	w.server = &http.Server{Handler: http.HandlerFunc(w.serveHTTP), ReadHeaderTimeout: 10 * time.Second,
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 			if b, ok := c.(*boundConn); ok {
-				return context.WithValue(ctx, boundKey{}, b.bound)
+				return context.WithValue(ctx, boundKey{}, b)
 			}
 			return ctx
 		}}
@@ -223,41 +226,101 @@ func (w *Window) report(err error) {
 
 type boundKey struct{}
 
+// boundConn is an accepted connection whose peer is bound once, on first use:
+// its first Read, or the handler's first call to bound. Both run in the
+// connection's own goroutine, so one program's code verification never holds
+// the accept loop, and no byte is read before the peer is bound.
 type boundConn struct {
 	net.Conn
-	bound Bound
-	once  sync.Once
+	window     *Window
+	acceptedAt time.Time
+	bindOnce   sync.Once
+
+	mu       sync.Mutex
+	b        Bound
+	bindErr  error
+	closed   bool
+	closeErr error
+}
+
+// bound binds the connection's peer on first use and returns the binding or
+// the reason it failed. A failed binding has been recorded and answered 403.
+func (c *boundConn) bound() (Bound, error) {
+	c.bindOnce.Do(c.bind)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.b, c.bindErr
+}
+
+func (c *boundConn) bind() {
+	b, err := c.window.cfg.Bind(c.Conn, c.acceptedAt)
+	c.mu.Lock()
+	closed := c.closed
+	switch {
+	case closed && err == nil:
+		c.bindErr = net.ErrClosed
+	case closed:
+		c.bindErr = err
+	default:
+		c.b, c.bindErr = b, err
+	}
+	c.mu.Unlock()
+	switch {
+	case closed && b != nil:
+		//unchecked: release of a binding that finished after the connection was closed; nothing is left to report it to
+		b.Close()
+	case closed:
+	case err != nil:
+		word := BindingWord(err)
+		c.window.record(inference.Record{Rung: identity.TransportLoopback + "/" + runtime.GOOS + " unbound", Outcome: wire.ReplyOutcomeForbidden.String(), Reason: "binding:" + word})
+		refuseConnection(c.Conn, word, err)
+	}
+}
+
+// Read binds the peer before the first byte is read. A failed binding has
+// already been answered; it reads as a failed read, which net/http closes
+// without writing a reply of its own.
+func (c *boundConn) Read(p []byte) (int, error) {
+	if _, err := c.bound(); err != nil {
+		return 0, &net.OpError{Op: "read", Net: "tcp", Source: c.LocalAddr(), Addr: c.RemoteAddr(), Err: err}
+	}
+	return c.Conn.Read(p)
 }
 
 func (c *boundConn) Close() error {
+	c.mu.Lock()
+	if c.closed {
+		defer c.mu.Unlock()
+		return c.closeErr
+	}
+	c.closed = true
+	b := c.b
+	c.mu.Unlock()
 	var err error
-	c.once.Do(func() { err = errors.Join(c.bound.Close(), c.Conn.Close()) })
+	if b != nil {
+		err = b.Close()
+	}
+	err = errors.Join(err, c.Conn.Close())
+	c.mu.Lock()
+	c.closeErr = err
+	c.mu.Unlock()
 	return err
 }
 
-// boundListener binds each accepted connection before net/http reads from it.
-// A connection whose peer cannot be bound is answered 403 and closed without
-// reading its request.
+// boundListener hands each accepted connection to net/http at once, wrapped so
+// that its peer is bound before net/http reads from it. A connection whose peer
+// cannot be bound is answered 403 and closed without reading its request.
 type boundListener struct {
 	net.Listener
 	window *Window
 }
 
 func (l *boundListener) Accept() (net.Conn, error) {
-	for {
-		c, err := l.Listener.Accept()
-		if err != nil {
-			return nil, err
-		}
-		at := time.Now()
-		b, err := l.window.cfg.Bind(c, at)
-		if err == nil {
-			return &boundConn{Conn: c, bound: b}, nil
-		}
-		word := BindingWord(err)
-		l.window.record(inference.Record{Rung: identity.TransportLoopback + "/" + runtime.GOOS + " unbound", Outcome: wire.ReplyOutcomeForbidden.String(), Reason: "binding:" + word})
-		refuseConnection(c, word, err)
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
 	}
+	return &boundConn{Conn: c, window: l.window, acceptedAt: time.Now()}, nil
 }
 
 // refuseConnection answers before reading: the peer's request stays unread in
@@ -294,28 +357,90 @@ func BindingWord(err error) string {
 
 var errOtherAccount = errors.New("gateway: the peer runs as another account")
 
+// clock is the time a binding's evidence lifetime is measured against; tests
+// replace it.
+var clock = time.Now
+
 type loopbackBound struct {
+	conn       net.Conn
+	acceptedAt time.Time
+
+	mu      sync.Mutex
 	binding *identity.Binding
+	peer    *identity.Peer
 	subject inference.Subject
 	rung    string
 }
 
+// Subject is fixed at bind time; a re-verification that names another subject
+// is refused.
 func (b *loopbackBound) Subject() inference.Subject { return b.subject }
-func (b *loopbackBound) Rung() string               { return b.rung }
-func (b *loopbackBound) Close() error               { return b.binding.Close() }
+
+func (b *loopbackBound) Rung() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.rung
+}
+
+func (b *loopbackBound) Peer() *identity.Peer {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.peer
+}
+
+// Close releases the binding; the lock keeps it from racing a Recheck that
+// reads or replaces it.
+func (b *loopbackBound) Close() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.binding.Close()
+}
+
+// Recheck confirms the connection still answers for its peer. Once the
+// binding's evidence has outlived its lifetime (identity ID-W2: a code verdict
+// is reused for five minutes), the peer is bound again through the identity
+// layer before the next decision, and the new binding must name the same
+// subject.
 func (b *loopbackBound) Recheck() error {
-	_, err := b.binding.Peer()
-	return err
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, err := b.binding.Peer(); err != nil {
+		return err
+	}
+	if until := b.binding.EvidenceValidUntil(); until.IsZero() || clock().Before(until) {
+		return nil
+	}
+	fresh, err := identity.BindLoopback(b.conn, &identity.Options{ConnectedAt: b.acceptedAt})
+	if err != nil {
+		return err
+	}
+	peer, subject, rung, err := subjectOf(fresh)
+	if err == nil && subject != b.subject {
+		err = fmt.Errorf("%w: the connection now answers for %s", identity.ErrPeerMoved, subject.Program)
+	}
+	if err != nil {
+		//unchecked: cleanup of a binding this recheck is abandoning before returning the more specific error
+		fresh.Close()
+		return err
+	}
+	//unchecked: release of the binding this recheck replaced; the connection answers through the fresh one from here on
+	b.binding.Close()
+	b.binding, b.peer, b.rung = fresh, peer, rung
+	return nil
 }
 
 // BindLoopback binds c's peer through the socket-owner table and requires
-// PeerNeed and account.
+// PeerNeed and account. It verifies the peer's code signature as the native
+// pipe does: a first-use question the window's refusal admits names the
+// publisher from it (ASK-A6). A process's verdict is reused for five minutes
+// by its later connections (identity ID-W2), and Recheck verifies a
+// connection again once its verdict is older than that.
 func BindLoopback(c net.Conn, at time.Time, account string) (Bound, error) {
-	b, err := identity.BindLoopback(c, &identity.Options{ConnectedAt: at, SkipCodeSignature: true})
+	b, err := identity.BindLoopback(c, &identity.Options{ConnectedAt: at})
 	if err != nil {
 		return nil, err
 	}
-	subject, rung, err := subjectOf(b)
+	peer, subject, rung, err := subjectOf(b)
 	if err != nil {
 		//unchecked: cleanup of a binding this function is abandoning before returning subjectOf's more specific error
 		b.Close()
@@ -326,16 +451,29 @@ func BindLoopback(c net.Conn, at time.Time, account string) (Bound, error) {
 		b.Close()
 		return nil, errOtherAccount
 	}
-	return &loopbackBound{binding: b, subject: subject, rung: rung}, nil
+	return &loopbackBound{conn: c, acceptedAt: at, binding: b, peer: peer, subject: subject, rung: rung}, nil
 }
 
-func subjectOf(b *identity.Binding) (inference.Subject, string, error) {
+func subjectOf(b *identity.Binding) (*identity.Peer, inference.Subject, string, error) {
 	peer, err := b.Peer()
 	if err != nil {
-		return inference.Subject{}, "", err
+		return nil, inference.Subject{}, "", err
+	}
+	subject, err := LoopbackSubject(peer)
+	if err != nil {
+		return nil, inference.Subject{}, peer.Rung(), err
+	}
+	return peer, subject, peer.Rung(), nil
+}
+
+// LoopbackSubject is the subject the window binds from a loopback peer: its
+// account and program, which PeerNeed requires at bound.
+func LoopbackSubject(peer *identity.Peer) (inference.Subject, error) {
+	if peer == nil {
+		return inference.Subject{}, errors.New("gateway: peer evidence required")
 	}
 	if err := peer.Check(PeerNeed); err != nil {
-		return inference.Subject{}, peer.Rung(), err
+		return inference.Subject{}, err
 	}
 	u, _ := peer.User.Get()
 	account := ""
@@ -347,9 +485,16 @@ func subjectOf(b *identity.Binding) (inference.Subject, string, error) {
 	}
 	program, err := identity.SubjectProgram(peer, identity.ProofClaimed)
 	if account == "" || err != nil {
-		return inference.Subject{}, peer.Rung(), errors.New("gateway: the peer's account or program is unavailable")
+		return inference.Subject{}, errors.New("gateway: the peer's account or program is unavailable")
 	}
-	return inference.Subject{Account: account, Program: program}, peer.Rung(), nil
+	return inference.Subject{Account: account, Program: program}, nil
+}
+
+// routed is ctx for one of b's provider calls: the window route and rung for
+// the audit, and the peer b was bound from for the rights decision
+// (inference.WithPeer).
+func routed(ctx context.Context, b Bound) context.Context {
+	return inference.WithPeer(inference.WithRoute(ctx, inference.RouteWindow, b.Rung()), b.Peer())
 }
 
 // wireKind is the vendor wire a request path speaks.
@@ -394,9 +539,16 @@ type verifiedKeyContext struct{}
 
 // serveHTTP checks the binding, the route and the key before the body is read.
 func (w *Window) serveHTTP(rw http.ResponseWriter, r *http.Request) {
-	b, _ := r.Context().Value(boundKey{}).(Bound)
-	if b == nil {
+	conn, _ := r.Context().Value(boundKey{}).(*boundConn)
+	if conn == nil {
 		writeError(rw, http.StatusForbidden, "forbidden", "unbound connection")
+		return
+	}
+	b, err := conn.bound()
+	if err != nil {
+		word := BindingWord(err)
+		rw.Header().Set("Connection", "close")
+		writeError(rw, http.StatusForbidden, "forbidden", "the window could not bind the program on this connection ("+word+"): "+err.Error())
 		return
 	}
 	subject := b.Subject()
@@ -507,8 +659,7 @@ func (w *Window) start(r *http.Request, b Bound, grant Grant, req wire.Request) 
 	} else {
 		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
 	}
-	ctx := inference.WithRoute(r.Context(), inference.RouteWindow, b.Rung())
-	return w.cfg.Chat.Start(ctx, b.Subject(), req)
+	return w.cfg.Chat.Start(routed(r.Context(), b), b.Subject(), req)
 }
 
 // observe yields each page of an admitted operation until its end. It cancels
@@ -543,22 +694,86 @@ func (w *Window) observe(r *http.Request, b Bound, operation string, emit func(w
 	}
 }
 
-// status is the HTTP status of a refusal or failed reply outcome.
-func status(outcome string) int {
+// refusal is the HTTP answer to a refused admission or a reply that ended
+// other than completed (INF-W7). Every route answers through refusalOf.
+type refusal struct {
+	status        int
+	code, message string
+}
+
+// overflowReason starts the reason of a reply the model server refused as
+// larger than its context window (INF-Q7).
+const overflowReason = "upstream:context_length_exceeded:"
+
+// refusalOf answers outcome and its reason. A context overflow is the
+// client's own invalid request: 400 with the code context_length_exceeded
+// that OpenAI-compatible and Anthropic clients read, and a message naming the
+// window and the input when they are known.
+func refusalOf(outcome, reason string) refusal {
+	if outcome == "refused" {
+		if window, input, ok := contextOverflow(reason); ok {
+			return refusal{status: http.StatusBadRequest, code: "context_length_exceeded", message: overflowMessage(window, input)}
+		}
+	}
+	message := outcome
+	if reason != "" {
+		message += ": " + reason
+	}
+	status := http.StatusServiceUnavailable
 	switch outcome {
 	case "invalid", "unsupported_feature":
-		return http.StatusBadRequest
+		status = http.StatusBadRequest
 	case "not_permitted", "forbidden":
-		return http.StatusForbidden
+		status = http.StatusForbidden
 	case "no_host":
-		return http.StatusNotFound
+		status = http.StatusNotFound
 	case "budget_exceeded", "exhausted":
-		return http.StatusTooManyRequests
+		status = http.StatusTooManyRequests
 	case "refused":
-		return http.StatusBadGateway
+		status = http.StatusBadGateway
 	}
-	return http.StatusServiceUnavailable
+	return refusal{status: status, code: outcome, message: message}
 }
+
+// contextOverflow reads the window and the counted input from an INF-Q7
+// reason, each 0 when unknown.
+func contextOverflow(reason string) (window, input int64, ok bool) {
+	rest, found := strings.CutPrefix(reason, overflowReason)
+	if !found {
+		return 0, 0, false
+	}
+	w, i, found := strings.Cut(rest, ":")
+	if !found {
+		return 0, 0, false
+	}
+	wn, werr := strconv.ParseUint(w, 10, 63)
+	in, ierr := strconv.ParseUint(i, 10, 63)
+	if werr != nil || ierr != nil {
+		return 0, 0, false
+	}
+	return int64(wn), int64(in), true
+}
+
+// overflowMessage names what is known of a context overflow in words that
+// OpenCode's overflow classifier also recognises.
+func overflowMessage(window, input int64) string {
+	const exceeds = "the request exceeds the context window"
+	switch {
+	case window > 0 && input > 0:
+		return fmt.Sprintf("%s: the input is %d tokens and the context window is %d tokens", exceeds, input, window)
+	case window > 0:
+		return fmt.Sprintf("%s of %d tokens", exceeds, window)
+	case input > 0:
+		return fmt.Sprintf("%s: the input is %d tokens", exceeds, input)
+	}
+	return exceeds
+}
+
+// body is the error body of the refusal, readable by both wires.
+func (f refusal) body() map[string]any { return errorBody(f.status, f.code, f.message) }
+
+// write answers the request with the refusal.
+func (f refusal) write(rw http.ResponseWriter) { writeError(rw, f.status, f.code, f.message) }
 
 func errorType(status int) string {
 	switch status {
@@ -587,11 +802,4 @@ func writeError(rw http.ResponseWriter, status int, code, message string) {
 	rw.WriteHeader(status)
 	//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to
 	json.NewEncoder(rw).Encode(errorBody(status, code, message))
-}
-
-func refusalMessage(outcome, reason string) string {
-	if reason == "" {
-		return outcome
-	}
-	return outcome + ": " + reason
 }

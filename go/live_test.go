@@ -3,6 +3,7 @@ package inference
 import (
 	"bytes"
 	"context"
+	"errors"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
 	"net/http"
@@ -18,6 +19,32 @@ type liveFixture struct {
 	connects, appends, commits atomic.Int64
 	saved                      []byte
 	revoke                     bool
+	// standing is the stand-in for Config.Standing (INF-A6): permitted
+	// until a test sets a refusal or an outage.
+	standing liveStanding
+}
+
+type liveStanding struct {
+	mu          sync.Mutex
+	refusal     string
+	outage      bool
+	credentials []string
+}
+
+func (s *liveStanding) decide(_ context.Context, _ Subject, _, credential string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.credentials = append(s.credentials, credential)
+	if s.outage {
+		return "", errors.New("rights unavailable")
+	}
+	return s.refusal, nil
+}
+
+func (s *liveStanding) set(refusal string, outage bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refusal, s.outage = refusal, outage
 }
 
 type fixtureLiveConnection struct {
@@ -120,6 +147,7 @@ func newLiveFixture(t *testing.T, denied bool) *liveFixture {
 			f.connects.Add(1)
 			return &fixtureLiveConnection{f: f, events: make(chan LiveEvent, 4), closed: make(chan struct{})}, nil
 		},
+		Standing: f.standing.decide,
 		Decide: func(context.Context, Subject, string, string) (string, error) {
 			if denied {
 				return "denied", nil

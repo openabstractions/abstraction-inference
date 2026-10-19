@@ -57,9 +57,8 @@ func validateEmbed(req wire.EmbedRequest) string {
 func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedRequest) wire.Embeddings {
 	started := p.cfg.Now()
 	via := routeOf(ctx)
-	if via.name == RouteRemote {
-		via.claim = req.Extensions[ClaimExtension]
-	}
+	extensions := separateExtensions(ctx, req.Extensions, nil)
+	via.claim = extensions.claim
 	var host *router.Host
 	model, credential := "", ""
 	finish := func(e wire.Embeddings) wire.Embeddings {
@@ -93,15 +92,11 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 	if reason := validateEmbed(req); reason != "" {
 		return refuse(wire.EmbedOutcomeInvalid, reason)
 	}
+	req.Extensions = extensions.vendor
 	var reason string
 	host, model, reason = p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileEmbed)
 	if host == nil {
 		return refuse(wire.EmbedOutcomeNoHost, reason)
-	}
-	if p.cfg.Admit != nil {
-		if admitReason, ok := p.cfg.Admit(ctx, host, model); !ok {
-			return refuse(admitEmbedOutcome(admitReason), admitReason)
-		}
 	}
 	remote := host.Wire == router.WireRemote
 	native := host.Wire == router.WireNative
@@ -134,25 +129,31 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 			return refuse(wire.EmbedOutcomeBudgetExceeded, "ceiling:"+unit+":"+credential)
 		}
 	}
+	var headers map[string]string
+	if !remote && !native && credential != "" {
+		var outcome string
+		headers, outcome = p.cfg.Apply(ctx, subject, EmbedContract, credential, router.Target(host.Base))
+		switch outcome {
+		case "applied":
+		case "unavailable", "":
+			return refuse(wire.EmbedOutcomeUnavailable, "credential:unavailable:"+credential)
+		default:
+			return refuse(wire.EmbedOutcomeNotPermitted, "credential:"+outcome+":"+credential)
+		}
+	}
+	activity, admitReason, ok, _ := p.admitModel(ctx, host, router.ProfileEmbed, model, nil)
+	if !ok {
+		clear(headers)
+		return refuse(admitEmbedOutcome(admitReason), admitReason)
+	}
+	defer p.releaseModelActivity(activity)
 	var result wire.Embeddings
 	switch {
 	case remote:
 		result = embedRemote(ctx, host, model, req, subject)
 	case native:
-		result = nativeEmbed(ctx, host, model, req)
+		result = nativeEmbed(ctx, host, model, req, subject)
 	default:
-		var headers map[string]string
-		if credential != "" {
-			var outcome string
-			headers, outcome = p.cfg.Apply(ctx, subject, EmbedContract, credential, router.Target(host.Base))
-			switch outcome {
-			case "applied":
-			case "unavailable", "":
-				return refuse(wire.EmbedOutcomeUnavailable, "credential:unavailable:"+credential)
-			default:
-				return refuse(wire.EmbedOutcomeNotPermitted, "credential:"+outcome+":"+credential)
-			}
-		}
 		result = embedOpenAI(ctx, p.cfg.HTTP, address, model, req, headers)
 		clear(headers)
 	}
@@ -305,15 +306,16 @@ func embedRemote(ctx context.Context, host *router.Host, model string, req wire.
 // nativeEmbed delegates embed@1 to a declared local provider's own OA
 // endpoint over the identity-bound native transport, mirroring nativeChat's
 // dispatch to the same downstream: the request travels with the chosen model
-// name, and the downstream observes this service as its caller.
-func nativeEmbed(ctx context.Context, host *router.Host, model string, req wire.EmbedRequest) wire.Embeddings {
+// name and its vendor extensions, the downstream observes this service as its
+// caller, and the claim names subject, the bound original caller.
+func nativeEmbed(ctx context.Context, host *router.Host, model string, req wire.EmbedRequest, subject Subject) wire.Embeddings {
 	transport, ok := host.NativeTransport()
 	if !ok {
 		return embedFailed(wire.EmbedOutcomeUnavailable, "native:transport")
 	}
 	forwarded := req
 	forwarded.Model = model
-	forwarded.Extensions = nil
+	forwarded.Extensions, _ = forwardedNativeExtensions(req.Extensions, nil, subject.Program)
 	result, err := wire.NewEmbedderClient(transport.WithContext(ctx)).Embed(forwarded)
 	if err != nil {
 		return embedFailed(wire.EmbedOutcomeUnavailable, "native:unreachable")

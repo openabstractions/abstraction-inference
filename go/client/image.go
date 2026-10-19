@@ -6,6 +6,35 @@ import (
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 )
 
+// ImageV2 calls image@2 with an explicit model or scoped selection policy.
+type ImageV2 struct{ transport listen.FrameClient }
+
+func NewImageV2(endpoint string) *ImageV2 {
+	return NewImageV2WithTransport(listen.FrameClient{Endpoint: endpoint})
+}
+func NewImageV2WithTransport(transport listen.FrameClient) *ImageV2 {
+	return &ImageV2{transport: transport.WithDefaults(callMargin, 1<<20)}
+}
+func (c *ImageV2) Start(ctx context.Context, request ImageRequestV2) (AdmissionV2, error) {
+	if err := ctx.Err(); err != nil {
+		return AdmissionV2{}, err
+	}
+	return wire.NewImageV2Client(c.transport.WithContext(ctx)).Start(request)
+}
+func (c *ImageV2) Observe(ctx context.Context, operation string, cursor, maxDeltas, maxBytes, waitMS int64) (DeltaPage, error) {
+	return observeOperation(ctx, c.transport, cursor, maxDeltas, maxBytes, waitMS,
+		func(d Delta) bool { return d.Kind != wire.DeltaKindEnd || d.ImageEnd != nil },
+		func(transport listen.FrameClient) (DeltaPage, error) {
+			return wire.NewImageV2Client(transport.WithContext(ctx)).Observe(operation, cursor, maxDeltas, maxBytes, waitMS)
+		})
+}
+func (c *ImageV2) Cancel(ctx context.Context, operation string) (Cancellation, error) {
+	if err := ctx.Err(); err != nil {
+		return Cancellation{}, err
+	}
+	return wire.NewImageV2Client(c.transport.WithContext(ctx)).Cancel(operation)
+}
+
 // Image calls abstraction.inference/image@1.
 type Image struct{ transport listen.FrameClient }
 

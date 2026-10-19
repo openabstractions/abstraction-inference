@@ -68,7 +68,14 @@ func TestInferenceJobRecoveryRefusesChangedBindingBeforeUpstreamAccess(t *testin
 				if err := current.DecodeCheckpoint(&saved); err != nil {
 					t.Fatal(err)
 				}
-				if saved.Waiting != want || saved.Handle != pin.Handle || saved.Binding != pin.Binding {
+				// A job spending a credential is never sent again to a replaced
+				// server: its resend could be charged twice, so it fails
+				// host:replaced (INF-G10). A legacy marker keeps waiting.
+				if want == "host:replaced" {
+					if current.State != job.StateFailed || saved.Failure != want || saved.Waiting != "" || saved.Handle != pin.Handle || saved.Binding != pin.Binding {
+						t.Fatalf("a credentialed job on a replaced server: state %s %+v", current.State, saved)
+					}
+				} else if saved.Waiting != want || saved.Handle != pin.Handle || saved.Binding != pin.Binding {
 					t.Fatalf("ownership changed or wrong refusal: %+v", saved)
 				}
 				if backend.submits+backend.polls+backend.reconciles+backend.cancels != 0 || fixture.consumer != "" {

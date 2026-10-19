@@ -214,7 +214,7 @@ func (w *Window) badRequest(rw http.ResponseWriter, b Bound, model string, err e
 	}
 	subject := b.Subject()
 	w.record(inference.Record{Rung: b.Rung(), Account: subject.Account, Program: subject.Program, Model: model, Outcome: outcome, Reason: reason})
-	writeError(rw, http.StatusBadRequest, outcome, refusalMessage(outcome, reason))
+	refusalOf(outcome, reason).write(rw)
 }
 
 func (w *Window) openAIChat(rw http.ResponseWriter, r *http.Request, b Bound, grant Grant) {
@@ -229,7 +229,7 @@ func (w *Window) openAIChat(rw http.ResponseWriter, r *http.Request, b Bound, gr
 	}
 	admission := w.start(r, b, grant, req)
 	if admission.Outcome != wire.StartOutcomeAccepted {
-		writeError(rw, status(admission.Outcome.String()), admission.Outcome.String(), refusalMessage(admission.Outcome.String(), admission.Reason))
+		refusalOf(admission.Outcome.String(), admission.Reason).write(rw)
 		return
 	}
 	id := "chatcmpl-" + admission.Operation
@@ -241,7 +241,7 @@ func (w *Window) openAIChat(rw http.ResponseWriter, r *http.Request, b Bound, gr
 			return
 		}
 		if end.Outcome != wire.ReplyOutcomeCompleted {
-			writeError(rw, status(end.Outcome.String()), end.Outcome.String(), refusalMessage(end.Outcome.String(), end.Reason))
+			refusalOf(end.Outcome.String(), end.Reason).write(rw)
 			return
 		}
 		reply, _ := fold.Reply()
@@ -321,7 +321,7 @@ func (w *Window) openAIChat(rw http.ResponseWriter, r *http.Request, b Bound, gr
 		return
 	}
 	if end.Outcome != wire.ReplyOutcomeCompleted {
-		send(errorBody(status(end.Outcome.String()), end.Outcome.String(), refusalMessage(end.Outcome.String(), end.Reason)))
+		send(refusalOf(end.Outcome.String(), end.Reason).body())
 	} else {
 		send(chunk(map[string]any{}, openAIFinish(end.StopReason)))
 		if in.StreamOptions != nil && in.StreamOptions.IncludeUsage {

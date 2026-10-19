@@ -1014,6 +1014,110 @@ func (v StartOutcome) Known() bool {
 	return ok
 }
 
+// SelectionReason is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseSelectionReason preserve the exact wire words.
+type SelectionReason uint32
+
+const (
+	SelectionReasonExplicitModel             SelectionReason = 1
+	SelectionReasonPreferred                 SelectionReason = 2
+	SelectionReasonPreferredRouteUnavailable SelectionReason = 3
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v SelectionReason) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v SelectionReason) WireName() (string, bool) {
+	switch v {
+	case SelectionReasonExplicitModel:
+		return "explicit_model", true
+	case SelectionReasonPreferred:
+		return "preferred", true
+	case SelectionReasonPreferredRouteUnavailable:
+		return "preferred_route_unavailable", true
+	}
+	return "", false
+}
+
+// ParseSelectionReason returns the member named by an exact wire word.
+func ParseSelectionReason(word string) (SelectionReason, bool) {
+	switch word {
+	case "explicit_model":
+		return SelectionReasonExplicitModel, true
+	case "preferred":
+		return SelectionReasonPreferred, true
+	case "preferred_route_unavailable":
+		return SelectionReasonPreferredRouteUnavailable, true
+	}
+	return SelectionReason(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v SelectionReason) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *SelectionReason) UnmarshalText(text []byte) error {
+	word, ok := ParseSelectionReason(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v SelectionReason) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *SelectionReason) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseSelectionReason(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// SelectionReasonValues returns every member of SelectionReason in declaration order, in a new slice.
+func SelectionReasonValues() []SelectionReason {
+	return []SelectionReason{SelectionReasonExplicitModel, SelectionReasonPreferred, SelectionReasonPreferredRouteUnavailable}
+}
+
+// Known reports whether v is a member of SelectionReason.
+func (v SelectionReason) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
 // PageOutcome is a closed vocabulary. Its numeric values are private implementation
 // tags; String and ParsePageOutcome preserve the exact wire words.
 type PageOutcome uint32
@@ -1248,6 +1352,145 @@ func CancelOutcomeValues() []CancelOutcome {
 
 // Known reports whether v is a member of CancelOutcome.
 func (v CancelOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// PreloadOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParsePreloadOutcome preserve the exact wire words.
+type PreloadOutcome uint32
+
+const (
+	PreloadOutcomeEvaluated          PreloadOutcome = 1
+	PreloadOutcomeLoaded             PreloadOutcome = 2
+	PreloadOutcomeBusy               PreloadOutcome = 3
+	PreloadOutcomeRefused            PreloadOutcome = 4
+	PreloadOutcomeNotPermitted       PreloadOutcome = 5
+	PreloadOutcomeUnsupportedFeature PreloadOutcome = 6
+	PreloadOutcomeNoHost             PreloadOutcome = 7
+	PreloadOutcomeUnavailable        PreloadOutcome = 8
+	PreloadOutcomeInvalid            PreloadOutcome = 9
+	PreloadOutcomeForbidden          PreloadOutcome = 10
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v PreloadOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v PreloadOutcome) WireName() (string, bool) {
+	switch v {
+	case PreloadOutcomeEvaluated:
+		return "evaluated", true
+	case PreloadOutcomeLoaded:
+		return "loaded", true
+	case PreloadOutcomeBusy:
+		return "busy", true
+	case PreloadOutcomeRefused:
+		return "refused", true
+	case PreloadOutcomeNotPermitted:
+		return "not_permitted", true
+	case PreloadOutcomeUnsupportedFeature:
+		return "unsupported_feature", true
+	case PreloadOutcomeNoHost:
+		return "no_host", true
+	case PreloadOutcomeUnavailable:
+		return "unavailable", true
+	case PreloadOutcomeInvalid:
+		return "invalid", true
+	case PreloadOutcomeForbidden:
+		return "forbidden", true
+	}
+	return "", false
+}
+
+// ParsePreloadOutcome returns the member named by an exact wire word.
+func ParsePreloadOutcome(word string) (PreloadOutcome, bool) {
+	switch word {
+	case "evaluated":
+		return PreloadOutcomeEvaluated, true
+	case "loaded":
+		return PreloadOutcomeLoaded, true
+	case "busy":
+		return PreloadOutcomeBusy, true
+	case "refused":
+		return PreloadOutcomeRefused, true
+	case "not_permitted":
+		return PreloadOutcomeNotPermitted, true
+	case "unsupported_feature":
+		return PreloadOutcomeUnsupportedFeature, true
+	case "no_host":
+		return PreloadOutcomeNoHost, true
+	case "unavailable":
+		return PreloadOutcomeUnavailable, true
+	case "invalid":
+		return PreloadOutcomeInvalid, true
+	case "forbidden":
+		return PreloadOutcomeForbidden, true
+	}
+	return PreloadOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v PreloadOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *PreloadOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParsePreloadOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v PreloadOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *PreloadOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParsePreloadOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// PreloadOutcomeValues returns every member of PreloadOutcome in declaration order, in a new slice.
+func PreloadOutcomeValues() []PreloadOutcome {
+	return []PreloadOutcome{PreloadOutcomeEvaluated, PreloadOutcomeLoaded, PreloadOutcomeBusy, PreloadOutcomeRefused, PreloadOutcomeNotPermitted, PreloadOutcomeUnsupportedFeature, PreloadOutcomeNoHost, PreloadOutcomeUnavailable, PreloadOutcomeInvalid, PreloadOutcomeForbidden}
+}
+
+// Known reports whether v is a member of PreloadOutcome.
+func (v PreloadOutcome) Known() bool {
 	_, ok := v.WireName()
 	return ok
 }
@@ -2040,6 +2283,140 @@ func (v ImageMode) Known() bool {
 	return ok
 }
 
+// VideoState is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseVideoState preserve the exact wire words.
+type VideoState uint32
+
+const (
+	VideoStateQueued      VideoState = 1
+	VideoStateGenerating  VideoState = 2
+	VideoStateCompleted   VideoState = 3
+	VideoStateFailed      VideoState = 4
+	VideoStateCancelled   VideoState = 5
+	VideoStateUnknown     VideoState = 6
+	VideoStateInvalid     VideoState = 7
+	VideoStateForbidden   VideoState = 8
+	VideoStateUnavailable VideoState = 9
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v VideoState) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v VideoState) WireName() (string, bool) {
+	switch v {
+	case VideoStateQueued:
+		return "queued", true
+	case VideoStateGenerating:
+		return "generating", true
+	case VideoStateCompleted:
+		return "completed", true
+	case VideoStateFailed:
+		return "failed", true
+	case VideoStateCancelled:
+		return "cancelled", true
+	case VideoStateUnknown:
+		return "unknown", true
+	case VideoStateInvalid:
+		return "invalid", true
+	case VideoStateForbidden:
+		return "forbidden", true
+	case VideoStateUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseVideoState returns the member named by an exact wire word.
+func ParseVideoState(word string) (VideoState, bool) {
+	switch word {
+	case "queued":
+		return VideoStateQueued, true
+	case "generating":
+		return VideoStateGenerating, true
+	case "completed":
+		return VideoStateCompleted, true
+	case "failed":
+		return VideoStateFailed, true
+	case "cancelled":
+		return VideoStateCancelled, true
+	case "unknown":
+		return VideoStateUnknown, true
+	case "invalid":
+		return VideoStateInvalid, true
+	case "forbidden":
+		return VideoStateForbidden, true
+	case "unavailable":
+		return VideoStateUnavailable, true
+	}
+	return VideoState(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v VideoState) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *VideoState) UnmarshalText(text []byte) error {
+	word, ok := ParseVideoState(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v VideoState) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *VideoState) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseVideoState(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// VideoStateValues returns every member of VideoState in declaration order, in a new slice.
+func VideoStateValues() []VideoState {
+	return []VideoState{VideoStateQueued, VideoStateGenerating, VideoStateCompleted, VideoStateFailed, VideoStateCancelled, VideoStateUnknown, VideoStateInvalid, VideoStateForbidden, VideoStateUnavailable}
+}
+
+// Known reports whether v is a member of VideoState.
+func (v VideoState) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
 // ListOutcome is a closed vocabulary. Its numeric values are private implementation
 // tags; String and ParseListOutcome preserve the exact wire words.
 type ListOutcome uint32
@@ -2595,6 +2972,219 @@ func (v AuditOutcome) Known() bool {
 	return ok
 }
 
+// CandidatePlacement is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseCandidatePlacement preserve the exact wire words.
+type CandidatePlacement uint32
+
+const (
+	CandidatePlacementLocal  CandidatePlacement = 1
+	CandidatePlacementHosted CandidatePlacement = 2
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v CandidatePlacement) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v CandidatePlacement) WireName() (string, bool) {
+	switch v {
+	case CandidatePlacementLocal:
+		return "local", true
+	case CandidatePlacementHosted:
+		return "hosted", true
+	}
+	return "", false
+}
+
+// ParseCandidatePlacement returns the member named by an exact wire word.
+func ParseCandidatePlacement(word string) (CandidatePlacement, bool) {
+	switch word {
+	case "local":
+		return CandidatePlacementLocal, true
+	case "hosted":
+		return CandidatePlacementHosted, true
+	}
+	return CandidatePlacement(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v CandidatePlacement) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *CandidatePlacement) UnmarshalText(text []byte) error {
+	word, ok := ParseCandidatePlacement(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v CandidatePlacement) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *CandidatePlacement) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseCandidatePlacement(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// CandidatePlacementValues returns every member of CandidatePlacement in declaration order, in a new slice.
+func CandidatePlacementValues() []CandidatePlacement {
+	return []CandidatePlacement{CandidatePlacementLocal, CandidatePlacementHosted}
+}
+
+// Known reports whether v is a member of CandidatePlacement.
+func (v CandidatePlacement) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// SelectionReadOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseSelectionReadOutcome preserve the exact wire words.
+type SelectionReadOutcome uint32
+
+const (
+	SelectionReadOutcomeFound       SelectionReadOutcome = 1
+	SelectionReadOutcomeUnknown     SelectionReadOutcome = 2
+	SelectionReadOutcomeInvalid     SelectionReadOutcome = 3
+	SelectionReadOutcomeForbidden   SelectionReadOutcome = 4
+	SelectionReadOutcomeUnavailable SelectionReadOutcome = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v SelectionReadOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v SelectionReadOutcome) WireName() (string, bool) {
+	switch v {
+	case SelectionReadOutcomeFound:
+		return "found", true
+	case SelectionReadOutcomeUnknown:
+		return "unknown", true
+	case SelectionReadOutcomeInvalid:
+		return "invalid", true
+	case SelectionReadOutcomeForbidden:
+		return "forbidden", true
+	case SelectionReadOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseSelectionReadOutcome returns the member named by an exact wire word.
+func ParseSelectionReadOutcome(word string) (SelectionReadOutcome, bool) {
+	switch word {
+	case "found":
+		return SelectionReadOutcomeFound, true
+	case "unknown":
+		return SelectionReadOutcomeUnknown, true
+	case "invalid":
+		return SelectionReadOutcomeInvalid, true
+	case "forbidden":
+		return SelectionReadOutcomeForbidden, true
+	case "unavailable":
+		return SelectionReadOutcomeUnavailable, true
+	}
+	return SelectionReadOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v SelectionReadOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *SelectionReadOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseSelectionReadOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v SelectionReadOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *SelectionReadOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseSelectionReadOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// SelectionReadOutcomeValues returns every member of SelectionReadOutcome in declaration order, in a new slice.
+func SelectionReadOutcomeValues() []SelectionReadOutcome {
+	return []SelectionReadOutcome{SelectionReadOutcomeFound, SelectionReadOutcomeUnknown, SelectionReadOutcomeInvalid, SelectionReadOutcomeForbidden, SelectionReadOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of SelectionReadOutcome.
+func (v SelectionReadOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
 // ServiceErrorCode is an open vocabulary: a reader keeps a word it has never heard, so
 // a value may be none of the constants below. ServiceErrorCode(word) and string(v)
 // convert between the raw word and the vocabulary.
@@ -2625,7 +3215,7 @@ func (v ServiceErrorCode) Known() bool {
 
 var Features = []string{"abstraction.inference/tools@1", "abstraction.inference/json-schema@1", "abstraction.inference/vision@1"}
 
-var ResourceActions = []string{"abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read"}
+var ResourceActions = []string{"abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read", "abstraction.inference/selection.manage", "abstraction.inference/selection.manage_for"}
 
 var LocalKeyKinds = []string{"openabstractions/local-key@1"}
 
@@ -2708,6 +3298,40 @@ type Request struct {
 	Credential         string
 }
 
+// Exactly one nonempty member is required. model makes one explicit model
+// request. selection_policy names a policy scoped to the bound account and
+// observed program. The stored policy supplies each candidate's placement and
+// hosted credential as the caller's explicit preference, subject to live rights
+// and budget checks; it grants no authority.
+type Target struct {
+	Model           string
+	SelectionPolicy string
+}
+
+// The chat@1 Request fields except model, with identical message, tool, option
+// and extension validation and limits. An explicit model target uses guarantees
+// and credential exactly as chat@1 does. A named policy target requires an
+// empty guarantees list and empty credential; its stored candidates supply
+// those choices for each attempt, and the service checks live rights and budget
+// independently. Nonempty inline values in policy mode are invalid.
+type RequestContent struct {
+	Messages           []Message
+	Tools              []Tool
+	Options            *Options
+	Extensions         map[string]string
+	RequiredExtensions []string
+	Guarantees         []RequestGuarantee
+	Credential         string
+}
+
+// One chat call. Target is exclusive and nonempty. A named policy is resolved
+// by the service for the proven caller before host selection; the caller leaves
+// content.guarantees empty and content.credential empty in policy mode.
+type RequestV2 struct {
+	Target  Target
+	Content RequestContent
+}
+
 // Token counts the host reported: input, output, and cached input tokens
 // counted within input. Zero where the host reported none.
 type Usage struct {
@@ -2726,16 +3350,18 @@ type Cost struct {
 
 // The result of one operation. completed carries the assistant message and
 // stop_reason other than no_stop; every other outcome carries no_stop. refused
-// means the host answered and refused the request (reason upstream:<status>).
-// not_permitted carries reason rights:<word> for the complete decision on
-// host:<name>, or credential:<outcome>:<name> for an applier refusal.
-// budget_exceeded carries ceiling:<unit>:<credential>. unsupported_feature
-// carries feature:<name> or extension:<key>. no_host carries router:<verdict>.
-// cancelled carries cancel, idle or caller. unavailable carries
-// rights:unavailable, credential:unavailable:<name> or upstream:<detail>; parts
-// already delivered stay delivered. host and model name what served it, and are
-// empty when nothing did. In the terminal delta message.parts is empty; the
-// parts arrived in the deltas before it.
+// means the host answered and refused the request: reason upstream:<status>, or
+// upstream:context_length_exceeded:<window>:<input> when the request exceeds
+// the context window, each number in tokens and 0 when unknown. not_permitted
+// carries reason rights:<word> for the complete decision on host:<name>, or
+// credential:<outcome>:<name> for an applier refusal. budget_exceeded carries
+// ceiling:<unit>:<credential>. unsupported_feature carries feature:<name> or
+// extension:<key>. no_host carries router:<verdict>. cancelled carries cancel,
+// idle or caller. unavailable carries rights:unavailable,
+// credential:unavailable:<name> or upstream:<detail>; parts already delivered
+// stay delivered. host and model name what served it, and are empty when
+// nothing did. In the terminal delta message.parts is empty; the parts arrived
+// in the deltas before it.
 type Reply struct {
 	Outcome    ReplyOutcome
 	Reason     string
@@ -2789,6 +3415,27 @@ type Admission struct {
 	RetainedDeltas int64
 }
 
+// The chat@2 admission. On accepted, host and model are the actual route,
+// preferred_model is the first policy candidate or explicit model, and
+// selection_reason says why that route was selected.
+// preferred_route_unavailable requires fresh definitive pre-dispatch listing
+// unavailability and makes no claim that every host is offline. Every refusal
+// has empty operation, host and model, zero bounds, and omits both selection
+// fields. RequestContent optional tools has the same absent-or-empty meaning as
+// chat@1 Request.tools.
+type AdmissionV2 struct {
+	Outcome         StartOutcome
+	Reason          string
+	Operation       string
+	Host            string
+	Model           string
+	RetentionMs     int64
+	IdleMs          int64
+	RetainedDeltas  int64
+	PreferredModel  string
+	SelectionReason *SelectionReason
+}
+
 // page carries 0..max_deltas deltas from sequence cursor in order, within
 // max_bytes of their compact JSON encoding except that a first delta larger
 // than max_bytes is returned alone. next is the sequence after the last delta
@@ -2813,6 +3460,25 @@ type DeltaPage struct {
 type Cancellation struct {
 	Outcome      CancelOutcome
 	ReplyOutcome *ReplyOutcome
+}
+
+// evaluated means the model is loaded and its server evaluated tokens tokens of
+// the prefix. loaded means the model is loaded and the server evaluated
+// nothing, because the prefix was shorter than the provider's minimum. busy
+// means nothing was evaluated because other work comes first: the model's
+// server has served a request since it loaded (engine:used), another preload
+// runs there (preload:running), another request took the server during the
+// evaluation, or the model is not loaded and loading it would ask another
+// holder to yield (resources:held). refused carries the server's refusal of the
+// prefix in reason. Every other outcome carries the reason words of chat@1
+// Admission. host and model are the route on evaluated, loaded and busy, and
+// empty otherwise; tokens is zero except on evaluated.
+type PreloadReply struct {
+	Outcome PreloadOutcome
+	Reason  string
+	Host    string
+	Model   string
+	Tokens  int64
 }
 
 // model is a model family or alias as in Request. inputs is 1..64 texts of
@@ -3020,6 +3686,33 @@ type ImageRequest struct {
 	Extensions         map[string]string
 }
 
+// The image@1 ImageRequest fields except model, with identical validation and
+// bounds. An explicit model target uses guarantees and credential as image@1
+// does. A named policy target requires empty guarantees and credential; each
+// stored candidate supplies these choices under live admission checks.
+type ImageRequestContent struct {
+	Mode               ImageMode
+	Prompt             string
+	Size               string
+	Count              int64
+	ImageDigest        string
+	ImageMediaType     string
+	MaskDigest         string
+	MaskMediaType      string
+	Guarantees         []RequestGuarantee
+	Credential         string
+	RequiredExtensions []string
+	Extensions         map[string]string
+}
+
+// One image call with exactly one explicit model or named policy. The policy is
+// scoped to the proven account and observed program. A policy target cannot
+// override candidate placement or credential inline.
+type ImageRequestV2 struct {
+	Target  Target
+	Content ImageRequestContent
+}
+
 // One bounded progress update. percent, when nonzero, is 1..100; zero means the
 // backend reported no numeric progress. message is at most 4096 UTF-8 bytes and
 // contains no submitted content or credential material.
@@ -3049,6 +3742,72 @@ type ImageReply struct {
 	Host       string
 	Model      string
 	Cost       *Cost
+}
+
+// One video generation forwarded by a designated runtime. request_id is 1..128
+// bytes the runtime chooses for one piece of work, its job operation id; a
+// Start repeating a request_id the provider holds names that same operation
+// (INF-G7). model is a name the provider lists. prompt is 1..32768 UTF-8 bytes.
+// size is auto or WIDTHxHEIGHT with each side 64..4096 and a multiple of 8.
+// duration_ms is 1..600000. fps is 1..120, and zero selects the model preset's
+// rate. seed is 1..2^53, and zero lets the provider choose. image_digest and
+// image_media_type name one optional PNG, JPEG or WebP initial frame the
+// runtime stages in the provider's content store before Start; a provider
+// refuses a Start naming a digest its store does not hold as invalid with
+// reason content:unknown and never generates that clip from the prompt alone.
+// Steps, guidance scale, flow shift, scheduler and decoder belong to the
+// provider's preset for the model (INF-G8) and have no field here. extensions
+// carries openabstractions/claimed-program and the caller's vendor controls
+// with abstraction.inference/image@1 semantics: a provider ignores an unknown
+// key unless required_extensions names it, refuses a required key it does not
+// support as unsupported_feature with reason extension:<key>, and never applies
+// a key that would override its preset.
+type VideoRequest struct {
+	Model              string
+	Prompt             string
+	Size               string
+	DurationMs         int64
+	Fps                int64
+	Seed               int64
+	ImageDigest        string
+	ImageMediaType     string
+	RequiredExtensions []string
+	Extensions         map[string]string
+	RequestID          string
+}
+
+// accepted carries an operation id of 1..128 bytes and retention_ms, how long
+// the operation stays observable after it ends. An accepted operation runs
+// until it ends or Cancel stops it; it is never cancelled for want of Observe.
+// Every refusal carries the Reply reason words, an empty operation and zero
+// retention_ms.
+type VideoAdmission struct {
+	Outcome     StartOutcome
+	Reason      string
+	Operation   string
+	RetentionMs int64
+}
+
+// The provider's current view of one operation. queued may carry
+// queue_position, 1 for the next to run, or zero when the engine reports none.
+// generating may carry step of steps, 1 <= step <= steps; a provider that knows
+// only a fraction reports it in its own steps, such as percent of 100.
+// completed carries exactly one local delivery: a canonical sha256 digest in
+// the provider's content store, media_type video/mp4, video/webm or video/avi
+// (video/x-msvideo is read as video/avi), and its size; the container carries
+// any audio track. failed carries reason, at most 4096 UTF-8 bytes with no
+// submitted content or credential material. unknown means no operation of that
+// id is visible to the caller: never started by it, retired after retention, or
+// lost when the provider or its engine restarted. invalid, forbidden and
+// unavailable are refusals of this call. Only completed carries a delivery;
+// only queued and generating carry progress.
+type VideoObservation struct {
+	Status        VideoState
+	Step          int64
+	Steps         int64
+	QueuePosition int64
+	Reason        string
+	Delivery      *Delivery
 }
 
 // A credential's daily limits per UTC day: tokens (input plus output), spend in
@@ -3254,6 +4013,43 @@ type GatewayChange struct {
 	Reason   string
 }
 
+// applied carries the new revision. conflict carries the current revision when
+// expected_revision did not match. unknown is used by Delete for an absent
+// policy. A creation requires an empty expected_revision.
+type SelectionChange struct {
+	Outcome  EditOutcome
+	Revision string
+	Reason   string
+}
+
+// One ordered candidate for chat@2 or image@2. provider optionally pins the
+// logical current registry declaration ID within this candidate. The service
+// checks the current eligible host and declaration generation. A missing or
+// stale pin refuses without another provider choice. A model alias does not
+// assert binary or model artifact identity.
+type SelectionCandidateV2 struct {
+	Model      string
+	Placement  CandidatePlacement
+	Credential string
+	Provider   string
+}
+
+// A 1..8 candidate policy in the bound account and observed program. The first
+// candidate is preferred. Pinned and unpinned policies use one service-owned
+// store.
+type SelectionPolicyV2 struct {
+	Name       string
+	Candidates []SelectionCandidateV2
+}
+
+// found carries the policy and its revision. Other outcomes carry no policy or
+// revision.
+type SelectionReadV2 struct {
+	Outcome  SelectionReadOutcome
+	Revision string
+	Policy   *SelectionPolicyV2
+}
+
 type oaChatStartArguments struct {
 	Request Request
 }
@@ -3268,6 +4064,26 @@ type oaChatObserveArguments struct {
 
 type oaChatCancelArguments struct {
 	Operation string
+}
+
+type oaChatV2StartArguments struct {
+	Request RequestV2
+}
+
+type oaChatV2ObserveArguments struct {
+	Operation string
+	Cursor    int64
+	MaxDeltas int64
+	MaxBytes  int64
+	WaitMs    int64
+}
+
+type oaChatV2CancelArguments struct {
+	Operation string
+}
+
+type oaPreloaderPreloadArguments struct {
+	Request Request
 }
 
 type oaEmbedderEmbedArguments struct {
@@ -3348,6 +4164,34 @@ type oaImageCancelArguments struct {
 	Operation string
 }
 
+type oaImageV2StartArguments struct {
+	Request ImageRequestV2
+}
+
+type oaImageV2ObserveArguments struct {
+	Operation string
+	Cursor    int64
+	MaxDeltas int64
+	MaxBytes  int64
+	WaitMs    int64
+}
+
+type oaImageV2CancelArguments struct {
+	Operation string
+}
+
+type oaVideoStartArguments struct {
+	Request VideoRequest
+}
+
+type oaVideoObserveArguments struct {
+	Operation string
+}
+
+type oaVideoCancelArguments struct {
+	Operation string
+}
+
 type oaOperatorHostsArguments struct {
 }
 
@@ -3387,6 +4231,23 @@ type oaOperatorSetGatewayArguments struct {
 	Address          string
 }
 
+type oaSelectionOperatorV2ReadArguments struct {
+	TargetProgram string
+	Name          string
+}
+
+type oaSelectionOperatorV2PutArguments struct {
+	TargetProgram    string
+	ExpectedRevision string
+	Policy           SelectionPolicyV2
+}
+
+type oaSelectionOperatorV2DeletePolicyArguments struct {
+	TargetProgram    string
+	ExpectedRevision string
+	Name             string
+}
+
 type oaServiceFrame struct {
 	Version   int32
 	Service   string
@@ -3417,6 +4278,22 @@ type oaChatObserveResult struct {
 
 type oaChatCancelResult struct {
 	Value Cancellation
+}
+
+type oaChatV2StartResult struct {
+	Value AdmissionV2
+}
+
+type oaChatV2ObserveResult struct {
+	Value DeltaPage
+}
+
+type oaChatV2CancelResult struct {
+	Value Cancellation
+}
+
+type oaPreloaderPreloadResult struct {
+	Value PreloadReply
 }
 
 type oaEmbedderEmbedResult struct {
@@ -3479,6 +4356,30 @@ type oaImageCancelResult struct {
 	Value Cancellation
 }
 
+type oaImageV2StartResult struct {
+	Value AdmissionV2
+}
+
+type oaImageV2ObserveResult struct {
+	Value DeltaPage
+}
+
+type oaImageV2CancelResult struct {
+	Value Cancellation
+}
+
+type oaVideoStartResult struct {
+	Value VideoAdmission
+}
+
+type oaVideoObserveResult struct {
+	Value VideoObservation
+}
+
+type oaVideoCancelResult struct {
+	Value Cancellation
+}
+
 type oaOperatorHostsResult struct {
 	Value HostList
 }
@@ -3513,6 +4414,18 @@ type oaOperatorGatewayResult struct {
 
 type oaOperatorSetGatewayResult struct {
 	Value GatewayChange
+}
+
+type oaSelectionOperatorV2ReadResult struct {
+	Value SelectionReadV2
+}
+
+type oaSelectionOperatorV2PutResult struct {
+	Value SelectionChange
+}
+
+type oaSelectionOperatorV2DeletePolicyResult struct {
+	Value SelectionChange
 }
 
 func encPart(out []byte, v *Part, depth int) []byte {
@@ -3745,6 +4658,111 @@ func encRequest(out []byte, v *Request, depth int) []byte {
 		out = append(out, ':', ' ')
 		out = esc(out, v.Credential)
 	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encTarget(out []byte, v *Target, depth int) []byte {
+	out = append(out, '{')
+	first := true
+	if v.Model != "" {
+		first = false
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "model")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Model)
+	}
+	if v.SelectionPolicy != "" {
+		if !first {
+			out = append(out, ',')
+		}
+		first = false
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "selection_policy")
+		out = append(out, ':', ' ')
+		out = esc(out, v.SelectionPolicy)
+	}
+	if !first {
+		out = append(out, '\n')
+		out = pad(out, depth)
+	}
+	return append(out, '}')
+}
+
+func encRequestContent(out []byte, v *RequestContent, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "messages")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Messages, depth+1, encMessage)
+	if len(v.Tools) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "tools")
+		out = append(out, ':', ' ')
+		out = encList(out, v.Tools, depth+1, encTool)
+	}
+	if v.Options != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "options")
+		out = append(out, ':', ' ')
+		out = encOptions(out, v.Options, depth+1)
+	}
+	if len(v.Extensions) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "extensions")
+		out = append(out, ':', ' ')
+		out = strmap(out, v.Extensions, depth+1)
+	}
+	if len(v.RequiredExtensions) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "required_extensions")
+		out = append(out, ':', ' ')
+		out = strs(out, v.RequiredExtensions, depth+1)
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "guarantees")
+	out = append(out, ':', ' ')
+	out = enumStrs(out, v.Guarantees, depth+1, func(v RequestGuarantee) string { return string(v) })
+	if v.Credential != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "credential")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Credential)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encRequestV2(out []byte, v *RequestV2, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target")
+	out = append(out, ':', ' ')
+	out = encTarget(out, &v.Target, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "content")
+	out = append(out, ':', ' ')
+	out = encRequestContent(out, &v.Content, depth+1)
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
@@ -4036,6 +5054,84 @@ func encAdmission(out []byte, v *Admission, depth int) []byte {
 	return append(out, '}')
 }
 
+func encAdmissionV2(out []byte, v *AdmissionV2, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	if v.SelectionReason != nil {
+		if !(*v.SelectionReason).Known() {
+			panic(&Refusal{Word: "bad_enum", Offset: 0})
+		}
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "reason")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Reason)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "operation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Operation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "host")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Host)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "model")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Model)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "retention_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.RetentionMs)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "idle_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.IdleMs)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "retained_deltas")
+	out = append(out, ':', ' ')
+	out = num(out, v.RetainedDeltas)
+	if v.PreferredModel != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "preferred_model")
+		out = append(out, ':', ' ')
+		out = esc(out, v.PreferredModel)
+	}
+	if v.SelectionReason != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "selection_reason")
+		out = append(out, ':', ' ')
+		out = esc(out, v.SelectionReason.String())
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encDeltaPage(out []byte, v *DeltaPage, depth int) []byte {
 	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
@@ -4096,6 +5192,45 @@ func encCancellation(out []byte, v *Cancellation, depth int) []byte {
 		out = append(out, ':', ' ')
 		out = esc(out, v.ReplyOutcome.String())
 	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encPreloadReply(out []byte, v *PreloadReply, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "reason")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Reason)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "host")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Host)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "model")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Model)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "tokens")
+	out = append(out, ':', ' ')
+	out = num(out, v.Tokens)
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
@@ -4781,6 +5916,119 @@ func encImageRequest(out []byte, v *ImageRequest, depth int) []byte {
 	return append(out, '}')
 }
 
+func encImageRequestContent(out []byte, v *ImageRequestContent, depth int) []byte {
+	if !(v.Mode).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "mode")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Mode.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "prompt")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Prompt)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "size")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Size)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "count")
+	out = append(out, ':', ' ')
+	out = num(out, v.Count)
+	if v.ImageDigest != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "image_digest")
+		out = append(out, ':', ' ')
+		out = esc(out, v.ImageDigest)
+	}
+	if v.ImageMediaType != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "image_media_type")
+		out = append(out, ':', ' ')
+		out = esc(out, v.ImageMediaType)
+	}
+	if v.MaskDigest != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "mask_digest")
+		out = append(out, ':', ' ')
+		out = esc(out, v.MaskDigest)
+	}
+	if v.MaskMediaType != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "mask_media_type")
+		out = append(out, ':', ' ')
+		out = esc(out, v.MaskMediaType)
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "guarantees")
+	out = append(out, ':', ' ')
+	out = enumStrs(out, v.Guarantees, depth+1, func(v RequestGuarantee) string { return string(v) })
+	if v.Credential != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "credential")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Credential)
+	}
+	if len(v.RequiredExtensions) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "required_extensions")
+		out = append(out, ':', ' ')
+		out = strs(out, v.RequiredExtensions, depth+1)
+	}
+	if len(v.Extensions) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "extensions")
+		out = append(out, ':', ' ')
+		out = strmap(out, v.Extensions, depth+1)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encImageRequestV2(out []byte, v *ImageRequestV2, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target")
+	out = append(out, ':', ' ')
+	out = encTarget(out, &v.Target, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "content")
+	out = append(out, ':', ' ')
+	out = encImageRequestContent(out, &v.Content, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encImageProgress(out []byte, v *ImageProgress, depth int) []byte {
 	out = append(out, '{')
 	first := true
@@ -4876,6 +6124,178 @@ func encImageReply(out []byte, v *ImageReply, depth int) []byte {
 		out = esc(out, "cost")
 		out = append(out, ':', ' ')
 		out = encCost(out, v.Cost, depth+1)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encVideoRequest(out []byte, v *VideoRequest, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "model")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Model)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "prompt")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Prompt)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "size")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Size)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "duration_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.DurationMs)
+	if v.Fps != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "fps")
+		out = append(out, ':', ' ')
+		out = num(out, v.Fps)
+	}
+	if v.Seed != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "seed")
+		out = append(out, ':', ' ')
+		out = num(out, v.Seed)
+	}
+	if v.ImageDigest != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "image_digest")
+		out = append(out, ':', ' ')
+		out = esc(out, v.ImageDigest)
+	}
+	if v.ImageMediaType != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "image_media_type")
+		out = append(out, ':', ' ')
+		out = esc(out, v.ImageMediaType)
+	}
+	if len(v.RequiredExtensions) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "required_extensions")
+		out = append(out, ':', ' ')
+		out = strs(out, v.RequiredExtensions, depth+1)
+	}
+	if len(v.Extensions) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "extensions")
+		out = append(out, ':', ' ')
+		out = strmap(out, v.Extensions, depth+1)
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "request_id")
+	out = append(out, ':', ' ')
+	out = esc(out, v.RequestID)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encVideoAdmission(out []byte, v *VideoAdmission, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "reason")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Reason)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "operation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Operation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "retention_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.RetentionMs)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encVideoObservation(out []byte, v *VideoObservation, depth int) []byte {
+	if !(v.Status).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "status")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Status.String())
+	if v.Step != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "step")
+		out = append(out, ':', ' ')
+		out = num(out, v.Step)
+	}
+	if v.Steps != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "steps")
+		out = append(out, ':', ' ')
+		out = num(out, v.Steps)
+	}
+	if v.QueuePosition != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "queue_position")
+		out = append(out, ':', ' ')
+		out = num(out, v.QueuePosition)
+	}
+	if v.Reason != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "reason")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Reason)
+	}
+	if v.Delivery != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "delivery")
+		out = append(out, ':', ' ')
+		out = encDelivery(out, v.Delivery, depth+1)
 	}
 	out = append(out, '\n')
 	out = pad(out, depth)
@@ -5557,6 +6977,117 @@ func encGatewayChange(out []byte, v *GatewayChange, depth int) []byte {
 	return append(out, '}')
 }
 
+func encSelectionChange(out []byte, v *SelectionChange, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "revision")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Revision)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "reason")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Reason)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encSelectionCandidateV2(out []byte, v *SelectionCandidateV2, depth int) []byte {
+	if !(v.Placement).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "model")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Model)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "placement")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Placement.String())
+	if v.Credential != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "credential")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Credential)
+	}
+	if v.Provider != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "provider")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Provider)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encSelectionPolicyV2(out []byte, v *SelectionPolicyV2, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "name")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Name)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "candidates")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Candidates, depth+1, encSelectionCandidateV2)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encSelectionReadV2(out []byte, v *SelectionReadV2, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "revision")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Revision)
+	if v.Policy != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "policy")
+		out = append(out, ':', ' ')
+		out = encSelectionPolicyV2(out, v.Policy, depth+1)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encOAChatStartArguments(out []byte, v *oaChatStartArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
@@ -5612,6 +7143,78 @@ func encOAChatCancelArguments(out []byte, v *oaChatCancelArguments, depth int) [
 	out = esc(out, "operation")
 	out = append(out, ':', ' ')
 	out = esc(out, v.Operation)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAChatV2StartArguments(out []byte, v *oaChatV2StartArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "request")
+	out = append(out, ':', ' ')
+	out = encRequestV2(out, &v.Request, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAChatV2ObserveArguments(out []byte, v *oaChatV2ObserveArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "operation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Operation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "cursor")
+	out = append(out, ':', ' ')
+	out = num(out, v.Cursor)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "max_deltas")
+	out = append(out, ':', ' ')
+	out = num(out, v.MaxDeltas)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "max_bytes")
+	out = append(out, ':', ' ')
+	out = num(out, v.MaxBytes)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "wait_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.WaitMs)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAChatV2CancelArguments(out []byte, v *oaChatV2CancelArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "operation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Operation)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAPreloaderPreloadArguments(out []byte, v *oaPreloaderPreloadArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "request")
+	out = append(out, ':', ' ')
+	out = encRequest(out, &v.Request, depth+1)
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
@@ -5905,6 +7508,102 @@ func encOAImageCancelArguments(out []byte, v *oaImageCancelArguments, depth int)
 	return append(out, '}')
 }
 
+func encOAImageV2StartArguments(out []byte, v *oaImageV2StartArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "request")
+	out = append(out, ':', ' ')
+	out = encImageRequestV2(out, &v.Request, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAImageV2ObserveArguments(out []byte, v *oaImageV2ObserveArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "operation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Operation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "cursor")
+	out = append(out, ':', ' ')
+	out = num(out, v.Cursor)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "max_deltas")
+	out = append(out, ':', ' ')
+	out = num(out, v.MaxDeltas)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "max_bytes")
+	out = append(out, ':', ' ')
+	out = num(out, v.MaxBytes)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "wait_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.WaitMs)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAImageV2CancelArguments(out []byte, v *oaImageV2CancelArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "operation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Operation)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAVideoStartArguments(out []byte, v *oaVideoStartArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "request")
+	out = append(out, ':', ' ')
+	out = encVideoRequest(out, &v.Request, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAVideoObserveArguments(out []byte, v *oaVideoObserveArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "operation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Operation)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAVideoCancelArguments(out []byte, v *oaVideoCancelArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "operation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Operation)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encOAOperatorHostsArguments(out []byte, v *oaOperatorHostsArguments, depth int) []byte {
 	out = append(out, '{')
 	return append(out, '}')
@@ -6032,6 +7731,72 @@ func encOAOperatorSetGatewayArguments(out []byte, v *oaOperatorSetGatewayArgumen
 	return append(out, '}')
 }
 
+func encOASelectionOperatorV2ReadArguments(out []byte, v *oaSelectionOperatorV2ReadArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target_program")
+	out = append(out, ':', ' ')
+	out = esc(out, v.TargetProgram)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "name")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Name)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOASelectionOperatorV2PutArguments(out []byte, v *oaSelectionOperatorV2PutArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target_program")
+	out = append(out, ':', ' ')
+	out = esc(out, v.TargetProgram)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "expected_revision")
+	out = append(out, ':', ' ')
+	out = esc(out, v.ExpectedRevision)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "policy")
+	out = append(out, ':', ' ')
+	out = encSelectionPolicyV2(out, &v.Policy, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOASelectionOperatorV2DeletePolicyArguments(out []byte, v *oaSelectionOperatorV2DeletePolicyArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target_program")
+	out = append(out, ':', ' ')
+	out = esc(out, v.TargetProgram)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "expected_revision")
+	out = append(out, ':', ' ')
+	out = esc(out, v.ExpectedRevision)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "name")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Name)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encOAServiceFrame(out []byte, v *oaServiceFrame, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
@@ -6151,6 +7916,54 @@ func encOAChatCancelResult(out []byte, v *oaChatCancelResult, depth int) []byte 
 	out = esc(out, "value")
 	out = append(out, ':', ' ')
 	out = encCancellation(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAChatV2StartResult(out []byte, v *oaChatV2StartResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encAdmissionV2(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAChatV2ObserveResult(out []byte, v *oaChatV2ObserveResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encDeltaPage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAChatV2CancelResult(out []byte, v *oaChatV2CancelResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encCancellation(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAPreloaderPreloadResult(out []byte, v *oaPreloaderPreloadResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encPreloadReply(out, &v.Value, depth+1)
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
@@ -6336,6 +8149,78 @@ func encOAImageCancelResult(out []byte, v *oaImageCancelResult, depth int) []byt
 	return append(out, '}')
 }
 
+func encOAImageV2StartResult(out []byte, v *oaImageV2StartResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encAdmissionV2(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAImageV2ObserveResult(out []byte, v *oaImageV2ObserveResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encDeltaPage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAImageV2CancelResult(out []byte, v *oaImageV2CancelResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encCancellation(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAVideoStartResult(out []byte, v *oaVideoStartResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encVideoAdmission(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAVideoObserveResult(out []byte, v *oaVideoObserveResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encVideoObservation(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAVideoCancelResult(out []byte, v *oaVideoCancelResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encCancellation(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encOAOperatorHostsResult(out []byte, v *oaOperatorHostsResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
@@ -6439,6 +8324,42 @@ func encOAOperatorSetGatewayResult(out []byte, v *oaOperatorSetGatewayResult, de
 	out = esc(out, "value")
 	out = append(out, ':', ' ')
 	out = encGatewayChange(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOASelectionOperatorV2ReadResult(out []byte, v *oaSelectionOperatorV2ReadResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encSelectionReadV2(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOASelectionOperatorV2PutResult(out []byte, v *oaSelectionOperatorV2PutResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encSelectionChange(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOASelectionOperatorV2DeletePolicyResult(out []byte, v *oaSelectionOperatorV2DeletePolicyResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encSelectionChange(out, &v.Value, depth+1)
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
@@ -7568,6 +9489,264 @@ func (r *reader) decodeRequest() (*Request, error) {
 	return v, nil
 }
 
+func (r *reader) decodeTarget() (*Target, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Target{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "model":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Model = x
+			case "selection_policy":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.SelectionPolicy = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	return v, nil
+}
+
+func (r *reader) decodeRequestContent() (*RequestContent, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &RequestContent{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "messages":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := decodeList(r, (*reader).decodeMessage)
+				if err != nil {
+					return nil, err
+				}
+				v.Messages = x
+			case "tools":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := decodeList(r, (*reader).decodeTool)
+				if err != nil {
+					return nil, err
+				}
+				v.Tools = x
+			case "options":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.decodeOptions()
+				if err != nil {
+					return nil, err
+				}
+				v.Options = x
+			case "extensions":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.strMap()
+				if err != nil {
+					return nil, err
+				}
+				v.Extensions = x
+			case "required_extensions":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.strList()
+				if err != nil {
+					return nil, err
+				}
+				v.RequiredExtensions = x
+			case "guarantees":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.strList()
+				if err != nil {
+					return nil, err
+				}
+				words := make([]RequestGuarantee, len(x))
+				for i, raw := range x {
+					words[i] = RequestGuarantee(raw)
+				}
+				v.Guarantees = words
+			case "credential":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Credential = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&33 != 33 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeRequestV2() (*RequestV2, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &RequestV2{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "target":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeTarget()
+				if err != nil {
+					return nil, err
+				}
+				v.Target = *x
+			case "content":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeRequestContent()
+				if err != nil {
+					return nil, err
+				}
+				v.Content = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
 func (r *reader) decodeUsage() (*Usage, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -8201,6 +10380,171 @@ func (r *reader) decodeAdmission() (*Admission, error) {
 	return v, nil
 }
 
+func (r *reader) decodeAdmissionV2() (*AdmissionV2, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &AdmissionV2{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseStartOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "reason":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Reason = x
+			case "operation":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Operation = x
+			case "host":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Host = x
+			case "model":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Model = x
+			case "retention_ms":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.RetentionMs = x
+			case "idle_ms":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.IdleMs = x
+			case "retained_deltas":
+				if seen&128 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 128
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.RetainedDeltas = x
+			case "preferred_model":
+				if seen&256 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 256
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.PreferredModel = x
+			case "selection_reason":
+				if seen&512 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 512
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseSelectionReason(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.SelectionReason = &word
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&255 != 255 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	if v.SelectionReason != nil {
+		if !(*v.SelectionReason).Known() {
+			return nil, r.refuse("bad_enum")
+		}
+	}
+	return v, nil
+}
+
 func (r *reader) decodeDeltaPage() (*DeltaPage, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -8378,6 +10722,112 @@ func (r *reader) decodeCancellation() (*Cancellation, error) {
 		if !(*v.ReplyOutcome).Known() {
 			return nil, r.refuse("bad_enum")
 		}
+	}
+	return v, nil
+}
+
+func (r *reader) decodePreloadReply() (*PreloadReply, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &PreloadReply{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParsePreloadOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "reason":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Reason = x
+			case "host":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Host = x
+			case "model":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Model = x
+			case "tokens":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Tokens = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&31 != 31 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
 }
@@ -10028,6 +12478,255 @@ func (r *reader) decodeImageRequest() (*ImageRequest, error) {
 	return v, nil
 }
 
+func (r *reader) decodeImageRequestContent() (*ImageRequestContent, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &ImageRequestContent{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "mode":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseImageMode(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Mode = word
+			case "prompt":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Prompt = x
+			case "size":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Size = x
+			case "count":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Count = x
+			case "image_digest":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ImageDigest = x
+			case "image_media_type":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ImageMediaType = x
+			case "mask_digest":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.MaskDigest = x
+			case "mask_media_type":
+				if seen&128 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 128
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.MaskMediaType = x
+			case "guarantees":
+				if seen&256 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 256
+				x, err := r.strList()
+				if err != nil {
+					return nil, err
+				}
+				words := make([]RequestGuarantee, len(x))
+				for i, raw := range x {
+					words[i] = RequestGuarantee(raw)
+				}
+				v.Guarantees = words
+			case "credential":
+				if seen&512 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 512
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Credential = x
+			case "required_extensions":
+				if seen&1024 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1024
+				x, err := r.strList()
+				if err != nil {
+					return nil, err
+				}
+				v.RequiredExtensions = x
+			case "extensions":
+				if seen&2048 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2048
+				x, err := r.strMap()
+				if err != nil {
+					return nil, err
+				}
+				v.Extensions = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&271 != 271 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Mode).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeImageRequestV2() (*ImageRequestV2, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &ImageRequestV2{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "target":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeTarget()
+				if err != nil {
+					return nil, err
+				}
+				v.Target = *x
+			case "content":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeImageRequestContent()
+				if err != nil {
+					return nil, err
+				}
+				v.Content = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
 func (r *reader) decodeImageProgress() (*ImageProgress, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -10297,6 +12996,377 @@ func (r *reader) decodeImageReply() (*ImageReply, error) {
 		return nil, r.refuse("missing_field")
 	}
 	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeVideoRequest() (*VideoRequest, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &VideoRequest{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "model":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Model = x
+			case "prompt":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Prompt = x
+			case "size":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Size = x
+			case "duration_ms":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.DurationMs = x
+			case "fps":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Fps = x
+			case "seed":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Seed = x
+			case "image_digest":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ImageDigest = x
+			case "image_media_type":
+				if seen&128 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 128
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ImageMediaType = x
+			case "required_extensions":
+				if seen&256 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 256
+				x, err := r.strList()
+				if err != nil {
+					return nil, err
+				}
+				v.RequiredExtensions = x
+			case "extensions":
+				if seen&512 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 512
+				x, err := r.strMap()
+				if err != nil {
+					return nil, err
+				}
+				v.Extensions = x
+			case "request_id":
+				if seen&1024 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1024
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.RequestID = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1039 != 1039 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeVideoAdmission() (*VideoAdmission, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &VideoAdmission{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseStartOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "reason":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Reason = x
+			case "operation":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Operation = x
+			case "retention_ms":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.RetentionMs = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&15 != 15 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeVideoObservation() (*VideoObservation, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &VideoObservation{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "status":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseVideoState(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Status = word
+			case "step":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Step = x
+			case "steps":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Steps = x
+			case "queue_position":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.QueuePosition = x
+			case "reason":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Reason = x
+			case "delivery":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.decodeDelivery()
+				if err != nil {
+					return nil, err
+				}
+				v.Delivery = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Status).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -11845,6 +14915,343 @@ func (r *reader) decodeGatewayChange() (*GatewayChange, error) {
 	return v, nil
 }
 
+func (r *reader) decodeSelectionChange() (*SelectionChange, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &SelectionChange{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseEditOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "revision":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Revision = x
+			case "reason":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Reason = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeSelectionCandidateV2() (*SelectionCandidateV2, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &SelectionCandidateV2{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "model":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Model = x
+			case "placement":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseCandidatePlacement(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Placement = word
+			case "credential":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Credential = x
+			case "provider":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Provider = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Placement).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeSelectionPolicyV2() (*SelectionPolicyV2, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &SelectionPolicyV2{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "name":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Name = x
+			case "candidates":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := decodeList(r, (*reader).decodeSelectionCandidateV2)
+				if err != nil {
+					return nil, err
+				}
+				v.Candidates = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeSelectionReadV2() (*SelectionReadV2, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &SelectionReadV2{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseSelectionReadOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "revision":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Revision = x
+			case "policy":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.decodeSelectionPolicyV2()
+				if err != nil {
+					return nil, err
+				}
+				v.Policy = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
 func (r *reader) decodeOAChatStartArguments() (*oaChatStartArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -12041,6 +15448,282 @@ func (r *reader) decodeOAChatCancelArguments() (*oaChatCancelArguments, error) {
 					return nil, err
 				}
 				v.Operation = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAChatV2StartArguments() (*oaChatV2StartArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaChatV2StartArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "request":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeRequestV2()
+				if err != nil {
+					return nil, err
+				}
+				v.Request = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAChatV2ObserveArguments() (*oaChatV2ObserveArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaChatV2ObserveArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "operation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Operation = x
+			case "cursor":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Cursor = x
+			case "max_deltas":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.MaxDeltas = x
+			case "max_bytes":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.MaxBytes = x
+			case "wait_ms":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.WaitMs = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&31 != 31 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAChatV2CancelArguments() (*oaChatV2CancelArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaChatV2CancelArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "operation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Operation = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAPreloaderPreloadArguments() (*oaPreloaderPreloadArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaPreloaderPreloadArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "request":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeRequest()
+				if err != nil {
+					return nil, err
+				}
+				v.Request = *x
 			default:
 				return nil, r.refuse("unknown_field")
 			}
@@ -13127,6 +16810,400 @@ func (r *reader) decodeOAImageCancelArguments() (*oaImageCancelArguments, error)
 	return v, nil
 }
 
+func (r *reader) decodeOAImageV2StartArguments() (*oaImageV2StartArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaImageV2StartArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "request":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeImageRequestV2()
+				if err != nil {
+					return nil, err
+				}
+				v.Request = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAImageV2ObserveArguments() (*oaImageV2ObserveArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaImageV2ObserveArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "operation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Operation = x
+			case "cursor":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Cursor = x
+			case "max_deltas":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.MaxDeltas = x
+			case "max_bytes":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.MaxBytes = x
+			case "wait_ms":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.WaitMs = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&31 != 31 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAImageV2CancelArguments() (*oaImageV2CancelArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaImageV2CancelArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "operation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Operation = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAVideoStartArguments() (*oaVideoStartArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaVideoStartArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "request":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeVideoRequest()
+				if err != nil {
+					return nil, err
+				}
+				v.Request = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAVideoObserveArguments() (*oaVideoObserveArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaVideoObserveArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "operation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Operation = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAVideoCancelArguments() (*oaVideoCancelArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaVideoCancelArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "operation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Operation = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
 func (r *reader) decodeOAOperatorHostsArguments() (*oaOperatorHostsArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -13649,6 +17726,233 @@ func (r *reader) decodeOAOperatorSetGatewayArguments() (*oaOperatorSetGatewayArg
 	return v, nil
 }
 
+func (r *reader) decodeOASelectionOperatorV2ReadArguments() (*oaSelectionOperatorV2ReadArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaSelectionOperatorV2ReadArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "target_program":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.TargetProgram = x
+			case "name":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Name = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOASelectionOperatorV2PutArguments() (*oaSelectionOperatorV2PutArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaSelectionOperatorV2PutArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "target_program":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.TargetProgram = x
+			case "expected_revision":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ExpectedRevision = x
+			case "policy":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.decodeSelectionPolicyV2()
+				if err != nil {
+					return nil, err
+				}
+				v.Policy = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOASelectionOperatorV2DeletePolicyArguments() (*oaSelectionOperatorV2DeletePolicyArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaSelectionOperatorV2DeletePolicyArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "target_program":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.TargetProgram = x
+			case "expected_revision":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ExpectedRevision = x
+			case "name":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Name = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
 func (r *reader) decodeOAServiceFrame() (*oaServiceFrame, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -14058,6 +18362,242 @@ func (r *reader) decodeOAChatCancelResult() (*oaChatCancelResult, error) {
 				}
 				seen |= 1
 				x, err := r.decodeCancellation()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAChatV2StartResult() (*oaChatV2StartResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaChatV2StartResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeAdmissionV2()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAChatV2ObserveResult() (*oaChatV2ObserveResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaChatV2ObserveResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeDeltaPage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAChatV2CancelResult() (*oaChatV2CancelResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaChatV2CancelResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeCancellation()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAPreloaderPreloadResult() (*oaPreloaderPreloadResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaPreloaderPreloadResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodePreloadReply()
 				if err != nil {
 					return nil, err
 				}
@@ -14968,6 +19508,360 @@ func (r *reader) decodeOAImageCancelResult() (*oaImageCancelResult, error) {
 	return v, nil
 }
 
+func (r *reader) decodeOAImageV2StartResult() (*oaImageV2StartResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaImageV2StartResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeAdmissionV2()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAImageV2ObserveResult() (*oaImageV2ObserveResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaImageV2ObserveResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeDeltaPage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAImageV2CancelResult() (*oaImageV2CancelResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaImageV2CancelResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeCancellation()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAVideoStartResult() (*oaVideoStartResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaVideoStartResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeVideoAdmission()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAVideoObserveResult() (*oaVideoObserveResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaVideoObserveResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeVideoObservation()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAVideoCancelResult() (*oaVideoCancelResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaVideoCancelResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeCancellation()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
 func (r *reader) decodeOAOperatorHostsResult() (*oaOperatorHostsResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -15474,6 +20368,183 @@ func (r *reader) decodeOAOperatorSetGatewayResult() (*oaOperatorSetGatewayResult
 				}
 				seen |= 1
 				x, err := r.decodeGatewayChange()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOASelectionOperatorV2ReadResult() (*oaSelectionOperatorV2ReadResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaSelectionOperatorV2ReadResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeSelectionReadV2()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOASelectionOperatorV2PutResult() (*oaSelectionOperatorV2PutResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaSelectionOperatorV2PutResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeSelectionChange()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOASelectionOperatorV2DeletePolicyResult() (*oaSelectionOperatorV2DeletePolicyResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaSelectionOperatorV2DeletePolicyResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeSelectionChange()
 				if err != nil {
 					return nil, err
 				}
@@ -16177,6 +21248,500 @@ func (d *ChatDispatcher) invokeCancel(args *oaChatCancelArguments) (payload Raw,
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAChatCancelResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
+type ChatV2 interface {
+	Start(request RequestV2) (AdmissionV2, error)
+	Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
+	Cancel(operation string) (Cancellation, error)
+}
+type ChatV2Transport interface {
+	FrameExchanger
+}
+type ChatV2Client struct{ transport ChatV2Transport }
+
+func NewChatV2Client(t ChatV2Transport) *ChatV2Client { return &ChatV2Client{transport: t} }
+
+type ChatV2Dispatcher struct{ Handler ChatV2 }
+
+func (c *ChatV2Client) Start(request RequestV2) (result AdmissionV2, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaChatV2StartArguments{Request: request}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/chat@2", Method: "Start", Arguments: Raw(encOAChatV2StartArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaChatV2StartResult
+	decoded, err = r.decodeOAChatV2StartResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *ChatV2Client) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaChatV2ObserveArguments{Operation: operation, Cursor: cursor, MaxDeltas: maxDeltas, MaxBytes: maxBytes, WaitMs: waitMs}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/chat@2", Method: "Observe", Arguments: Raw(encOAChatV2ObserveArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaChatV2ObserveResult
+	decoded, err = r.decodeOAChatV2ObserveResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *ChatV2Client) Cancel(operation string) (result Cancellation, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaChatV2CancelArguments{Operation: operation}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/chat@2", Method: "Cancel", Arguments: Raw(encOAChatV2CancelArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaChatV2CancelResult
+	decoded, err = r.decodeOAChatV2CancelResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *ChatV2Dispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.inference/chat@2", ready, why
+	}
+	return "abstraction.inference/chat@2", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *ChatV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *ChatV2Dispatcher) ServiceContract() string { return "abstraction.inference/chat@2" }
+func (d *ChatV2Dispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.inference/chat@2" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Start":
+		return DispatchError("wrong_mode")
+	case "Observe":
+		return DispatchError("wrong_mode")
+	case "Cancel":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *ChatV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.inference/chat@2" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Start":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAChatV2StartArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeStart(args)
+		return serviceReply(v, payload, err)
+	case "Observe":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAChatV2ObserveArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeObserve(args)
+		return serviceReply(v, payload, err)
+	case "Cancel":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAChatV2CancelArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeCancel(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *ChatV2Dispatcher) invokeStart(args *oaChatV2StartArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result AdmissionV2
+	result, err = d.Handler.Start(args.Request)
+	if err != nil {
+		return
+	}
+	value := oaChatV2StartResult{Value: result}
+	payload = Raw(encOAChatV2StartResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAChatV2StartResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *ChatV2Dispatcher) invokeObserve(args *oaChatV2ObserveArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result DeltaPage
+	result, err = d.Handler.Observe(args.Operation, args.Cursor, args.MaxDeltas, args.MaxBytes, args.WaitMs)
+	if err != nil {
+		return
+	}
+	value := oaChatV2ObserveResult{Value: result}
+	payload = Raw(encOAChatV2ObserveResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAChatV2ObserveResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *ChatV2Dispatcher) invokeCancel(args *oaChatV2CancelArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result Cancellation
+	result, err = d.Handler.Cancel(args.Operation)
+	if err != nil {
+		return
+	}
+	value := oaChatV2CancelResult{Value: result}
+	payload = Raw(encOAChatV2CancelResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAChatV2CancelResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
+type Preloader interface {
+	Preload(request Request) (PreloadReply, error)
+}
+type PreloaderTransport interface {
+	FrameExchanger
+}
+type PreloaderClient struct{ transport PreloaderTransport }
+
+func NewPreloaderClient(t PreloaderTransport) *PreloaderClient { return &PreloaderClient{transport: t} }
+
+type PreloaderDispatcher struct{ Handler Preloader }
+
+func (c *PreloaderClient) Preload(request Request) (result PreloadReply, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaPreloaderPreloadArguments{Request: request}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/preload@1", Method: "Preload", Arguments: Raw(encOAPreloaderPreloadArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaPreloaderPreloadResult
+	decoded, err = r.decodeOAPreloaderPreloadResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *PreloaderDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.inference/preload@1", ready, why
+	}
+	return "abstraction.inference/preload@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *PreloaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *PreloaderDispatcher) ServiceContract() string { return "abstraction.inference/preload@1" }
+func (d *PreloaderDispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.inference/preload@1" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Preload":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *PreloaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.inference/preload@1" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Preload":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAPreloaderPreloadArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokePreload(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *PreloaderDispatcher) invokePreload(args *oaPreloaderPreloadArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result PreloadReply
+	result, err = d.Handler.Preload(args.Request)
+	if err != nil {
+		return
+	}
+	value := oaPreloaderPreloadResult{Value: result}
+	payload = Raw(encOAPreloaderPreloadResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAPreloaderPreloadResult(); e != nil {
 		payload = ""
 		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
@@ -17878,6 +23443,680 @@ func (d *ImageDispatcher) invokeCancel(args *oaImageCancelArguments) (payload Ra
 	return
 }
 
+type ImageV2 interface {
+	Start(request ImageRequestV2) (AdmissionV2, error)
+	Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
+	Cancel(operation string) (Cancellation, error)
+}
+type ImageV2Transport interface {
+	FrameExchanger
+}
+type ImageV2Client struct{ transport ImageV2Transport }
+
+func NewImageV2Client(t ImageV2Transport) *ImageV2Client { return &ImageV2Client{transport: t} }
+
+type ImageV2Dispatcher struct{ Handler ImageV2 }
+
+func (c *ImageV2Client) Start(request ImageRequestV2) (result AdmissionV2, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaImageV2StartArguments{Request: request}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/image@2", Method: "Start", Arguments: Raw(encOAImageV2StartArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaImageV2StartResult
+	decoded, err = r.decodeOAImageV2StartResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *ImageV2Client) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaImageV2ObserveArguments{Operation: operation, Cursor: cursor, MaxDeltas: maxDeltas, MaxBytes: maxBytes, WaitMs: waitMs}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/image@2", Method: "Observe", Arguments: Raw(encOAImageV2ObserveArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaImageV2ObserveResult
+	decoded, err = r.decodeOAImageV2ObserveResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *ImageV2Client) Cancel(operation string) (result Cancellation, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaImageV2CancelArguments{Operation: operation}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/image@2", Method: "Cancel", Arguments: Raw(encOAImageV2CancelArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaImageV2CancelResult
+	decoded, err = r.decodeOAImageV2CancelResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *ImageV2Dispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.inference/image@2", ready, why
+	}
+	return "abstraction.inference/image@2", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *ImageV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *ImageV2Dispatcher) ServiceContract() string { return "abstraction.inference/image@2" }
+func (d *ImageV2Dispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.inference/image@2" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Start":
+		return DispatchError("wrong_mode")
+	case "Observe":
+		return DispatchError("wrong_mode")
+	case "Cancel":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *ImageV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.inference/image@2" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Start":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAImageV2StartArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeStart(args)
+		return serviceReply(v, payload, err)
+	case "Observe":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAImageV2ObserveArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeObserve(args)
+		return serviceReply(v, payload, err)
+	case "Cancel":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAImageV2CancelArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeCancel(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *ImageV2Dispatcher) invokeStart(args *oaImageV2StartArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result AdmissionV2
+	result, err = d.Handler.Start(args.Request)
+	if err != nil {
+		return
+	}
+	value := oaImageV2StartResult{Value: result}
+	payload = Raw(encOAImageV2StartResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAImageV2StartResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *ImageV2Dispatcher) invokeObserve(args *oaImageV2ObserveArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result DeltaPage
+	result, err = d.Handler.Observe(args.Operation, args.Cursor, args.MaxDeltas, args.MaxBytes, args.WaitMs)
+	if err != nil {
+		return
+	}
+	value := oaImageV2ObserveResult{Value: result}
+	payload = Raw(encOAImageV2ObserveResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAImageV2ObserveResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *ImageV2Dispatcher) invokeCancel(args *oaImageV2CancelArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result Cancellation
+	result, err = d.Handler.Cancel(args.Operation)
+	if err != nil {
+		return
+	}
+	value := oaImageV2CancelResult{Value: result}
+	payload = Raw(encOAImageV2CancelResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAImageV2CancelResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
+type Video interface {
+	Start(request VideoRequest) (VideoAdmission, error)
+	Observe(operation string) (VideoObservation, error)
+	Cancel(operation string) (Cancellation, error)
+}
+type VideoTransport interface {
+	FrameExchanger
+}
+type VideoClient struct{ transport VideoTransport }
+
+func NewVideoClient(t VideoTransport) *VideoClient { return &VideoClient{transport: t} }
+
+type VideoDispatcher struct{ Handler Video }
+
+func (c *VideoClient) Start(request VideoRequest) (result VideoAdmission, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaVideoStartArguments{Request: request}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/video@1", Method: "Start", Arguments: Raw(encOAVideoStartArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaVideoStartResult
+	decoded, err = r.decodeOAVideoStartResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *VideoClient) Observe(operation string) (result VideoObservation, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaVideoObserveArguments{Operation: operation}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/video@1", Method: "Observe", Arguments: Raw(encOAVideoObserveArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaVideoObserveResult
+	decoded, err = r.decodeOAVideoObserveResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *VideoClient) Cancel(operation string) (result Cancellation, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaVideoCancelArguments{Operation: operation}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/video@1", Method: "Cancel", Arguments: Raw(encOAVideoCancelArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaVideoCancelResult
+	decoded, err = r.decodeOAVideoCancelResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *VideoDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.inference/video@1", ready, why
+	}
+	return "abstraction.inference/video@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *VideoDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *VideoDispatcher) ServiceContract() string { return "abstraction.inference/video@1" }
+func (d *VideoDispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.inference/video@1" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Start":
+		return DispatchError("wrong_mode")
+	case "Observe":
+		return DispatchError("wrong_mode")
+	case "Cancel":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *VideoDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.inference/video@1" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Start":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAVideoStartArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeStart(args)
+		return serviceReply(v, payload, err)
+	case "Observe":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAVideoObserveArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeObserve(args)
+		return serviceReply(v, payload, err)
+	case "Cancel":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAVideoCancelArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeCancel(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *VideoDispatcher) invokeStart(args *oaVideoStartArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result VideoAdmission
+	result, err = d.Handler.Start(args.Request)
+	if err != nil {
+		return
+	}
+	value := oaVideoStartResult{Value: result}
+	payload = Raw(encOAVideoStartResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAVideoStartResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *VideoDispatcher) invokeObserve(args *oaVideoObserveArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result VideoObservation
+	result, err = d.Handler.Observe(args.Operation)
+	if err != nil {
+		return
+	}
+	value := oaVideoObserveResult{Value: result}
+	payload = Raw(encOAVideoObserveResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAVideoObserveResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *VideoDispatcher) invokeCancel(args *oaVideoCancelArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result Cancellation
+	result, err = d.Handler.Cancel(args.Operation)
+	if err != nil {
+		return
+	}
+	value := oaVideoCancelResult{Value: result}
+	payload = Raw(encOAVideoCancelResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAVideoCancelResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
 type Operator interface {
 	Hosts() (HostList, error)
 	AddHost(expectedRevision string, host HostEntry) (HostChange, error)
@@ -18743,6 +24982,347 @@ func (d *OperatorDispatcher) invokeSetGateway(args *oaOperatorSetGatewayArgument
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAOperatorSetGatewayResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
+type SelectionOperatorV2 interface {
+	Read(targetProgram, name string) (SelectionReadV2, error)
+	Put(targetProgram, expectedRevision string, policy SelectionPolicyV2) (SelectionChange, error)
+	DeletePolicy(targetProgram, expectedRevision, name string) (SelectionChange, error)
+}
+type SelectionOperatorV2Transport interface {
+	FrameExchanger
+}
+type SelectionOperatorV2Client struct{ transport SelectionOperatorV2Transport }
+
+func NewSelectionOperatorV2Client(t SelectionOperatorV2Transport) *SelectionOperatorV2Client {
+	return &SelectionOperatorV2Client{transport: t}
+}
+
+type SelectionOperatorV2Dispatcher struct{ Handler SelectionOperatorV2 }
+
+func (c *SelectionOperatorV2Client) Read(targetProgram, name string) (result SelectionReadV2, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaSelectionOperatorV2ReadArguments{TargetProgram: targetProgram, Name: name}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/selection-operator@2", Method: "Read", Arguments: Raw(encOASelectionOperatorV2ReadArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaSelectionOperatorV2ReadResult
+	decoded, err = r.decodeOASelectionOperatorV2ReadResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *SelectionOperatorV2Client) Put(targetProgram, expectedRevision string, policy SelectionPolicyV2) (result SelectionChange, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaSelectionOperatorV2PutArguments{TargetProgram: targetProgram, ExpectedRevision: expectedRevision, Policy: policy}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/selection-operator@2", Method: "Put", Arguments: Raw(encOASelectionOperatorV2PutArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaSelectionOperatorV2PutResult
+	decoded, err = r.decodeOASelectionOperatorV2PutResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *SelectionOperatorV2Client) DeletePolicy(targetProgram, expectedRevision, name string) (result SelectionChange, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaSelectionOperatorV2DeletePolicyArguments{TargetProgram: targetProgram, ExpectedRevision: expectedRevision, Name: name}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.inference/selection-operator@2", Method: "DeletePolicy", Arguments: Raw(encOASelectionOperatorV2DeletePolicyArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaSelectionOperatorV2DeletePolicyResult
+	decoded, err = r.decodeOASelectionOperatorV2DeletePolicyResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *SelectionOperatorV2Dispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.inference/selection-operator@2", ready, why
+	}
+	return "abstraction.inference/selection-operator@2", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *SelectionOperatorV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *SelectionOperatorV2Dispatcher) ServiceContract() string {
+	return "abstraction.inference/selection-operator@2"
+}
+func (d *SelectionOperatorV2Dispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.inference/selection-operator@2" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Read":
+		return DispatchError("wrong_mode")
+	case "Put":
+		return DispatchError("wrong_mode")
+	case "DeletePolicy":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *SelectionOperatorV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.inference/selection-operator@2" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Read":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOASelectionOperatorV2ReadArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeRead(args)
+		return serviceReply(v, payload, err)
+	case "Put":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOASelectionOperatorV2PutArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokePut(args)
+		return serviceReply(v, payload, err)
+	case "DeletePolicy":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOASelectionOperatorV2DeletePolicyArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeDeletePolicy(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *SelectionOperatorV2Dispatcher) invokeRead(args *oaSelectionOperatorV2ReadArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result SelectionReadV2
+	result, err = d.Handler.Read(args.TargetProgram, args.Name)
+	if err != nil {
+		return
+	}
+	value := oaSelectionOperatorV2ReadResult{Value: result}
+	payload = Raw(encOASelectionOperatorV2ReadResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOASelectionOperatorV2ReadResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *SelectionOperatorV2Dispatcher) invokePut(args *oaSelectionOperatorV2PutArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result SelectionChange
+	result, err = d.Handler.Put(args.TargetProgram, args.ExpectedRevision, args.Policy)
+	if err != nil {
+		return
+	}
+	value := oaSelectionOperatorV2PutResult{Value: result}
+	payload = Raw(encOASelectionOperatorV2PutResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOASelectionOperatorV2PutResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *SelectionOperatorV2Dispatcher) invokeDeletePolicy(args *oaSelectionOperatorV2DeletePolicyArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result SelectionChange
+	result, err = d.Handler.DeletePolicy(args.TargetProgram, args.ExpectedRevision, args.Name)
+	if err != nil {
+		return
+	}
+	value := oaSelectionOperatorV2DeletePolicyResult{Value: result}
+	payload = Raw(encOASelectionOperatorV2DeletePolicyResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOASelectionOperatorV2DeletePolicyResult(); e != nil {
 		payload = ""
 		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return

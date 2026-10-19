@@ -488,6 +488,56 @@ impl PartialEq<&str> for StartOutcome {
     }
 }
 
+/// The closed vocabulary SelectionReason. A reader refuses a name it does not list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SelectionReason {
+    ExplicitModel,
+    Preferred,
+    PreferredRouteUnavailable,
+}
+
+impl SelectionReason {
+    /// Every member, in declaration order.
+    pub const ALL: [Self; 3] = [Self::ExplicitModel, Self::Preferred, Self::PreferredRouteUnavailable];
+
+    /// The member's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExplicitModel => "explicit_model",
+            Self::Preferred => "preferred",
+            Self::PreferredRouteUnavailable => "preferred_route_unavailable",
+        }
+    }
+
+    /// The member a wire name spells, or `None` for a name this vocabulary refuses.
+    pub fn from_wire(name: &str) -> Option<Self> {
+        match name {
+            "explicit_model" => Some(Self::ExplicitModel),
+            "preferred" => Some(Self::Preferred),
+            "preferred_route_unavailable" => Some(Self::PreferredRouteUnavailable),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for SelectionReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl PartialEq<str> for SelectionReason {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for SelectionReason {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
 /// The closed vocabulary PageOutcome. A reader refuses a name it does not list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PageOutcome {
@@ -601,6 +651,77 @@ impl PartialEq<str> for CancelOutcome {
 }
 
 impl PartialEq<&str> for CancelOutcome {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+/// The closed vocabulary PreloadOutcome. A reader refuses a name it does not list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum PreloadOutcome {
+    Evaluated,
+    Loaded,
+    Busy,
+    Refused,
+    NotPermitted,
+    UnsupportedFeature,
+    NoHost,
+    Unavailable,
+    Invalid,
+    Forbidden,
+}
+
+impl PreloadOutcome {
+    /// Every member, in declaration order.
+    pub const ALL: [Self; 10] = [Self::Evaluated, Self::Loaded, Self::Busy, Self::Refused, Self::NotPermitted, Self::UnsupportedFeature, Self::NoHost, Self::Unavailable, Self::Invalid, Self::Forbidden];
+
+    /// The member's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Evaluated => "evaluated",
+            Self::Loaded => "loaded",
+            Self::Busy => "busy",
+            Self::Refused => "refused",
+            Self::NotPermitted => "not_permitted",
+            Self::UnsupportedFeature => "unsupported_feature",
+            Self::NoHost => "no_host",
+            Self::Unavailable => "unavailable",
+            Self::Invalid => "invalid",
+            Self::Forbidden => "forbidden",
+        }
+    }
+
+    /// The member a wire name spells, or `None` for a name this vocabulary refuses.
+    pub fn from_wire(name: &str) -> Option<Self> {
+        match name {
+            "evaluated" => Some(Self::Evaluated),
+            "loaded" => Some(Self::Loaded),
+            "busy" => Some(Self::Busy),
+            "refused" => Some(Self::Refused),
+            "not_permitted" => Some(Self::NotPermitted),
+            "unsupported_feature" => Some(Self::UnsupportedFeature),
+            "no_host" => Some(Self::NoHost),
+            "unavailable" => Some(Self::Unavailable),
+            "invalid" => Some(Self::Invalid),
+            "forbidden" => Some(Self::Forbidden),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for PreloadOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl PartialEq<str> for PreloadOutcome {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for PreloadOutcome {
     fn eq(&self, other: &&str) -> bool {
         self.as_str() == *other
     }
@@ -992,6 +1113,74 @@ impl PartialEq<&str> for ImageMode {
     }
 }
 
+/// The closed vocabulary VideoState. A reader refuses a name it does not list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum VideoState {
+    Queued,
+    Generating,
+    Completed,
+    Failed,
+    Cancelled,
+    Unknown,
+    Invalid,
+    Forbidden,
+    Unavailable,
+}
+
+impl VideoState {
+    /// Every member, in declaration order.
+    pub const ALL: [Self; 9] = [Self::Queued, Self::Generating, Self::Completed, Self::Failed, Self::Cancelled, Self::Unknown, Self::Invalid, Self::Forbidden, Self::Unavailable];
+
+    /// The member's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Generating => "generating",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::Unknown => "unknown",
+            Self::Invalid => "invalid",
+            Self::Forbidden => "forbidden",
+            Self::Unavailable => "unavailable",
+        }
+    }
+
+    /// The member a wire name spells, or `None` for a name this vocabulary refuses.
+    pub fn from_wire(name: &str) -> Option<Self> {
+        match name {
+            "queued" => Some(Self::Queued),
+            "generating" => Some(Self::Generating),
+            "completed" => Some(Self::Completed),
+            "failed" => Some(Self::Failed),
+            "cancelled" => Some(Self::Cancelled),
+            "unknown" => Some(Self::Unknown),
+            "invalid" => Some(Self::Invalid),
+            "forbidden" => Some(Self::Forbidden),
+            "unavailable" => Some(Self::Unavailable),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for VideoState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl PartialEq<str> for VideoState {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for VideoState {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
 /// The closed vocabulary ListOutcome. A reader refuses a name it does not list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ListOutcome {
@@ -1263,6 +1452,109 @@ impl PartialEq<&str> for AuditOutcome {
     }
 }
 
+/// The closed vocabulary CandidatePlacement. A reader refuses a name it does not list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum CandidatePlacement {
+    Local,
+    Hosted,
+}
+
+impl CandidatePlacement {
+    /// Every member, in declaration order.
+    pub const ALL: [Self; 2] = [Self::Local, Self::Hosted];
+
+    /// The member's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Hosted => "hosted",
+        }
+    }
+
+    /// The member a wire name spells, or `None` for a name this vocabulary refuses.
+    pub fn from_wire(name: &str) -> Option<Self> {
+        match name {
+            "local" => Some(Self::Local),
+            "hosted" => Some(Self::Hosted),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for CandidatePlacement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl PartialEq<str> for CandidatePlacement {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for CandidatePlacement {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+/// The closed vocabulary SelectionReadOutcome. A reader refuses a name it does not list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SelectionReadOutcome {
+    Found,
+    Unknown,
+    Invalid,
+    Forbidden,
+    Unavailable,
+}
+
+impl SelectionReadOutcome {
+    /// Every member, in declaration order.
+    pub const ALL: [Self; 5] = [Self::Found, Self::Unknown, Self::Invalid, Self::Forbidden, Self::Unavailable];
+
+    /// The member's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Found => "found",
+            Self::Unknown => "unknown",
+            Self::Invalid => "invalid",
+            Self::Forbidden => "forbidden",
+            Self::Unavailable => "unavailable",
+        }
+    }
+
+    /// The member a wire name spells, or `None` for a name this vocabulary refuses.
+    pub fn from_wire(name: &str) -> Option<Self> {
+        match name {
+            "found" => Some(Self::Found),
+            "unknown" => Some(Self::Unknown),
+            "invalid" => Some(Self::Invalid),
+            "forbidden" => Some(Self::Forbidden),
+            "unavailable" => Some(Self::Unavailable),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for SelectionReadOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl PartialEq<str> for SelectionReadOutcome {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for SelectionReadOutcome {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
 /// Names of the open vocabulary ServiceErrorCode. A reader keeps a name it has never heard
 /// of, so fields carry `String` and a match needs an arm for the rest.
 pub mod service_error_code {
@@ -1278,7 +1570,7 @@ pub mod service_error_code {
 
 pub const FEATURES: [&str; 3] = ["abstraction.inference/tools@1", "abstraction.inference/json-schema@1", "abstraction.inference/vision@1"];
 
-pub const RESOURCE_ACTIONS: [&str; 4] = ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read"];
+pub const RESOURCE_ACTIONS: [&str; 6] = ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read", "abstraction.inference/selection.manage", "abstraction.inference/selection.manage_for"];
 
 pub const LOCAL_KEY_KINDS: [&str; 1] = ["openabstractions/local-key@1"];
 
@@ -1367,6 +1659,44 @@ pub struct Request {
     pub credential: String,
 }
 
+/// Exactly one nonempty member is required. model makes one explicit model
+/// request. selection_policy names a policy scoped to the bound account and
+/// observed program. The stored policy supplies each candidate's placement and
+/// hosted credential as the caller's explicit preference, subject to live
+/// rights and budget checks; it grants no authority.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Target {
+    pub model: String,
+    pub selection_policy: String,
+}
+
+/// The chat@1 Request fields except model, with identical message, tool, option
+/// and extension validation and limits. An explicit model target uses
+/// guarantees and credential exactly as chat@1 does. A named policy target
+/// requires an empty guarantees list and empty credential; its stored
+/// candidates supply those choices for each attempt, and the service checks
+/// live rights and budget independently. Nonempty inline values in policy mode
+/// are invalid.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RequestContent {
+    pub messages: Vec<Message>,
+    pub tools: Vec<Tool>,
+    pub options: Option<Options>,
+    pub extensions: BTreeMap<String, String>,
+    pub required_extensions: Vec<String>,
+    pub guarantees: Vec<String>,
+    pub credential: String,
+}
+
+/// One chat call. Target is exclusive and nonempty. A named policy is resolved
+/// by the service for the proven caller before host selection; the caller
+/// leaves content.guarantees empty and content.credential empty in policy mode.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RequestV2 {
+    pub target: Target,
+    pub content: RequestContent,
+}
+
 /// Token counts the host reported: input, output, and cached input tokens
 /// counted within input. Zero where the host reported none.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -1387,7 +1717,9 @@ pub struct Cost {
 
 /// The result of one operation. completed carries the assistant message and
 /// stop_reason other than no_stop; every other outcome carries no_stop. refused
-/// means the host answered and refused the request (reason upstream:<status>).
+/// means the host answered and refused the request: reason upstream:<status>,
+/// or upstream:context_length_exceeded:<window>:<input> when the request
+/// exceeds the context window, each number in tokens and 0 when unknown.
 /// not_permitted carries reason rights:<word> for the complete decision on
 /// host:<name>, or credential:<outcome>:<name> for an applier refusal.
 /// budget_exceeded carries ceiling:<unit>:<credential>. unsupported_feature
@@ -1453,6 +1785,28 @@ pub struct Admission {
     pub retained_deltas: i64,
 }
 
+/// The chat@2 admission. On accepted, host and model are the actual route,
+/// preferred_model is the first policy candidate or explicit model, and
+/// selection_reason says why that route was selected.
+/// preferred_route_unavailable requires fresh definitive pre-dispatch listing
+/// unavailability and makes no claim that every host is offline. Every refusal
+/// has empty operation, host and model, zero bounds, and omits both selection
+/// fields. RequestContent optional tools has the same absent-or-empty meaning
+/// as chat@1 Request.tools.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdmissionV2 {
+    pub outcome: StartOutcome,
+    pub reason: String,
+    pub operation: String,
+    pub host: String,
+    pub model: String,
+    pub retention_ms: i64,
+    pub idle_ms: i64,
+    pub retained_deltas: i64,
+    pub preferred_model: String,
+    pub selection_reason: Option<SelectionReason>,
+}
+
 /// page carries 0..max_deltas deltas from sequence cursor in order, within
 /// max_bytes of their compact JSON encoding except that a first delta larger
 /// than max_bytes is returned alone. next is the sequence after the last delta
@@ -1479,6 +1833,26 @@ pub struct DeltaPage {
 pub struct Cancellation {
     pub outcome: CancelOutcome,
     pub reply_outcome: Option<ReplyOutcome>,
+}
+
+/// evaluated means the model is loaded and its server evaluated tokens tokens
+/// of the prefix. loaded means the model is loaded and the server evaluated
+/// nothing, because the prefix was shorter than the provider's minimum. busy
+/// means nothing was evaluated because other work comes first: the model's
+/// server has served a request since it loaded (engine:used), another preload
+/// runs there (preload:running), another request took the server during the
+/// evaluation, or the model is not loaded and loading it would ask another
+/// holder to yield (resources:held). refused carries the server's refusal of
+/// the prefix in reason. Every other outcome carries the reason words of chat@1
+/// Admission. host and model are the route on evaluated, loaded and busy, and
+/// empty otherwise; tokens is zero except on evaluated.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreloadReply {
+    pub outcome: PreloadOutcome,
+    pub reason: String,
+    pub host: String,
+    pub model: String,
+    pub tokens: i64,
 }
 
 /// model is a model family or alias as in Request. inputs is 1..64 texts of
@@ -1700,6 +2074,35 @@ pub struct ImageRequest {
     pub extensions: BTreeMap<String, String>,
 }
 
+/// The image@1 ImageRequest fields except model, with identical validation and
+/// bounds. An explicit model target uses guarantees and credential as image@1
+/// does. A named policy target requires empty guarantees and credential; each
+/// stored candidate supplies these choices under live admission checks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageRequestContent {
+    pub mode: ImageMode,
+    pub prompt: String,
+    pub size: String,
+    pub count: i64,
+    pub image_digest: String,
+    pub image_media_type: String,
+    pub mask_digest: String,
+    pub mask_media_type: String,
+    pub guarantees: Vec<String>,
+    pub credential: String,
+    pub required_extensions: Vec<String>,
+    pub extensions: BTreeMap<String, String>,
+}
+
+/// One image call with exactly one explicit model or named policy. The policy
+/// is scoped to the proven account and observed program. A policy target cannot
+/// override candidate placement or credential inline.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageRequestV2 {
+    pub target: Target,
+    pub content: ImageRequestContent,
+}
+
 /// One bounded progress update. percent, when nonzero, is 1..100; zero means
 /// the backend reported no numeric progress. message is at most 4096 UTF-8
 /// bytes and contains no submitted content or credential material.
@@ -1732,6 +2135,75 @@ pub struct ImageReply {
     pub host: String,
     pub model: String,
     pub cost: Option<Cost>,
+}
+
+/// One video generation forwarded by a designated runtime. request_id is 1..128
+/// bytes the runtime chooses for one piece of work, its job operation id; a
+/// Start repeating a request_id the provider holds names that same operation
+/// (INF-G7). model is a name the provider lists. prompt is 1..32768 UTF-8
+/// bytes. size is auto or WIDTHxHEIGHT with each side 64..4096 and a multiple
+/// of 8. duration_ms is 1..600000. fps is 1..120, and zero selects the model
+/// preset's rate. seed is 1..2^53, and zero lets the provider choose.
+/// image_digest and image_media_type name one optional PNG, JPEG or WebP
+/// initial frame the runtime stages in the provider's content store before
+/// Start; a provider refuses a Start naming a digest its store does not hold as
+/// invalid with reason content:unknown and never generates that clip from the
+/// prompt alone. Steps, guidance scale, flow shift, scheduler and decoder
+/// belong to the provider's preset for the model (INF-G8) and have no field
+/// here. extensions carries openabstractions/claimed-program and the caller's
+/// vendor controls with abstraction.inference/image@1 semantics: a provider
+/// ignores an unknown key unless required_extensions names it, refuses a
+/// required key it does not support as unsupported_feature with reason
+/// extension:<key>, and never applies a key that would override its preset.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VideoRequest {
+    pub model: String,
+    pub prompt: String,
+    pub size: String,
+    pub duration_ms: i64,
+    pub fps: i64,
+    pub seed: i64,
+    pub image_digest: String,
+    pub image_media_type: String,
+    pub required_extensions: Vec<String>,
+    pub extensions: BTreeMap<String, String>,
+    pub request_id: String,
+}
+
+/// accepted carries an operation id of 1..128 bytes and retention_ms, how long
+/// the operation stays observable after it ends. An accepted operation runs
+/// until it ends or Cancel stops it; it is never cancelled for want of Observe.
+/// Every refusal carries the Reply reason words, an empty operation and zero
+/// retention_ms.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VideoAdmission {
+    pub outcome: StartOutcome,
+    pub reason: String,
+    pub operation: String,
+    pub retention_ms: i64,
+}
+
+/// The provider's current view of one operation. queued may carry
+/// queue_position, 1 for the next to run, or zero when the engine reports none.
+/// generating may carry step of steps, 1 <= step <= steps; a provider that
+/// knows only a fraction reports it in its own steps, such as percent of 100.
+/// completed carries exactly one local delivery: a canonical sha256 digest in
+/// the provider's content store, media_type video/mp4, video/webm or video/avi
+/// (video/x-msvideo is read as video/avi), and its size; the container carries
+/// any audio track. failed carries reason, at most 4096 UTF-8 bytes with no
+/// submitted content or credential material. unknown means no operation of that
+/// id is visible to the caller: never started by it, retired after retention,
+/// or lost when the provider or its engine restarted. invalid, forbidden and
+/// unavailable are refusals of this call. Only completed carries a delivery;
+/// only queued and generating carry progress.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VideoObservation {
+    pub status: VideoState,
+    pub step: i64,
+    pub steps: i64,
+    pub queue_position: i64,
+    pub reason: String,
+    pub delivery: Option<Delivery>,
 }
 
 /// A credential's daily limits per UTC day: tokens (input plus output), spend
@@ -1952,6 +2424,47 @@ pub struct GatewayChange {
     pub reason: String,
 }
 
+/// applied carries the new revision. conflict carries the current revision when
+/// expected_revision did not match. unknown is used by Delete for an absent
+/// policy. A creation requires an empty expected_revision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectionChange {
+    pub outcome: EditOutcome,
+    pub revision: String,
+    pub reason: String,
+}
+
+/// One ordered candidate for chat@2 or image@2. provider optionally pins the
+/// logical current registry declaration ID within this candidate. The service
+/// checks the current eligible host and declaration generation. A missing or
+/// stale pin refuses without another provider choice. A model alias does not
+/// assert binary or model artifact identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectionCandidateV2 {
+    pub model: String,
+    pub placement: CandidatePlacement,
+    pub credential: String,
+    pub provider: String,
+}
+
+/// A 1..8 candidate policy in the bound account and observed program. The first
+/// candidate is preferred. Pinned and unpinned policies use one service-owned
+/// store.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SelectionPolicyV2 {
+    pub name: String,
+    pub candidates: Vec<SelectionCandidateV2>,
+}
+
+/// found carries the policy and its revision. Other outcomes carry no policy or
+/// revision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectionReadV2 {
+    pub outcome: SelectionReadOutcome,
+    pub revision: String,
+    pub policy: Option<SelectionPolicyV2>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct OAChatStartArguments {
     request: Request,
@@ -1969,6 +2482,30 @@ struct OAChatObserveArguments {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct OAChatCancelArguments {
     operation: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAChatV2StartArguments {
+    request: RequestV2,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAChatV2ObserveArguments {
+    operation: String,
+    cursor: i64,
+    max_deltas: i64,
+    max_bytes: i64,
+    wait_ms: i64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAChatV2CancelArguments {
+    operation: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAPreloaderPreloadArguments {
+    request: Request,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -2064,6 +2601,40 @@ struct OAImageCancelArguments {
     operation: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAImageV2StartArguments {
+    request: ImageRequestV2,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAImageV2ObserveArguments {
+    operation: String,
+    cursor: i64,
+    max_deltas: i64,
+    max_bytes: i64,
+    wait_ms: i64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAImageV2CancelArguments {
+    operation: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAVideoStartArguments {
+    request: VideoRequest,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAVideoObserveArguments {
+    operation: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAVideoCancelArguments {
+    operation: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct OAOperatorHostsArguments {
 }
@@ -2113,6 +2684,26 @@ struct OAOperatorSetGatewayArguments {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OASelectionOperatorV2ReadArguments {
+    target_program: String,
+    name: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OASelectionOperatorV2PutArguments {
+    target_program: String,
+    expected_revision: String,
+    policy: SelectionPolicyV2,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OASelectionOperatorV2DeletePolicyArguments {
+    target_program: String,
+    expected_revision: String,
+    name: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct OAServiceFrame {
     version: i32,
     service: String,
@@ -2148,6 +2739,26 @@ struct OAChatObserveResult {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct OAChatCancelResult {
     value: Cancellation,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAChatV2StartResult {
+    value: AdmissionV2,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAChatV2ObserveResult {
+    value: DeltaPage,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAChatV2CancelResult {
+    value: Cancellation,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAPreloaderPreloadResult {
+    value: PreloadReply,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2226,6 +2837,36 @@ struct OAImageCancelResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct OAImageV2StartResult {
+    value: AdmissionV2,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAImageV2ObserveResult {
+    value: DeltaPage,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAImageV2CancelResult {
+    value: Cancellation,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAVideoStartResult {
+    value: VideoAdmission,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAVideoObserveResult {
+    value: VideoObservation,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAVideoCancelResult {
+    value: Cancellation,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct OAOperatorHostsResult {
     value: HostList,
 }
@@ -2268,6 +2909,21 @@ struct OAOperatorGatewayResult {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct OAOperatorSetGatewayResult {
     value: GatewayChange,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OASelectionOperatorV2ReadResult {
+    value: SelectionReadV2,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OASelectionOperatorV2PutResult {
+    value: SelectionChange,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OASelectionOperatorV2DeletePolicyResult {
+    value: SelectionChange,
 }
 
 fn enc_part(out: &mut Vec<u8>, v: &Part, depth: i32) {
@@ -2494,6 +3150,111 @@ fn enc_request(out: &mut Vec<u8>, v: &Request, depth: i32) {
         out.extend_from_slice(b": ");
         esc(out, &v.credential);
     }
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_target(out: &mut Vec<u8>, v: &Target, depth: i32) {
+    out.push(b'{');
+    let mut first = true;
+    if !v.model.is_empty() {
+        first = false;
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "model");
+        out.extend_from_slice(b": ");
+        esc(out, &v.model);
+    }
+    if !v.selection_policy.is_empty() {
+        if !first {
+            out.push(b',');
+        }
+        first = false;
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "selection_policy");
+        out.extend_from_slice(b": ");
+        esc(out, &v.selection_policy);
+    }
+    if !first {
+        out.push(b'\n');
+        pad(out, depth);
+    }
+    out.push(b'}');
+}
+
+fn enc_request_content(out: &mut Vec<u8>, v: &RequestContent, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "messages");
+    out.extend_from_slice(b": ");
+    enc_list(out, &v.messages, depth + 1, enc_message);
+    if !v.tools.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "tools");
+        out.extend_from_slice(b": ");
+        enc_list(out, &v.tools, depth + 1, enc_tool);
+    }
+    if let Some(value) = &v.options {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "options");
+        out.extend_from_slice(b": ");
+        enc_options(out, value, depth + 1);
+    }
+    if !v.extensions.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "extensions");
+        out.extend_from_slice(b": ");
+        strmap(out, &v.extensions, depth + 1);
+    }
+    if !v.required_extensions.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "required_extensions");
+        out.extend_from_slice(b": ");
+        strs(out, &v.required_extensions, depth + 1);
+    }
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "guarantees");
+    out.extend_from_slice(b": ");
+    strs(out, &v.guarantees, depth + 1);
+    if !v.credential.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "credential");
+        out.extend_from_slice(b": ");
+        esc(out, &v.credential);
+    }
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_request_v2(out: &mut Vec<u8>, v: &RequestV2, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "target");
+    out.extend_from_slice(b": ");
+    enc_target(out, &v.target, depth + 1);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "content");
+    out.extend_from_slice(b": ");
+    enc_request_content(out, &v.content, depth + 1);
     out.push(b'\n');
     pad(out, depth);
     out.push(b'}');
@@ -2803,6 +3564,200 @@ fn enc_image_request(out: &mut Vec<u8>, v: &ImageRequest, depth: i32) {
     out.push(b'}');
 }
 
+fn enc_image_request_content(out: &mut Vec<u8>, v: &ImageRequestContent, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "mode");
+    out.extend_from_slice(b": ");
+    esc(out, v.mode.as_str());
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "prompt");
+    out.extend_from_slice(b": ");
+    esc(out, &v.prompt);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "size");
+    out.extend_from_slice(b": ");
+    esc(out, &v.size);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "count");
+    out.extend_from_slice(b": ");
+    num(out, v.count);
+    if !v.image_digest.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "image_digest");
+        out.extend_from_slice(b": ");
+        esc(out, &v.image_digest);
+    }
+    if !v.image_media_type.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "image_media_type");
+        out.extend_from_slice(b": ");
+        esc(out, &v.image_media_type);
+    }
+    if !v.mask_digest.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "mask_digest");
+        out.extend_from_slice(b": ");
+        esc(out, &v.mask_digest);
+    }
+    if !v.mask_media_type.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "mask_media_type");
+        out.extend_from_slice(b": ");
+        esc(out, &v.mask_media_type);
+    }
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "guarantees");
+    out.extend_from_slice(b": ");
+    strs(out, &v.guarantees, depth + 1);
+    if !v.credential.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "credential");
+        out.extend_from_slice(b": ");
+        esc(out, &v.credential);
+    }
+    if !v.required_extensions.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "required_extensions");
+        out.extend_from_slice(b": ");
+        strs(out, &v.required_extensions, depth + 1);
+    }
+    if !v.extensions.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "extensions");
+        out.extend_from_slice(b": ");
+        strmap(out, &v.extensions, depth + 1);
+    }
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_image_request_v2(out: &mut Vec<u8>, v: &ImageRequestV2, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "target");
+    out.extend_from_slice(b": ");
+    enc_target(out, &v.target, depth + 1);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "content");
+    out.extend_from_slice(b": ");
+    enc_image_request_content(out, &v.content, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_video_request(out: &mut Vec<u8>, v: &VideoRequest, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "model");
+    out.extend_from_slice(b": ");
+    esc(out, &v.model);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "prompt");
+    out.extend_from_slice(b": ");
+    esc(out, &v.prompt);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "size");
+    out.extend_from_slice(b": ");
+    esc(out, &v.size);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "duration_ms");
+    out.extend_from_slice(b": ");
+    num(out, v.duration_ms);
+    if v.fps != 0 {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "fps");
+        out.extend_from_slice(b": ");
+        num(out, v.fps);
+    }
+    if v.seed != 0 {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "seed");
+        out.extend_from_slice(b": ");
+        num(out, v.seed);
+    }
+    if !v.image_digest.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "image_digest");
+        out.extend_from_slice(b": ");
+        esc(out, &v.image_digest);
+    }
+    if !v.image_media_type.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "image_media_type");
+        out.extend_from_slice(b": ");
+        esc(out, &v.image_media_type);
+    }
+    if !v.required_extensions.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "required_extensions");
+        out.extend_from_slice(b": ");
+        strs(out, &v.required_extensions, depth + 1);
+    }
+    if !v.extensions.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "extensions");
+        out.extend_from_slice(b": ");
+        strmap(out, &v.extensions, depth + 1);
+    }
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "request_id");
+    out.extend_from_slice(b": ");
+    esc(out, &v.request_id);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
 fn enc_ceiling_limit(out: &mut Vec<u8>, v: &CeilingLimit, depth: i32) {
     out.push(b'{');
     let mut first = true;
@@ -2938,6 +3893,58 @@ fn enc_host_entry(out: &mut Vec<u8>, v: &HostEntry, depth: i32) {
     out.push(b'}');
 }
 
+fn enc_selection_candidate_v2(out: &mut Vec<u8>, v: &SelectionCandidateV2, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "model");
+    out.extend_from_slice(b": ");
+    esc(out, &v.model);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "placement");
+    out.extend_from_slice(b": ");
+    esc(out, v.placement.as_str());
+    if !v.credential.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "credential");
+        out.extend_from_slice(b": ");
+        esc(out, &v.credential);
+    }
+    if !v.provider.is_empty() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "provider");
+        out.extend_from_slice(b": ");
+        esc(out, &v.provider);
+    }
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_selection_policy_v2(out: &mut Vec<u8>, v: &SelectionPolicyV2, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "name");
+    out.extend_from_slice(b": ");
+    esc(out, &v.name);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "candidates");
+    out.extend_from_slice(b": ");
+    enc_list(out, &v.candidates, depth + 1, enc_selection_candidate_v2);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
 fn enc_oa_chat_start_arguments(out: &mut Vec<u8>, v: &OAChatStartArguments, depth: i32) {
     out.push(b'{');
     out.push(b'\n');
@@ -2993,6 +4000,78 @@ fn enc_oa_chat_cancel_arguments(out: &mut Vec<u8>, v: &OAChatCancelArguments, de
     esc(out, "operation");
     out.extend_from_slice(b": ");
     esc(out, &v.operation);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_chat_v2_start_arguments(out: &mut Vec<u8>, v: &OAChatV2StartArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "request");
+    out.extend_from_slice(b": ");
+    enc_request_v2(out, &v.request, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_chat_v2_observe_arguments(out: &mut Vec<u8>, v: &OAChatV2ObserveArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "operation");
+    out.extend_from_slice(b": ");
+    esc(out, &v.operation);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "cursor");
+    out.extend_from_slice(b": ");
+    num(out, v.cursor);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "max_deltas");
+    out.extend_from_slice(b": ");
+    num(out, v.max_deltas);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "max_bytes");
+    out.extend_from_slice(b": ");
+    num(out, v.max_bytes);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "wait_ms");
+    out.extend_from_slice(b": ");
+    num(out, v.wait_ms);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_chat_v2_cancel_arguments(out: &mut Vec<u8>, v: &OAChatV2CancelArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "operation");
+    out.extend_from_slice(b": ");
+    esc(out, &v.operation);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_preloader_preload_arguments(out: &mut Vec<u8>, v: &OAPreloaderPreloadArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "request");
+    out.extend_from_slice(b": ");
+    enc_request(out, &v.request, depth + 1);
     out.push(b'\n');
     pad(out, depth);
     out.push(b'}');
@@ -3286,6 +4365,102 @@ fn enc_oa_image_cancel_arguments(out: &mut Vec<u8>, v: &OAImageCancelArguments, 
     out.push(b'}');
 }
 
+fn enc_oa_image_v2_start_arguments(out: &mut Vec<u8>, v: &OAImageV2StartArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "request");
+    out.extend_from_slice(b": ");
+    enc_image_request_v2(out, &v.request, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_image_v2_observe_arguments(out: &mut Vec<u8>, v: &OAImageV2ObserveArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "operation");
+    out.extend_from_slice(b": ");
+    esc(out, &v.operation);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "cursor");
+    out.extend_from_slice(b": ");
+    num(out, v.cursor);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "max_deltas");
+    out.extend_from_slice(b": ");
+    num(out, v.max_deltas);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "max_bytes");
+    out.extend_from_slice(b": ");
+    num(out, v.max_bytes);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "wait_ms");
+    out.extend_from_slice(b": ");
+    num(out, v.wait_ms);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_image_v2_cancel_arguments(out: &mut Vec<u8>, v: &OAImageV2CancelArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "operation");
+    out.extend_from_slice(b": ");
+    esc(out, &v.operation);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_video_start_arguments(out: &mut Vec<u8>, v: &OAVideoStartArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "request");
+    out.extend_from_slice(b": ");
+    enc_video_request(out, &v.request, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_video_observe_arguments(out: &mut Vec<u8>, v: &OAVideoObserveArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "operation");
+    out.extend_from_slice(b": ");
+    esc(out, &v.operation);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_video_cancel_arguments(out: &mut Vec<u8>, v: &OAVideoCancelArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "operation");
+    out.extend_from_slice(b": ");
+    esc(out, &v.operation);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
 fn enc_oa_operator_hosts_arguments(out: &mut Vec<u8>, _v: &OAOperatorHostsArguments, _depth: i32) {
     out.push(b'{');
     out.push(b'}');
@@ -3404,6 +4579,72 @@ fn enc_oa_operator_set_gateway_arguments(out: &mut Vec<u8>, v: &OAOperatorSetGat
     esc(out, "address");
     out.extend_from_slice(b": ");
     esc(out, &v.address);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_selection_operator_v2_read_arguments(out: &mut Vec<u8>, v: &OASelectionOperatorV2ReadArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "target_program");
+    out.extend_from_slice(b": ");
+    esc(out, &v.target_program);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "name");
+    out.extend_from_slice(b": ");
+    esc(out, &v.name);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_selection_operator_v2_put_arguments(out: &mut Vec<u8>, v: &OASelectionOperatorV2PutArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "target_program");
+    out.extend_from_slice(b": ");
+    esc(out, &v.target_program);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "expected_revision");
+    out.extend_from_slice(b": ");
+    esc(out, &v.expected_revision);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "policy");
+    out.extend_from_slice(b": ");
+    enc_selection_policy_v2(out, &v.policy, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_selection_operator_v2_delete_policy_arguments(out: &mut Vec<u8>, v: &OASelectionOperatorV2DeletePolicyArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "target_program");
+    out.extend_from_slice(b": ");
+    esc(out, &v.target_program);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "expected_revision");
+    out.extend_from_slice(b": ");
+    esc(out, &v.expected_revision);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "name");
+    out.extend_from_slice(b": ");
+    esc(out, &v.name);
     out.push(b'\n');
     pad(out, depth);
     out.push(b'}');
@@ -4424,6 +5665,237 @@ fn decode_request(r: &mut Reader) -> Result<Request, Refusal> {
     })
 }
 
+fn decode_target(r: &mut Reader) -> Result<Target, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_model: String = Default::default();
+    let mut field_selection_policy: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "model" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_model = r.string()?;
+                }
+                "selection_policy" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_selection_policy = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    Ok(Target {
+        model: field_model,
+        selection_policy: field_selection_policy,
+    })
+}
+
+fn decode_request_content(r: &mut Reader) -> Result<RequestContent, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_messages: Vec<Message> = Default::default();
+    let mut field_tools: Vec<Tool> = Default::default();
+    let mut field_options: Option<Options> = None;
+    let mut field_extensions: BTreeMap<String, String> = Default::default();
+    let mut field_required_extensions: Vec<String> = Default::default();
+    let mut field_guarantees: Vec<String> = Default::default();
+    let mut field_credential: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "messages" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_messages = decode_list(r, decode_message)?;
+                }
+                "tools" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_tools = decode_list(r, decode_tool)?;
+                }
+                "options" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_options = Some(decode_options(r)?);
+                }
+                "extensions" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_extensions = str_map(r)?;
+                }
+                "required_extensions" => {
+                    if seen & 16 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 16;
+                    field_required_extensions = r.str_list()?;
+                }
+                "guarantees" => {
+                    if seen & 32 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 32;
+                    field_guarantees = r.str_list()?;
+                }
+                "credential" => {
+                    if seen & 64 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 64;
+                    field_credential = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 33 != 33 {
+        return r.refuse("missing_field");
+    }
+    Ok(RequestContent {
+        messages: field_messages,
+        tools: field_tools,
+        options: field_options,
+        extensions: field_extensions,
+        required_extensions: field_required_extensions,
+        guarantees: field_guarantees,
+        credential: field_credential,
+    })
+}
+
+fn decode_request_v2(r: &mut Reader) -> Result<RequestV2, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_target: Target = Default::default();
+    let mut field_content: RequestContent = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "target" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_target = decode_target(r)?;
+                }
+                "content" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_content = decode_request_content(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 3 != 3 {
+        return r.refuse("missing_field");
+    }
+    Ok(RequestV2 {
+        target: field_target,
+        content: field_content,
+    })
+}
+
 fn decode_usage(r: &mut Reader) -> Result<Usage, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -4988,6 +6460,151 @@ fn decode_admission(r: &mut Reader) -> Result<Admission, Refusal> {
     })
 }
 
+fn decode_admission_v2(r: &mut Reader) -> Result<AdmissionV2, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_outcome: Option<String> = None;
+    let mut field_reason: String = Default::default();
+    let mut field_operation: String = Default::default();
+    let mut field_host: String = Default::default();
+    let mut field_model: String = Default::default();
+    let mut field_retention_ms: i64 = Default::default();
+    let mut field_idle_ms: i64 = Default::default();
+    let mut field_retained_deltas: i64 = Default::default();
+    let mut field_preferred_model: String = Default::default();
+    let mut field_selection_reason: Option<String> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_outcome = Some(r.string()?);
+                }
+                "reason" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_reason = r.string()?;
+                }
+                "operation" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_operation = r.string()?;
+                }
+                "host" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_host = r.string()?;
+                }
+                "model" => {
+                    if seen & 16 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 16;
+                    field_model = r.string()?;
+                }
+                "retention_ms" => {
+                    if seen & 32 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 32;
+                    field_retention_ms = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "idle_ms" => {
+                    if seen & 64 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 64;
+                    field_idle_ms = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "retained_deltas" => {
+                    if seen & 128 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 128;
+                    field_retained_deltas = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "preferred_model" => {
+                    if seen & 256 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 256;
+                    field_preferred_model = r.string()?;
+                }
+                "selection_reason" => {
+                    if seen & 512 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 512;
+                    field_selection_reason = Some(r.string()?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 255 != 255 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_outcome) = field_outcome.as_deref().and_then(StartOutcome::from_wire) else {
+        return r.refuse("bad_enum");
+    };
+    let field_selection_reason = match field_selection_reason {
+        Some(name) => match SelectionReason::from_wire(&name) {
+            Some(value) => Some(value),
+            None => return r.refuse("bad_enum"),
+        },
+        None => None,
+    };
+    Ok(AdmissionV2 {
+        outcome: field_outcome,
+        reason: field_reason,
+        operation: field_operation,
+        host: field_host,
+        model: field_model,
+        retention_ms: field_retention_ms,
+        idle_ms: field_idle_ms,
+        retained_deltas: field_retained_deltas,
+        preferred_model: field_preferred_model,
+        selection_reason: field_selection_reason,
+    })
+}
+
 fn decode_delta_page(r: &mut Reader) -> Result<DeltaPage, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -5142,6 +6759,99 @@ fn decode_cancellation(r: &mut Reader) -> Result<Cancellation, Refusal> {
     Ok(Cancellation {
         outcome: field_outcome,
         reply_outcome: field_reply_outcome,
+    })
+}
+
+fn decode_preload_reply(r: &mut Reader) -> Result<PreloadReply, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_outcome: Option<String> = None;
+    let mut field_reason: String = Default::default();
+    let mut field_host: String = Default::default();
+    let mut field_model: String = Default::default();
+    let mut field_tokens: i64 = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_outcome = Some(r.string()?);
+                }
+                "reason" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_reason = r.string()?;
+                }
+                "host" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_host = r.string()?;
+                }
+                "model" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_model = r.string()?;
+                }
+                "tokens" => {
+                    if seen & 16 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 16;
+                    field_tokens = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 31 != 31 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_outcome) = field_outcome.as_deref().and_then(PreloadOutcome::from_wire) else {
+        return r.refuse("bad_enum");
+    };
+    Ok(PreloadReply {
+        outcome: field_outcome,
+        reason: field_reason,
+        host: field_host,
+        model: field_model,
+        tokens: field_tokens,
     })
 }
 
@@ -6588,6 +8298,228 @@ fn decode_image_request(r: &mut Reader) -> Result<ImageRequest, Refusal> {
     })
 }
 
+fn decode_image_request_content(r: &mut Reader) -> Result<ImageRequestContent, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_mode: Option<String> = None;
+    let mut field_prompt: String = Default::default();
+    let mut field_size: String = Default::default();
+    let mut field_count: i64 = Default::default();
+    let mut field_image_digest: String = Default::default();
+    let mut field_image_media_type: String = Default::default();
+    let mut field_mask_digest: String = Default::default();
+    let mut field_mask_media_type: String = Default::default();
+    let mut field_guarantees: Vec<String> = Default::default();
+    let mut field_credential: String = Default::default();
+    let mut field_required_extensions: Vec<String> = Default::default();
+    let mut field_extensions: BTreeMap<String, String> = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "mode" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_mode = Some(r.string()?);
+                }
+                "prompt" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_prompt = r.string()?;
+                }
+                "size" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_size = r.string()?;
+                }
+                "count" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_count = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "image_digest" => {
+                    if seen & 16 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 16;
+                    field_image_digest = r.string()?;
+                }
+                "image_media_type" => {
+                    if seen & 32 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 32;
+                    field_image_media_type = r.string()?;
+                }
+                "mask_digest" => {
+                    if seen & 64 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 64;
+                    field_mask_digest = r.string()?;
+                }
+                "mask_media_type" => {
+                    if seen & 128 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 128;
+                    field_mask_media_type = r.string()?;
+                }
+                "guarantees" => {
+                    if seen & 256 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 256;
+                    field_guarantees = r.str_list()?;
+                }
+                "credential" => {
+                    if seen & 512 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 512;
+                    field_credential = r.string()?;
+                }
+                "required_extensions" => {
+                    if seen & 1024 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1024;
+                    field_required_extensions = r.str_list()?;
+                }
+                "extensions" => {
+                    if seen & 2048 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2048;
+                    field_extensions = str_map(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 271 != 271 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_mode) = field_mode.as_deref().and_then(ImageMode::from_wire) else {
+        return r.refuse("bad_enum");
+    };
+    Ok(ImageRequestContent {
+        mode: field_mode,
+        prompt: field_prompt,
+        size: field_size,
+        count: field_count,
+        image_digest: field_image_digest,
+        image_media_type: field_image_media_type,
+        mask_digest: field_mask_digest,
+        mask_media_type: field_mask_media_type,
+        guarantees: field_guarantees,
+        credential: field_credential,
+        required_extensions: field_required_extensions,
+        extensions: field_extensions,
+    })
+}
+
+fn decode_image_request_v2(r: &mut Reader) -> Result<ImageRequestV2, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_target: Target = Default::default();
+    let mut field_content: Option<ImageRequestContent> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "target" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_target = decode_target(r)?;
+                }
+                "content" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_content = Some(decode_image_request_content(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 3 != 3 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_content) = field_content else {
+        return r.refuse("missing_field");
+    };
+    Ok(ImageRequestV2 {
+        target: field_target,
+        content: field_content,
+    })
+}
+
 fn decode_image_progress(r: &mut Reader) -> Result<ImageProgress, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -6831,6 +8763,336 @@ fn decode_image_reply(r: &mut Reader) -> Result<ImageReply, Refusal> {
         host: field_host,
         model: field_model,
         cost: field_cost,
+    })
+}
+
+fn decode_video_request(r: &mut Reader) -> Result<VideoRequest, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_model: String = Default::default();
+    let mut field_prompt: String = Default::default();
+    let mut field_size: String = Default::default();
+    let mut field_duration_ms: i64 = Default::default();
+    let mut field_fps: i64 = Default::default();
+    let mut field_seed: i64 = Default::default();
+    let mut field_image_digest: String = Default::default();
+    let mut field_image_media_type: String = Default::default();
+    let mut field_required_extensions: Vec<String> = Default::default();
+    let mut field_extensions: BTreeMap<String, String> = Default::default();
+    let mut field_request_id: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "model" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_model = r.string()?;
+                }
+                "prompt" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_prompt = r.string()?;
+                }
+                "size" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_size = r.string()?;
+                }
+                "duration_ms" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_duration_ms = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "fps" => {
+                    if seen & 16 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 16;
+                    field_fps = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "seed" => {
+                    if seen & 32 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 32;
+                    field_seed = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "image_digest" => {
+                    if seen & 64 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 64;
+                    field_image_digest = r.string()?;
+                }
+                "image_media_type" => {
+                    if seen & 128 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 128;
+                    field_image_media_type = r.string()?;
+                }
+                "required_extensions" => {
+                    if seen & 256 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 256;
+                    field_required_extensions = r.str_list()?;
+                }
+                "extensions" => {
+                    if seen & 512 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 512;
+                    field_extensions = str_map(r)?;
+                }
+                "request_id" => {
+                    if seen & 1024 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1024;
+                    field_request_id = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1039 != 1039 {
+        return r.refuse("missing_field");
+    }
+    Ok(VideoRequest {
+        model: field_model,
+        prompt: field_prompt,
+        size: field_size,
+        duration_ms: field_duration_ms,
+        fps: field_fps,
+        seed: field_seed,
+        image_digest: field_image_digest,
+        image_media_type: field_image_media_type,
+        required_extensions: field_required_extensions,
+        extensions: field_extensions,
+        request_id: field_request_id,
+    })
+}
+
+fn decode_video_admission(r: &mut Reader) -> Result<VideoAdmission, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_outcome: Option<String> = None;
+    let mut field_reason: String = Default::default();
+    let mut field_operation: String = Default::default();
+    let mut field_retention_ms: i64 = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_outcome = Some(r.string()?);
+                }
+                "reason" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_reason = r.string()?;
+                }
+                "operation" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_operation = r.string()?;
+                }
+                "retention_ms" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_retention_ms = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 15 != 15 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_outcome) = field_outcome.as_deref().and_then(StartOutcome::from_wire) else {
+        return r.refuse("bad_enum");
+    };
+    Ok(VideoAdmission {
+        outcome: field_outcome,
+        reason: field_reason,
+        operation: field_operation,
+        retention_ms: field_retention_ms,
+    })
+}
+
+fn decode_video_observation(r: &mut Reader) -> Result<VideoObservation, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_status: Option<String> = None;
+    let mut field_step: i64 = Default::default();
+    let mut field_steps: i64 = Default::default();
+    let mut field_queue_position: i64 = Default::default();
+    let mut field_reason: String = Default::default();
+    let mut field_delivery: Option<Delivery> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "status" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_status = Some(r.string()?);
+                }
+                "step" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_step = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "steps" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_steps = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "queue_position" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_queue_position = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "reason" => {
+                    if seen & 16 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 16;
+                    field_reason = r.string()?;
+                }
+                "delivery" => {
+                    if seen & 32 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 32;
+                    field_delivery = Some(decode_delivery(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_status) = field_status.as_deref().and_then(VideoState::from_wire) else {
+        return r.refuse("bad_enum");
+    };
+    Ok(VideoObservation {
+        status: field_status,
+        step: field_step,
+        steps: field_steps,
+        queue_position: field_queue_position,
+        reason: field_reason,
+        delivery: field_delivery,
     })
 }
 
@@ -8202,6 +10464,303 @@ fn decode_gateway_change(r: &mut Reader) -> Result<GatewayChange, Refusal> {
     })
 }
 
+fn decode_selection_change(r: &mut Reader) -> Result<SelectionChange, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_outcome: Option<String> = None;
+    let mut field_revision: String = Default::default();
+    let mut field_reason: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_outcome = Some(r.string()?);
+                }
+                "revision" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_revision = r.string()?;
+                }
+                "reason" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_reason = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 7 != 7 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_outcome) = field_outcome.as_deref().and_then(EditOutcome::from_wire) else {
+        return r.refuse("bad_enum");
+    };
+    Ok(SelectionChange {
+        outcome: field_outcome,
+        revision: field_revision,
+        reason: field_reason,
+    })
+}
+
+fn decode_selection_candidate_v2(r: &mut Reader) -> Result<SelectionCandidateV2, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_model: String = Default::default();
+    let mut field_placement: Option<String> = None;
+    let mut field_credential: String = Default::default();
+    let mut field_provider: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "model" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_model = r.string()?;
+                }
+                "placement" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_placement = Some(r.string()?);
+                }
+                "credential" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_credential = r.string()?;
+                }
+                "provider" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_provider = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 3 != 3 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_placement) = field_placement.as_deref().and_then(CandidatePlacement::from_wire) else {
+        return r.refuse("bad_enum");
+    };
+    Ok(SelectionCandidateV2 {
+        model: field_model,
+        placement: field_placement,
+        credential: field_credential,
+        provider: field_provider,
+    })
+}
+
+fn decode_selection_policy_v2(r: &mut Reader) -> Result<SelectionPolicyV2, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_name: String = Default::default();
+    let mut field_candidates: Vec<SelectionCandidateV2> = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "name" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_name = r.string()?;
+                }
+                "candidates" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_candidates = decode_list(r, decode_selection_candidate_v2)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 3 != 3 {
+        return r.refuse("missing_field");
+    }
+    Ok(SelectionPolicyV2 {
+        name: field_name,
+        candidates: field_candidates,
+    })
+}
+
+fn decode_selection_read_v2(r: &mut Reader) -> Result<SelectionReadV2, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_outcome: Option<String> = None;
+    let mut field_revision: String = Default::default();
+    let mut field_policy: Option<SelectionPolicyV2> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_outcome = Some(r.string()?);
+                }
+                "revision" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_revision = r.string()?;
+                }
+                "policy" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_policy = Some(decode_selection_policy_v2(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 3 != 3 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_outcome) = field_outcome.as_deref().and_then(SelectionReadOutcome::from_wire) else {
+        return r.refuse("bad_enum");
+    };
+    Ok(SelectionReadV2 {
+        outcome: field_outcome,
+        revision: field_revision,
+        policy: field_policy,
+    })
+}
+
 fn decode_oa_chat_start_arguments(r: &mut Reader) -> Result<OAChatStartArguments, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -8397,6 +10956,258 @@ fn decode_oa_chat_cancel_arguments(r: &mut Reader) -> Result<OAChatCancelArgumen
     }
     Ok(OAChatCancelArguments {
         operation: field_operation,
+    })
+}
+
+fn decode_oa_chat_v2_start_arguments(r: &mut Reader) -> Result<OAChatV2StartArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_request: RequestV2 = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "request" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_request = decode_request_v2(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAChatV2StartArguments {
+        request: field_request,
+    })
+}
+
+fn decode_oa_chat_v2_observe_arguments(r: &mut Reader) -> Result<OAChatV2ObserveArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_operation: String = Default::default();
+    let mut field_cursor: i64 = Default::default();
+    let mut field_max_deltas: i64 = Default::default();
+    let mut field_max_bytes: i64 = Default::default();
+    let mut field_wait_ms: i64 = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "operation" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_operation = r.string()?;
+                }
+                "cursor" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_cursor = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "max_deltas" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_max_deltas = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "max_bytes" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_max_bytes = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "wait_ms" => {
+                    if seen & 16 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 16;
+                    field_wait_ms = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 31 != 31 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAChatV2ObserveArguments {
+        operation: field_operation,
+        cursor: field_cursor,
+        max_deltas: field_max_deltas,
+        max_bytes: field_max_bytes,
+        wait_ms: field_wait_ms,
+    })
+}
+
+fn decode_oa_chat_v2_cancel_arguments(r: &mut Reader) -> Result<OAChatV2CancelArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_operation: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "operation" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_operation = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAChatV2CancelArguments {
+        operation: field_operation,
+    })
+}
+
+fn decode_oa_preloader_preload_arguments(r: &mut Reader) -> Result<OAPreloaderPreloadArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_request: Request = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "request" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_request = decode_request(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAPreloaderPreloadArguments {
+        request: field_request,
     })
 }
 
@@ -9384,6 +12195,369 @@ fn decode_oa_image_cancel_arguments(r: &mut Reader) -> Result<OAImageCancelArgum
     })
 }
 
+fn decode_oa_image_v2_start_arguments(r: &mut Reader) -> Result<OAImageV2StartArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_request: Option<ImageRequestV2> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "request" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_request = Some(decode_image_request_v2(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_request) = field_request else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAImageV2StartArguments {
+        request: field_request,
+    })
+}
+
+fn decode_oa_image_v2_observe_arguments(r: &mut Reader) -> Result<OAImageV2ObserveArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_operation: String = Default::default();
+    let mut field_cursor: i64 = Default::default();
+    let mut field_max_deltas: i64 = Default::default();
+    let mut field_max_bytes: i64 = Default::default();
+    let mut field_wait_ms: i64 = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "operation" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_operation = r.string()?;
+                }
+                "cursor" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_cursor = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "max_deltas" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_max_deltas = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "max_bytes" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    field_max_bytes = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "wait_ms" => {
+                    if seen & 16 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 16;
+                    field_wait_ms = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 31 != 31 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAImageV2ObserveArguments {
+        operation: field_operation,
+        cursor: field_cursor,
+        max_deltas: field_max_deltas,
+        max_bytes: field_max_bytes,
+        wait_ms: field_wait_ms,
+    })
+}
+
+fn decode_oa_image_v2_cancel_arguments(r: &mut Reader) -> Result<OAImageV2CancelArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_operation: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "operation" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_operation = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAImageV2CancelArguments {
+        operation: field_operation,
+    })
+}
+
+fn decode_oa_video_start_arguments(r: &mut Reader) -> Result<OAVideoStartArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_request: VideoRequest = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "request" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_request = decode_video_request(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAVideoStartArguments {
+        request: field_request,
+    })
+}
+
+fn decode_oa_video_observe_arguments(r: &mut Reader) -> Result<OAVideoObserveArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_operation: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "operation" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_operation = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAVideoObserveArguments {
+        operation: field_operation,
+    })
+}
+
+fn decode_oa_video_cancel_arguments(r: &mut Reader) -> Result<OAVideoCancelArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_operation: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "operation" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_operation = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAVideoCancelArguments {
+        operation: field_operation,
+    })
+}
+
 fn decode_oa_operator_hosts_arguments(r: &mut Reader) -> Result<OAOperatorHostsArguments, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -9840,6 +13014,213 @@ fn decode_oa_operator_set_gateway_arguments(r: &mut Reader) -> Result<OAOperator
     })
 }
 
+fn decode_oa_selection_operator_v2_read_arguments(r: &mut Reader) -> Result<OASelectionOperatorV2ReadArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_target_program: String = Default::default();
+    let mut field_name: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "target_program" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_target_program = r.string()?;
+                }
+                "name" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_name = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 3 != 3 {
+        return r.refuse("missing_field");
+    }
+    Ok(OASelectionOperatorV2ReadArguments {
+        target_program: field_target_program,
+        name: field_name,
+    })
+}
+
+fn decode_oa_selection_operator_v2_put_arguments(r: &mut Reader) -> Result<OASelectionOperatorV2PutArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_target_program: String = Default::default();
+    let mut field_expected_revision: String = Default::default();
+    let mut field_policy: SelectionPolicyV2 = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "target_program" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_target_program = r.string()?;
+                }
+                "expected_revision" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_expected_revision = r.string()?;
+                }
+                "policy" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_policy = decode_selection_policy_v2(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 7 != 7 {
+        return r.refuse("missing_field");
+    }
+    Ok(OASelectionOperatorV2PutArguments {
+        target_program: field_target_program,
+        expected_revision: field_expected_revision,
+        policy: field_policy,
+    })
+}
+
+fn decode_oa_selection_operator_v2_delete_policy_arguments(r: &mut Reader) -> Result<OASelectionOperatorV2DeletePolicyArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_target_program: String = Default::default();
+    let mut field_expected_revision: String = Default::default();
+    let mut field_name: String = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "target_program" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_target_program = r.string()?;
+                }
+                "expected_revision" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_expected_revision = r.string()?;
+                }
+                "name" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_name = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 7 != 7 {
+        return r.refuse("missing_field");
+    }
+    Ok(OASelectionOperatorV2DeletePolicyArguments {
+        target_program: field_target_program,
+        expected_revision: field_expected_revision,
+        name: field_name,
+    })
+}
+
 fn decode_oa_service_frame(r: &mut Reader) -> Result<OAServiceFrame, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -10241,6 +13622,234 @@ fn decode_oa_chat_cancel_result(r: &mut Reader) -> Result<OAChatCancelResult, Re
         return r.refuse("missing_field");
     };
     Ok(OAChatCancelResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_chat_v2_start_result(r: &mut Reader) -> Result<OAChatV2StartResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<AdmissionV2> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_admission_v2(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAChatV2StartResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_chat_v2_observe_result(r: &mut Reader) -> Result<OAChatV2ObserveResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<DeltaPage> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_delta_page(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAChatV2ObserveResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_chat_v2_cancel_result(r: &mut Reader) -> Result<OAChatV2CancelResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<Cancellation> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_cancellation(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAChatV2CancelResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_preloader_preload_result(r: &mut Reader) -> Result<OAPreloaderPreloadResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<PreloadReply> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_preload_reply(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAPreloaderPreloadResult {
         value: field_value,
     })
 }
@@ -11100,6 +14709,348 @@ fn decode_oa_image_cancel_result(r: &mut Reader) -> Result<OAImageCancelResult, 
     })
 }
 
+fn decode_oa_image_v2_start_result(r: &mut Reader) -> Result<OAImageV2StartResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<AdmissionV2> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_admission_v2(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAImageV2StartResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_image_v2_observe_result(r: &mut Reader) -> Result<OAImageV2ObserveResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<DeltaPage> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_delta_page(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAImageV2ObserveResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_image_v2_cancel_result(r: &mut Reader) -> Result<OAImageV2CancelResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<Cancellation> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_cancellation(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAImageV2CancelResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_video_start_result(r: &mut Reader) -> Result<OAVideoStartResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<VideoAdmission> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_video_admission(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAVideoStartResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_video_observe_result(r: &mut Reader) -> Result<OAVideoObserveResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<VideoObservation> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_video_observation(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAVideoObserveResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_video_cancel_result(r: &mut Reader) -> Result<OAVideoCancelResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<Cancellation> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_cancellation(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAVideoCancelResult {
+        value: field_value,
+    })
+}
+
 fn decode_oa_operator_hosts_result(r: &mut Reader) -> Result<OAOperatorHostsResult, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -11613,6 +15564,177 @@ fn decode_oa_operator_set_gateway_result(r: &mut Reader) -> Result<OAOperatorSet
     })
 }
 
+fn decode_oa_selection_operator_v2_read_result(r: &mut Reader) -> Result<OASelectionOperatorV2ReadResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<SelectionReadV2> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_selection_read_v2(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OASelectionOperatorV2ReadResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_selection_operator_v2_put_result(r: &mut Reader) -> Result<OASelectionOperatorV2PutResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<SelectionChange> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_selection_change(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OASelectionOperatorV2PutResult {
+        value: field_value,
+    })
+}
+
+fn decode_oa_selection_operator_v2_delete_policy_result(r: &mut Reader) -> Result<OASelectionOperatorV2DeletePolicyResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<SelectionChange> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_selection_change(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OASelectionOperatorV2DeletePolicyResult {
+        value: field_value,
+    })
+}
+
 pub fn decode(data: &[u8]) -> Result<Request, Refusal> {
     let mut r = Reader { buf: data, pos: 0, depth: 0 };
     r.skip_ws();
@@ -11663,6 +15785,29 @@ fn service_check_request(v: &Request) -> Result<(), Refusal> {
     Ok(())
 }
 
+fn service_check_target(_v: &Target) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_request_content(v: &RequestContent) -> Result<(), Refusal> {
+    for value in &v.messages {
+        service_check_message(value)?;
+    }
+    for value in &v.tools {
+        service_check_tool(value)?;
+    }
+    if let Some(value) = &v.options {
+        service_check_options(value)?;
+    }
+    Ok(())
+}
+
+fn service_check_request_v2(v: &RequestV2) -> Result<(), Refusal> {
+    service_check_target(&v.target)?;
+    service_check_request_content(&v.content)?;
+    Ok(())
+}
+
 fn service_check_embed_request(_v: &EmbedRequest) -> Result<(), Refusal> {
     Ok(())
 }
@@ -11683,6 +15828,20 @@ fn service_check_image_request(_v: &ImageRequest) -> Result<(), Refusal> {
     Ok(())
 }
 
+fn service_check_image_request_content(_v: &ImageRequestContent) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_image_request_v2(v: &ImageRequestV2) -> Result<(), Refusal> {
+    service_check_target(&v.target)?;
+    service_check_image_request_content(&v.content)?;
+    Ok(())
+}
+
+fn service_check_video_request(_v: &VideoRequest) -> Result<(), Refusal> {
+    Ok(())
+}
+
 fn service_check_ceiling_limit(_v: &CeilingLimit) -> Result<(), Refusal> {
     Ok(())
 }
@@ -11690,6 +15849,17 @@ fn service_check_ceiling_limit(_v: &CeilingLimit) -> Result<(), Refusal> {
 fn service_check_host_entry(v: &HostEntry) -> Result<(), Refusal> {
     if let Some(value) = &v.ceiling {
         service_check_ceiling_limit(value)?;
+    }
+    Ok(())
+}
+
+fn service_check_selection_candidate_v2(_v: &SelectionCandidateV2) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_selection_policy_v2(v: &SelectionPolicyV2) -> Result<(), Refusal> {
+    for value in &v.candidates {
+        service_check_selection_candidate_v2(value)?;
     }
     Ok(())
 }
@@ -11704,6 +15874,24 @@ fn service_check_oa_chat_observe_arguments(_v: &OAChatObserveArguments) -> Resul
 }
 
 fn service_check_oa_chat_cancel_arguments(_v: &OAChatCancelArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_oa_chat_v2_start_arguments(v: &OAChatV2StartArguments) -> Result<(), Refusal> {
+    service_check_request_v2(&v.request)?;
+    Ok(())
+}
+
+fn service_check_oa_chat_v2_observe_arguments(_v: &OAChatV2ObserveArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_oa_chat_v2_cancel_arguments(_v: &OAChatV2CancelArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_oa_preloader_preload_arguments(v: &OAPreloaderPreloadArguments) -> Result<(), Refusal> {
+    service_check_request(&v.request)?;
     Ok(())
 }
 
@@ -11772,6 +15960,32 @@ fn service_check_oa_image_cancel_arguments(_v: &OAImageCancelArguments) -> Resul
     Ok(())
 }
 
+fn service_check_oa_image_v2_start_arguments(v: &OAImageV2StartArguments) -> Result<(), Refusal> {
+    service_check_image_request_v2(&v.request)?;
+    Ok(())
+}
+
+fn service_check_oa_image_v2_observe_arguments(_v: &OAImageV2ObserveArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_oa_image_v2_cancel_arguments(_v: &OAImageV2CancelArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_oa_video_start_arguments(v: &OAVideoStartArguments) -> Result<(), Refusal> {
+    service_check_video_request(&v.request)?;
+    Ok(())
+}
+
+fn service_check_oa_video_observe_arguments(_v: &OAVideoObserveArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_oa_video_cancel_arguments(_v: &OAVideoCancelArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
 fn service_check_oa_operator_hosts_arguments(_v: &OAOperatorHostsArguments) -> Result<(), Refusal> {
     Ok(())
 }
@@ -11806,6 +16020,19 @@ fn service_check_oa_operator_gateway_arguments(_v: &OAOperatorGatewayArguments) 
 }
 
 fn service_check_oa_operator_set_gateway_arguments(_v: &OAOperatorSetGatewayArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_oa_selection_operator_v2_read_arguments(_v: &OASelectionOperatorV2ReadArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_oa_selection_operator_v2_put_arguments(v: &OASelectionOperatorV2PutArguments) -> Result<(), Refusal> {
+    service_check_selection_policy_v2(&v.policy)?;
+    Ok(())
+}
+
+fn service_check_oa_selection_operator_v2_delete_policy_arguments(_v: &OASelectionOperatorV2DeletePolicyArguments) -> Result<(), Refusal> {
     Ok(())
 }
 
@@ -11967,6 +16194,181 @@ impl<T: FrameTransport> Chat for ChatClient<T> {
             return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
         }
         let result = service_decode(&reply.payload, decode_oa_chat_cancel_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+}
+
+/// Typed explicit model or named service-owned model selection for a bound
+/// caller. A runtime without chat@2 refuses this service version explicitly.
+pub trait ChatV2 {
+    type Error;
+    /// Resolve the explicit target or named policy for the bound caller and
+    /// admit one selected model. Each candidate must pass all chat@1
+    /// guarantees, features, rights, credential, budget and capacity checks. A
+    /// later candidate is considered only after a fresh definitive
+    /// preferred-route absence before admission or dispatch. A possible send,
+    /// accepted operation, partial output or tool effect never retries another
+    /// candidate.
+    fn start(&self, request: RequestV2) -> Result<AdmissionV2, Self::Error>;
+    /// Observe the same caller-bound operation registry and DeltaPage as
+    /// chat@1, without reselecting the model.
+    fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>;
+    /// Cancel the same caller-bound operation as chat@1, without reselecting
+    /// the model.
+    fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>;
+}
+
+pub struct ChatV2Client<T> {
+    transport: T,
+}
+
+impl<T> ChatV2Client<T> {
+    pub fn new(transport: T) -> Self {
+        Self { transport }
+    }
+
+    pub fn transport(&self) -> &T {
+        &self.transport
+    }
+}
+
+impl<T: FrameTransport> ChatV2 for ChatV2Client<T> {
+    type Error = CallError<T::Error>;
+    fn start(&self, request: RequestV2) -> Result<AdmissionV2, Self::Error> {
+        let args = OAChatV2StartArguments { request };
+        let arguments = service_encode(&args, service_check_oa_chat_v2_start_arguments, enc_oa_chat_v2_start_arguments, decode_oa_chat_v2_start_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/chat@2".into(), method: "Start".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/chat@2" || reply.method != "Start" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_chat_v2_start_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+
+    fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error> {
+        let args = OAChatV2ObserveArguments { operation, cursor, max_deltas, max_bytes, wait_ms };
+        let arguments = service_encode(&args, service_check_oa_chat_v2_observe_arguments, enc_oa_chat_v2_observe_arguments, decode_oa_chat_v2_observe_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/chat@2".into(), method: "Observe".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/chat@2" || reply.method != "Observe" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_chat_v2_observe_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+
+    fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error> {
+        let args = OAChatV2CancelArguments { operation };
+        let arguments = service_encode(&args, service_check_oa_chat_v2_cancel_arguments, enc_oa_chat_v2_cancel_arguments, decode_oa_chat_v2_cancel_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/chat@2".into(), method: "Cancel".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/chat@2" || reply.method != "Cancel" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_chat_v2_cancel_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+}
+
+/// The first request of a conversation on a local model waits for its whole
+/// prompt to be evaluated: OpenCode's Local assistant's first answer on
+/// Qwen3.6-35B-A3B took 10.6-12 s, against 3.6 s with its fixed prefix
+/// evaluated ahead (research/live-runs/2026-10-02-demo-model-opencode.md).
+/// Preload lets an application have its own prefix evaluated before it sends
+/// that request. Only a server whose provider evaluates prefixes serves it;
+/// every other host answers unsupported_feature.
+pub trait Preloader {
+    type Error;
+    /// Load the model a chat request for the bound caller would reach and have
+    /// its server evaluate the request's messages and tools as the prefix of
+    /// the caller's next request. request is a chat@1 Request whose last
+    /// message is not a user message: the caller's next request is these
+    /// messages followed by its user message. Admission follows chat@1 Start's
+    /// order: argument shape, guarantees and host selection, host support, the
+    /// rights decision for abstraction.inference/complete on host:<name>, then
+    /// the provider's model load. A preload is speculative work: it never asks
+    /// another holder to yield, and its evaluation is never model use, so a
+    /// yield stops the server under it and it answers unavailable, reason
+    /// engine:stopped. The provider keeps nothing of the request after the
+    /// call. The call returns when the server has evaluated the prefix, refused
+    /// it, or the call budget ends.
+    fn preload(&self, request: Request) -> Result<PreloadReply, Self::Error>;
+}
+
+pub struct PreloaderClient<T> {
+    transport: T,
+}
+
+impl<T> PreloaderClient<T> {
+    pub fn new(transport: T) -> Self {
+        Self { transport }
+    }
+
+    pub fn transport(&self) -> &T {
+        &self.transport
+    }
+}
+
+impl<T: FrameTransport> Preloader for PreloaderClient<T> {
+    type Error = CallError<T::Error>;
+    fn preload(&self, request: Request) -> Result<PreloadReply, Self::Error> {
+        let args = OAPreloaderPreloadArguments { request };
+        let arguments = service_encode(&args, service_check_oa_preloader_preload_arguments, enc_oa_preloader_preload_arguments, decode_oa_preloader_preload_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/preload@1".into(), method: "Preload".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/preload@1" || reply.method != "Preload" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_preloader_preload_result).map_err(CallError::Refusal)?;
         Ok(result.value)
     }
 }
@@ -12517,6 +16919,224 @@ impl<T: FrameTransport> Image for ImageClient<T> {
     }
 }
 
+/// Image generation and edit using the account and program scoped selection
+/// policy. Image@1 remains available for explicit model calls.
+pub trait ImageV2 {
+    type Error;
+    /// Select an explicit model or a bounded named policy before image
+    /// admission. A selected route runs one image@1 admission; fallback is
+    /// limited to a proven unavailable route before admission.
+    fn start(&self, request: ImageRequestV2) -> Result<AdmissionV2, Self::Error>;
+    /// Observe an image@2 operation through the shared image lifecycle.
+    fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>;
+    /// Cancel an image@2 operation through the shared image lifecycle.
+    fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>;
+}
+
+pub struct ImageV2Client<T> {
+    transport: T,
+}
+
+impl<T> ImageV2Client<T> {
+    pub fn new(transport: T) -> Self {
+        Self { transport }
+    }
+
+    pub fn transport(&self) -> &T {
+        &self.transport
+    }
+}
+
+impl<T: FrameTransport> ImageV2 for ImageV2Client<T> {
+    type Error = CallError<T::Error>;
+    fn start(&self, request: ImageRequestV2) -> Result<AdmissionV2, Self::Error> {
+        let args = OAImageV2StartArguments { request };
+        let arguments = service_encode(&args, service_check_oa_image_v2_start_arguments, enc_oa_image_v2_start_arguments, decode_oa_image_v2_start_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/image@2".into(), method: "Start".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/image@2" || reply.method != "Start" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_image_v2_start_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+
+    fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error> {
+        let args = OAImageV2ObserveArguments { operation, cursor, max_deltas, max_bytes, wait_ms };
+        let arguments = service_encode(&args, service_check_oa_image_v2_observe_arguments, enc_oa_image_v2_observe_arguments, decode_oa_image_v2_observe_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/image@2".into(), method: "Observe".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/image@2" || reply.method != "Observe" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_image_v2_observe_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+
+    fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error> {
+        let args = OAImageV2CancelArguments { operation };
+        let arguments = service_encode(&args, service_check_oa_image_v2_cancel_arguments, enc_oa_image_v2_cancel_arguments, decode_oa_image_v2_cancel_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/image@2".into(), method: "Cancel".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/image@2" || reply.method != "Cancel" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_image_v2_cancel_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+}
+
+/// Video generation by a native provider for its designated runtime. Operations
+/// are visible only to the program that started them and live in the provider's
+/// memory: a provider or engine restart forgets them, and Observe then answers
+/// unknown.
+pub trait Video {
+    type Error;
+    /// Admit one video for the bound designated runtime after argument, model,
+    /// extension, rights and input checks, before engine work. A Start whose
+    /// request_id the provider already holds from the same caller starts
+    /// nothing, ignores the request's frame and returns that operation's
+    /// admission again, and a runtime whose reply was lost sends the same Start
+    /// again. Any other Start naming an image_digest the provider's content
+    /// store does not hold is refused as invalid with reason content:unknown,
+    /// and nothing is generated from the prompt alone. A provider holds each
+    /// request_id until at least 24 hours after its operation ends; a provider
+    /// that restarted holds none and admits the Start as new work (INF-G5,
+    /// INF-G7).
+    fn start(&self, request: VideoRequest) -> Result<VideoAdmission, Self::Error>;
+    /// Return the operation's current state without waiting.
+    fn observe(&self, operation: String) -> Result<VideoObservation, Self::Error>;
+    /// Stop the operation and its engine job. cancelled means this call stopped
+    /// it; ended carries how it had already ended; unknown means no such
+    /// operation is visible.
+    fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>;
+}
+
+pub struct VideoClient<T> {
+    transport: T,
+}
+
+impl<T> VideoClient<T> {
+    pub fn new(transport: T) -> Self {
+        Self { transport }
+    }
+
+    pub fn transport(&self) -> &T {
+        &self.transport
+    }
+}
+
+impl<T: FrameTransport> Video for VideoClient<T> {
+    type Error = CallError<T::Error>;
+    fn start(&self, request: VideoRequest) -> Result<VideoAdmission, Self::Error> {
+        let args = OAVideoStartArguments { request };
+        let arguments = service_encode(&args, service_check_oa_video_start_arguments, enc_oa_video_start_arguments, decode_oa_video_start_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/video@1".into(), method: "Start".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/video@1" || reply.method != "Start" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_video_start_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+
+    fn observe(&self, operation: String) -> Result<VideoObservation, Self::Error> {
+        let args = OAVideoObserveArguments { operation };
+        let arguments = service_encode(&args, service_check_oa_video_observe_arguments, enc_oa_video_observe_arguments, decode_oa_video_observe_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/video@1".into(), method: "Observe".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/video@1" || reply.method != "Observe" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_video_observe_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+
+    fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error> {
+        let args = OAVideoCancelArguments { operation };
+        let arguments = service_encode(&args, service_check_oa_video_cancel_arguments, enc_oa_video_cancel_arguments, decode_oa_video_cancel_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/video@1".into(), method: "Cancel".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/video@1" || reply.method != "Cancel" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_video_cancel_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+}
+
 /// Administer the runtime's inference hosts, the gateway window and its local
 /// keys, and read the inference audit. Each call is a rights decision for the
 /// bound operator subject; same-account identity alone grants nothing. A
@@ -12796,6 +17416,118 @@ impl<T: FrameTransport> Operator for OperatorClient<T> {
             return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
         }
         let result = service_decode(&reply.payload, decode_oa_operator_set_gateway_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+}
+
+/// Manage policies for this program or an explicit executable in the bound
+/// account, with optional logical provider pins. Cross-program management
+/// requires selection.manage_for; the target program is a policy namespace,
+/// never requesting identity. Reads of the bound program need no grant; edits
+/// retain selection.manage.
+pub trait SelectionOperatorV2 {
+    type Error;
+    /// Read a policy for target_program in the bound account. Empty or the
+    /// caller's own normalized executable reads self scope with no grant;
+    /// another absolute canonical executable needs selection.manage_for on
+    /// account. target_program names the managed scope, never the caller
+    /// identity.
+    fn read(&self, target_program: String, name: String) -> Result<SelectionReadV2, Self::Error>;
+    /// Conditionally create or replace a policy for target_program in the
+    /// shared store. Empty or self target needs selection.manage; another
+    /// program needs selection.manage_for on account.
+    fn put(&self, target_program: String, expected_revision: String, policy: SelectionPolicyV2) -> Result<SelectionChange, Self::Error>;
+    /// Conditionally delete a policy for target_program in the shared store.
+    /// Empty or self target needs selection.manage; another program needs
+    /// selection.manage_for on account.
+    fn delete_policy(&self, target_program: String, expected_revision: String, name: String) -> Result<SelectionChange, Self::Error>;
+}
+
+pub struct SelectionOperatorV2Client<T> {
+    transport: T,
+}
+
+impl<T> SelectionOperatorV2Client<T> {
+    pub fn new(transport: T) -> Self {
+        Self { transport }
+    }
+
+    pub fn transport(&self) -> &T {
+        &self.transport
+    }
+}
+
+impl<T: FrameTransport> SelectionOperatorV2 for SelectionOperatorV2Client<T> {
+    type Error = CallError<T::Error>;
+    fn read(&self, target_program: String, name: String) -> Result<SelectionReadV2, Self::Error> {
+        let args = OASelectionOperatorV2ReadArguments { target_program, name };
+        let arguments = service_encode(&args, service_check_oa_selection_operator_v2_read_arguments, enc_oa_selection_operator_v2_read_arguments, decode_oa_selection_operator_v2_read_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/selection-operator@2".into(), method: "Read".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/selection-operator@2" || reply.method != "Read" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_selection_operator_v2_read_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+
+    fn put(&self, target_program: String, expected_revision: String, policy: SelectionPolicyV2) -> Result<SelectionChange, Self::Error> {
+        let args = OASelectionOperatorV2PutArguments { target_program, expected_revision, policy };
+        let arguments = service_encode(&args, service_check_oa_selection_operator_v2_put_arguments, enc_oa_selection_operator_v2_put_arguments, decode_oa_selection_operator_v2_put_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/selection-operator@2".into(), method: "Put".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/selection-operator@2" || reply.method != "Put" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_selection_operator_v2_put_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+
+    fn delete_policy(&self, target_program: String, expected_revision: String, name: String) -> Result<SelectionChange, Self::Error> {
+        let args = OASelectionOperatorV2DeletePolicyArguments { target_program, expected_revision, name };
+        let arguments = service_encode(&args, service_check_oa_selection_operator_v2_delete_policy_arguments, enc_oa_selection_operator_v2_delete_policy_arguments, decode_oa_selection_operator_v2_delete_policy_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.inference/selection-operator@2".into(), method: "DeletePolicy".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.inference/selection-operator@2" || reply.method != "DeletePolicy" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_selection_operator_v2_delete_policy_result).map_err(CallError::Refusal)?;
         Ok(result.value)
     }
 }

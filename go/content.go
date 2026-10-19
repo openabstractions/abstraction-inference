@@ -37,7 +37,7 @@ func (p *Provider) resolveImages(ctx context.Context, subject Subject, req wire.
 				return nil, wire.StartOutcomeInvalid, "content:too-large"
 			}
 			limit := min(p.cfg.MaxImageBytes, remaining)
-			data, outcome := p.cfg.ResolveContent(ctx, subject, part.Digest, limit)
+			data, outcome := p.cfg.ResolveContent(WithInputProfile(ctx, InputImage), subject, part.Digest, limit)
 			if ctx.Err() != nil {
 				return nil, wire.StartOutcomeUnavailable, "content:unavailable"
 			}
@@ -61,6 +61,7 @@ func (p *Provider) resolveImages(ctx context.Context, subject Subject, req wire.
 			case ContentUnknown:
 				return nil, wire.StartOutcomeInvalid, "content:unknown"
 			case ContentForbidden:
+				p.askInput(ctx, subject, InputImage)
 				return nil, wire.StartOutcomeForbidden, "content:read:forbidden"
 			case ContentTooLarge:
 				return nil, wire.StartOutcomeInvalid, "content:too-large"

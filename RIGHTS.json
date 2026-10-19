@@ -1,0 +1,186 @@
+{
+  "format": "openabstractions-rights@1",
+  "owner": "abstraction.inference",
+  "generated": "Do not edit. Run rights-catalogue --write from the existing compiled catalogue.",
+  "source": "github.com/openabstractions/abstraction-facade/go/grants",
+  "availability": "Compiled catalogue reference: served and selector support use the named receiving-service context. Connected-runtime discovery supplies current availability. Facade Applications is experimental. Definitions grant no access.",
+  "compiled_receivers": {
+    "credentials": true,
+    "application_logs": true
+  },
+  "definitions": [
+    {
+      "definition": {
+        "action": "abstraction.inference/audit.read",
+        "owner_contract": "abstraction.inference/operator@1",
+        "operations": [
+          "abstraction.inference/operator@1#Audit"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.inference/operator@1"
+        ],
+        "disclosure": "Read retained audit.",
+        "lifecycle": "All receiving account inference audit records.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.inference/audit.read",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "All receiving account inference audit records.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.inference/complete",
+        "owner_contract": "abstraction.inference/chat@1",
+        "operations": [
+          "abstraction.inference/chat@1#Start",
+          "abstraction.inference/chat@2#Start",
+          "abstraction.inference/preload@1#Preload",
+          "abstraction.inference/embed@1#Embed",
+          "abstraction.inference/transcription@1#Start",
+          "abstraction.inference/speech@1#Start",
+          "abstraction.inference/live@1#Start",
+          "abstraction.inference/image@1#Start",
+          "abstraction.inference/image@2#Start",
+          "abstraction.inference/video@1#Start"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.inference/chat@1",
+          "abstraction.inference/chat@2",
+          "abstraction.inference/embed@1",
+          "abstraction.inference/preload@1",
+          "abstraction.inference/transcription@1",
+          "abstraction.inference/speech@1",
+          "abstraction.inference/live@1",
+          "abstraction.inference/image@1",
+          "abstraction.inference/image@2",
+          "abstraction.inference/video@1"
+        ],
+        "disclosure": "Start model call/preload/embed/video; pin accepted provider and attribution.",
+        "lifecycle": "One model server, all supported models/modalities; excludes different hosts.",
+        "first_use": "exact",
+        "served": true
+      },
+      "label": "abstraction.inference/complete",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "One model server, all supported models/modalities; excludes different hosts.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.inference/host.manage",
+        "owner_contract": "abstraction.inference/operator@1",
+        "operations": [
+          "abstraction.inference/operator@1#Hosts",
+          "abstraction.inference/operator@1#AddHost",
+          "abstraction.inference/operator@1#RemoveHost",
+          "abstraction.inference/operator@1#Gateway",
+          "abstraction.inference/operator@1#SetGateway"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.inference/operator@1"
+        ],
+        "disclosure": "Read/edit server registrations and gateway; host edits write limited operator/provider permits.",
+        "lifecycle": "Full model server list/config and loopback gateway settings in receiving account.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.inference/host.manage",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "Full model server list/config and loopback gateway settings in receiving account.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.inference/key.issue",
+        "owner_contract": "abstraction.inference/operator@1",
+        "operations": [
+          "abstraction.inference/operator@1#Keys",
+          "abstraction.inference/operator@1#IssueKey",
+          "abstraction.inference/operator@1#RevokeKey"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.inference/operator@1"
+        ],
+        "disclosure": "Mint/revoke per-program gateway key; key alone grants no completion authority.",
+        "lifecycle": "All program gateway keys in receiving account.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.inference/key.issue",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "All program gateway keys in receiving account.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.inference/selection.manage",
+        "owner_contract": "abstraction.inference/selection-operator@2",
+        "operations": [
+          "abstraction.inference/selection-operator@2#Read",
+          "abstraction.inference/selection-operator@2#Put",
+          "abstraction.inference/selection-operator@2#DeletePolicy"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.inference/selection-operator@2"
+        ],
+        "disclosure": "Read/write/delete named selection policy.",
+        "lifecycle": "Own program's named policies in the receiving account; future policy names included.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.inference/selection.manage",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "Own program's named policies in the receiving account; future policy names included.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.inference/selection.manage_for",
+        "owner_contract": "abstraction.inference/selection-operator@2",
+        "operations": [
+          "abstraction.inference/selection-operator@2#Read",
+          "abstraction.inference/selection-operator@2#Put",
+          "abstraction.inference/selection-operator@2#DeletePolicy"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.inference/selection-operator@2"
+        ],
+        "disclosure": "Read/write/delete another program's named selection policy.",
+        "lifecycle": "Any target program's named policies within the receiving account; future policy names included.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.inference/selection.manage_for",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "Any target program's named policies within the receiving account; future policy names included.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    }
+  ],
+  "bundles": []
+}

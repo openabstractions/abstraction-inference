@@ -63,9 +63,9 @@ func (w *Window) openAIEmbeddings(rw http.ResponseWriter, r *http.Request, b Bou
 	} else {
 		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
 	}
-	reply := embedder.Embed(inference.WithRoute(r.Context(), inference.RouteWindow, b.Rung()), b.Subject(), req)
+	reply := embedder.Embed(routed(r.Context(), b), b.Subject(), req)
 	if reply.Outcome != wire.EmbedOutcomeCompleted {
-		writeError(rw, status(reply.Outcome.String()), reply.Outcome.String(), refusalMessage(reply.Outcome.String(), reply.Reason))
+		refusalOf(reply.Outcome.String(), reply.Reason).write(rw)
 		return
 	}
 	data := make([]map[string]any, len(reply.Vectors))

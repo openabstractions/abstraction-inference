@@ -725,16 +725,20 @@ export function newDelivery() {
 }
 
 // Durable inference work submitted as job kind inference. video carries an
-// image-shaped generate request and duration_ms of 1..600000; image_batch
-// carries duration zero and count 1..10. The embedded request retains its
-// digest, guarantee, credential and extension bounds. The recoverable-upstream
+// image-shaped request with count 1 and duration_ms of 1..600000: generate
+// makes the clip from the prompt, and edit carries one image and no mask, and
+// that image is the clip's first frame (INF-G1, INF-G3); image_batch carries
+// duration zero and count 1..10. The embedded request retains its digest,
+// guarantee, credential and extension bounds. The recoverable-upstream
 // guarantee means the executor durably marks submission before the paid call,
 // records a returned provider handle, resumes a known handle, and invokes the
 // adapter's reconciliation path after an uncertain submit. It does not promise
 // eventual resolution: an adapter such as Replicate that offers no lookup by
 // caller operation keeps the job waiting as upstream:uncertain and never
-// blindly submits it again. No URL, path, header, credential bytes or inline
-// media crosses this value.
+// blindly submits it again. A native video provider recognises a repeated
+// request_id as the same operation, and the executor sends that Start again
+// (INF-G7). No URL, path, header, credential bytes or inline media crosses this
+// value.
 export function newRequest() {
   return { profile: "", image: newImageRequest(), durationMs: 0n };
 }

@@ -15,6 +15,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -92,6 +93,8 @@ type fixture struct {
 	allowed  map[string]bool
 	records  []inference.Record
 	recorded chan struct{}
+	// decided holds the peer each rights decision carried.
+	decided []*identity.Peer
 }
 
 func (f *fixture) grant(key, program string, complete bool) {
@@ -151,9 +154,10 @@ func setup(t *testing.T, bind Binder) *fixture {
 		}
 	}
 	provider, err := inference.New(inference.Config{Router: r, SurveyAge: time.Hour, Record: record,
-		Decide: func(_ context.Context, s inference.Subject, action, resource string) (string, error) {
+		Decide: func(ctx context.Context, s inference.Subject, action, resource string) (string, error) {
 			f.mu.Lock()
 			defer f.mu.Unlock()
+			f.decided = append(f.decided, inference.PeerFromContext(ctx))
 			if action == inference.ActionComplete && resource == "host:ollama" && f.allowed[strings.ToLower(s.Program)] {
 				return "permitted", nil
 			}
@@ -355,6 +359,37 @@ func TestAKeyWithoutACompleteRuleIsNotPermitted(t *testing.T) {
 	}
 }
 
+// The rights decision for a window request carries the peer the window bound
+// (inference.WithPeer), with the code verdict the binding verified, so a
+// first-use question the refusal admits names the caller's publisher
+// (ASK-A6). Outside Windows a loopback peer carries no code evidence (ID-T4).
+func TestTheWindowDecidesWithTheBoundPeersCode(t *testing.T) {
+	if !gatewayTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on current loopback transport")
+	}
+	f := setup(t, realBinding(t))
+	_, _, program := python(t)
+	f.grant("oalk-peer", program, false)
+	if result, code := runScript(t, "llm_style.py", f.base+"/v1", "oalk-peer", model); code != 3 || result["status"] != 403.0 {
+		t.Fatalf("no rule: exit %d %v", code, result)
+	}
+	f.mu.Lock()
+	decided := append([]*identity.Peer(nil), f.decided...)
+	f.mu.Unlock()
+	if len(decided) == 0 || slices.Contains(decided, nil) {
+		t.Fatalf("the window decided with peers %v", decided)
+	}
+	bound, err := LoopbackSubject(decided[0])
+	if err != nil || !samePath(bound.Program, program) || bound.Account != account(t) {
+		t.Fatalf("the decision's peer binds %+v, the request came from %q: %v", bound, program, err)
+	}
+	if runtime.GOOS == "windows" {
+		if code, proof := decided[0].Code.Get(); proof <= identity.ProofNone {
+			t.Fatalf("the window bound no code evidence: %s (%+v)", decided[0].Code.Why(), code)
+		}
+	}
+}
+
 // rawRequest sends a request's head announcing a body it never sends, and
 // reads the response. A window that read the body would wait for it, and this
 // read would time out.
@@ -434,6 +469,7 @@ type movedBound struct {
 
 func (m *movedBound) Subject() inference.Subject { return m.subject }
 func (m *movedBound) Rung() string               { return "tcp-loopback/fixture user=bound process=bound path=bound" }
+func (m *movedBound) Peer() *identity.Peer       { return nil }
 func (m *movedBound) Close() error               { return nil }
 func (m *movedBound) Recheck() error {
 	if m.checks.Add(1) > 1 {
@@ -481,5 +517,167 @@ func TestTheWindowListensOnLoopbackOnly(t *testing.T) {
 			w.Close()
 			t.Fatalf("listened on %s", address)
 		}
+	}
+}
+
+// A connection whose binding is slow is bound off the accept loop: while the
+// first connection's code verification is still running, a second
+// connection is accepted, bound and served.
+func TestASlowBindDoesNotHoldOtherConnections(t *testing.T) {
+	self, _ := os.Executable()
+	subject := inference.Subject{Account: account(t), Program: self}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	var calls atomic.Int64
+	f := setup(t, func(net.Conn, time.Time) (Bound, error) {
+		if calls.Add(1) == 1 {
+			close(entered)
+			<-release
+		}
+		return fixedBound{subject: subject}, nil
+	})
+	// Registered after setup, so it runs before the window closes.
+	t.Cleanup(unblock)
+	f.grant("oalk-self", self, true)
+	slow, err := net.Dial("tcp4", f.window.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer slow.Close()
+	if _, err := io.WriteString(slow, "GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer oalk-self\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first connection was never bound")
+	}
+	req, _ := http.NewRequest(http.MethodGet, f.base+"/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer oalk-self")
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("a second connection waited for the first one's binding: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("second connection: %d", resp.StatusCode)
+	}
+	unblock()
+	slow.SetReadDeadline(time.Now().Add(5 * time.Second))
+	first, err := http.ReadResponse(bufio.NewReader(slow), nil)
+	if err != nil {
+		t.Fatalf("the slow connection was not served once bound: %v", err)
+	}
+	first.Body.Close()
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("slow connection: %d", first.StatusCode)
+	}
+}
+
+// A request that reaches the handler on a connection whose binding failed is
+// refused with the binding's word, recorded once, and starts nothing.
+func TestARequestOnAConnectionWhoseBindFailedIsRefused(t *testing.T) {
+	chat := &countingChat{}
+	var records []inference.Record
+	var mu sync.Mutex
+	w, err := Listen("127.0.0.1:0", Config{Chat: chat, Account: "a",
+		Keys: func(context.Context, inference.Subject, string) (Grant, string) { return Grant{}, KeyVerified },
+		Bind: func(net.Conn, time.Time) (Bound, error) {
+			return nil, fmt.Errorf("%w: fixture binder", identity.ErrPeerGone)
+		},
+		Record: func(r inference.Record) { mu.Lock(); records = append(records, r); mu.Unlock() }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	client, err := net.Dial("tcp4", w.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		c, err := w.listener.Accept()
+		if err == nil {
+			accepted <- c
+		}
+	}()
+	var c net.Conn
+	select {
+	case c = <-accepted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Accept bound the connection instead of handing it to its own goroutine")
+	}
+	defer c.Close()
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"`+model+`","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer oalk-any")
+	rec := httptest.NewRecorder()
+	w.serveHTTP(rec, req.WithContext(w.server.ConnContext(req.Context(), c)))
+	mu.Lock()
+	defer mu.Unlock()
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "peer_gone") || chat.starts.Load() != 0 ||
+		len(records) != 1 || records[0].Reason != "binding:peer_gone" {
+		t.Fatalf("refused bind: %d %s, starts %d, records %+v", rec.Code, rec.Body.String(), chat.starts.Load(), records)
+	}
+}
+
+type countingChat struct {
+	nopChat
+	starts atomic.Int64
+}
+
+func (c *countingChat) Start(ctx context.Context, s inference.Subject, r wire.Request) wire.Admission {
+	c.starts.Add(1)
+	return c.nopChat.Start(ctx, s, r)
+}
+
+// A keep-alive connection whose code verdict has outlived its five minutes
+// is verified again before its next decision, through the identity layer's
+// own binding.
+func TestAConnectionPastItsEvidenceLifetimeIsVerifiedAgain(t *testing.T) {
+	if !gatewayTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on current loopback transport")
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	connectedAt := time.Now()
+	client, err := net.Dial("tcp4", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	server, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	bound, err := BindLoopback(server, connectedAt, account(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bound.Close()
+	lb := bound.(*loopbackBound)
+	first, subject := lb.binding, bound.Subject()
+	until := first.EvidenceValidUntil()
+	if until.IsZero() {
+		t.Skip("this platform records no evidence lifetime for a loopback peer")
+	}
+	if err := bound.Recheck(); err != nil || lb.binding != first {
+		t.Fatalf("a fresh binding was replaced or refused: %v", err)
+	}
+	clock = func() time.Time { return until.Add(time.Second) }
+	t.Cleanup(func() { clock = time.Now })
+	if err := bound.Recheck(); err != nil {
+		t.Fatalf("re-verification refused the same peer: %v", err)
+	}
+	if lb.binding == first {
+		t.Fatal("a connection past its evidence lifetime decided with the old verdict")
+	}
+	if bound.Subject() != subject || bound.Peer() == first.Captured() {
+		t.Fatalf("re-verified subject %+v, want %+v", bound.Subject(), subject)
 	}
 }

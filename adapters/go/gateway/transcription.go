@@ -151,10 +151,10 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
 	}
 	transcriber := w.cfg.Chat.(Transcriber)
-	ctx := inference.WithRoute(r.Context(), inference.RouteWindow, b.Rung())
+	ctx := routed(r.Context(), b)
 	a := transcriber.StartTranscription(ctx, b.Subject(), req)
 	if a.Outcome != wire.StartOutcomeAccepted {
-		writeError(rw, status(a.Outcome.String()), a.Outcome.String(), refusalMessage(a.Outcome.String(), a.Reason))
+		refusalOf(a.Outcome.String(), a.Reason).write(rw)
 		return
 	}
 	var units []wire.TranscriptSegment
@@ -185,7 +185,7 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 		if end != nil {
 			outcome, reason = end.Outcome.String(), end.Reason
 		}
-		writeError(rw, status(outcome), outcome, refusalMessage(outcome, reason))
+		refusalOf(outcome, reason).write(rw)
 		return
 	}
 	var text strings.Builder

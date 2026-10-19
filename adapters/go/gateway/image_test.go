@@ -81,6 +81,35 @@ func TestGatewayImageDoesNotReadRemoteDeliveryLocally(t *testing.T) {
 	}
 }
 
+// INF-V1, INF-V4: an edit input the runtime refuses to store (no input:image
+// profile and no exact-digest rule) is content:write:forbidden and starts no
+// image request.
+func TestGatewayImageEditRefusedInputWriteStartsNothing(t *testing.T) {
+	provider := &fakeImage{}
+	var records []inference.Record
+	w := &Window{cfg: Config{Chat: provider,
+		StoreContent: func(context.Context, inference.Subject, string, []byte) inference.ContentOutcome { return inference.ContentForbidden },
+		Record:       func(r inference.Record) { records = append(records, r) }}}
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	for name, value := range map[string]string{"model": "gpt-image-1", "prompt": "remove the sign"} {
+		_ = mw.WriteField(name, value)
+	}
+	imagePart, _ := mw.CreateFormFile("image", "input.png")
+	_, _ = imagePart.Write([]byte("\x89PNG\r\n\x1a\ninput"))
+	_ = mw.Close()
+	r := httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	rw := httptest.NewRecorder()
+	w.openAIImageEdit(rw, r, fixedBound{inference.Subject{Account: "account", Program: "/apps/editor"}}, Grant{})
+	if rw.Code != http.StatusForbidden || provider.request.Mode != 0 {
+		t.Fatalf("code=%d request=%+v body=%s", rw.Code, provider.request, rw.Body.String())
+	}
+	if len(records) != 1 || records[0].Reason != "content:write:forbidden" {
+		t.Fatalf("records %+v", records)
+	}
+}
+
 func TestGatewayImageEditStoresInputsForOriginalSubject(t *testing.T) {
 	output := []byte("\x89PNG\r\n\x1a\nresult")
 	sum := sha256.Sum256(output)

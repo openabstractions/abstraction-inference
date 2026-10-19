@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
 )
@@ -52,8 +53,25 @@ type Subject struct{ Account, Program string }
 
 // Decider answers a rights decision with its outcome word (permitted, denied,
 // not_granted, unknown_action). An error means the decision point could not
-// answer, and reads unavailable.
+// answer, and reads unavailable. ctx carries the peer the receiving boundary
+// bound subject from (PeerFromContext), or nil on a route that verified none.
 type Decider func(ctx context.Context, subject Subject, action, resource string) (string, error)
+
+type peerKey struct{}
+
+// WithPeer attaches the peer a boundary bound the call's subject from: the
+// identity evidence its listener verified, code signature included. A route
+// that verified no peer for the subject passes nil, which also drops a peer
+// ctx already carried.
+func WithPeer(ctx context.Context, peer *identity.Peer) context.Context {
+	return context.WithValue(ctx, peerKey{}, peer)
+}
+
+// PeerFromContext is the peer WithPeer attached to ctx, or nil.
+func PeerFromContext(ctx context.Context) *identity.Peer {
+	peer, _ := ctx.Value(peerKey{}).(*identity.Peer)
+	return peer
+}
 
 // Applier applies credential name for one outgoing request of subject to
 // target, a lowercase host name, as consumer. It returns the headers and
@@ -65,7 +83,8 @@ type Applier func(ctx context.Context, subject Subject, consumer, name, target s
 // the picked host before a call is decided: a load, a warm-up, anything that
 // keeps its own refusal word instead of turning into an upstream failure. A
 // false answer carries the provider's own reason word and refuses the
-// operation before Decide runs (INF-A5).
+// operation after authority and credential preflight (INF-A5). ctx carries
+// the request's profile, read by AdmissionProfile.
 type Admitter func(ctx context.Context, host *router.Host, model string) (reason string, ok bool)
 
 // ContentOutcome is the result of resolving one digest for the original
@@ -102,7 +121,9 @@ const (
 
 // ClaimExtension is the request extension a delegating runtime sets to the
 // program that asked it. A remote runtime records it as a claim attributed to
-// the mapped caller and decides nothing on it.
+// the mapped caller and decides nothing on it. A leaf provider records it from
+// a designated runtime. The provider removes it with every other reserved key
+// before an adapter or engine sees the request (separateExtensions).
 const ClaimExtension = "openabstractions/claimed-program"
 
 type routeKey struct{}
@@ -203,7 +224,9 @@ type Record struct {
 	// Domain is the remote host a delegated operation went to, or on the
 	// remote runtime the caller its certificate maps to.
 	Domain string
-	// Claim is the program a delegating runtime says asked, attributed to Domain.
+	// Claim is the program a delegating runtime says asked: attributed to
+	// Domain on a remote runtime, and to Program, the designated runtime, on a
+	// leaf provider. A claim from any other caller is never recorded.
 	Claim string
 }
 
@@ -212,8 +235,53 @@ type Config struct {
 	Router *router.Router
 	Decide Decider
 	Apply  Applier
-	// Admit runs after pick and before Decide, once a host is picked. Nil runs
-	// nothing. A false answer refuses the operation `unavailable` with the
+	// Standing decides again, asking nobody, whether the subject of a
+	// running operation or durable job may still complete on its server and
+	// use its credential (INF-A6). Nil decides complete through Decide and no
+	// credential, which suits a leaf provider whose Decide is static; a
+	// runtime whose Decide admits first-use questions sets it.
+	Standing StandingDecider
+	// CancelledWith is told that the job executor sent the headers a plan
+	// applied for credential once more, only to cancel upstream work after
+	// the subject's use of that credential was refused (INF-A6); a refusal
+	// of complete alone tells it nothing. The runtime records it in the
+	// credential audit (credentials CRED-A7). Nil records nothing.
+	CancelledWith func(ctx context.Context, subject Subject, consumer, credential, target string)
+	// ImageEngine serves explicitly composed local image hosts. The inference
+	// provider retains request admission, bounds and caller-owned publication.
+	ImageEngine ImageEngine
+	// ImageEngineHost is the exact router declaration served by ImageEngine.
+	// A local callback must never execute a different selected engine host.
+	ImageEngineHost *router.Host
+	// ImageFields maps the vendor extensions ImageFieldsHost declares for
+	// the image profile (router.Host.SupportedExtensions) to fields of the
+	// OpenAI-compatible image request sent to that host: a string or int64
+	// value per field name. It receives only declared keys present in the
+	// request and returns the fields, or the extension key whose value it
+	// refuses. A field inference sets itself is refused. Nil forwards no
+	// extension, and a declared extension the request requires is refused.
+	ImageFields func(extensions map[string]string) (map[string]any, string)
+	// ImageFieldsHost is the exact OpenAI-compatible host ImageFields serves.
+	ImageFieldsHost *router.Host
+	// TranscriptionEngine and SpeechEngine serve the exact router
+	// declarations TranscriptionEngineHost and SpeechEngineHost in place of
+	// the HTTP adapters, as ImageEngine does for image work. The provider
+	// keeps admission, bounds and caller-owned publication.
+	TranscriptionEngine     TranscriptionEngine
+	TranscriptionEngineHost *router.Host
+	SpeechEngine            SpeechEngine
+	SpeechEngineHost        *router.Host
+	// ResolveSelectionV2 reads the same scoped store with optional logical
+	// provider pins. When configured it serves both chat@2 and image@2.
+	ResolveSelectionV2 SelectionResolverV2
+	// EvaluatePrefix, when set, serves preload@1 for the OpenAI-compatible
+	// servers this provider sends to itself: it has the server evaluate a
+	// chat request's prefix (INF-PL2). Nil answers unsupported_feature for
+	// every such server.
+	EvaluatePrefix PrefixEvaluator
+	// Admit runs after request, authority, content, budget and credential
+	// preflight, before accepted execution. Nil runs nothing. A false answer
+	// refuses the operation `unavailable` with the
 	// hook's reason, or `not_permitted` when the reason is exactly that word
 	// (INF-A5).
 	Admit Admitter
@@ -221,7 +289,22 @@ type Config struct {
 	// credentials or an upstream request. It is required by requests that use
 	// vision@1 and receives the original bound caller.
 	ResolveContent ContentResolver
-	// MaxImageBytes bounds each resolved image; default 20 MiB.
+	// AskInput is told that a request of subject consumes input of an input
+	// profile (InputImage or InputAudio) and was refused for want of a grant:
+	// its complete decision read not_granted, or its input read was refused
+	// (INF-V4). The runtime may admit the paired first-use question for that
+	// profile. Nil asks nothing.
+	AskInput func(ctx context.Context, subject Subject, profile string)
+	// AskOutput is told that a durable job or an image@1 or speech@1 call of
+	// subject was refused because it may not write and read back its output
+	// under an output profile (image, video or speech): content.write or
+	// content.read on output:<profile> was not granted. The runtime may admit the paired first-use question for that
+	// profile, whose answer covers only outputs the program's own work
+	// produced (INF-V4, INF-S7). Nil asks nothing; a host whose
+	// PrepareContentWrite admits the question itself, for calls and jobs
+	// alike, leaves it nil.
+	AskOutput func(ctx context.Context, subject Subject, profile string)
+	// MaxImageBytes bounds each resolved image; default DefaultMaxImageBytes.
 	MaxImageBytes int64
 	// MaxVisionBytes bounds the sum of image payload bytes after every digest
 	// occurrence is expanded in one request; default 64 MiB.
@@ -266,18 +349,25 @@ type Config struct {
 
 // Provider serves chat@1 for bound subjects.
 type Provider struct {
-	cfg      Config
-	mu       sync.Mutex
-	ops      map[string]*operation
-	surveyed time.Time
-	survey   sync.Mutex
-	ctx      context.Context
-	stop     context.CancelFunc
-	done     chan struct{}
-	runs     sync.WaitGroup
+	cfg             Config
+	mu              sync.Mutex
+	ops             map[string]*operation
+	pendingModels   map[string]int
+	pendingSubjects map[Subject]int
+	surveyed        time.Time
+	survey          sync.Mutex
+	ctx             context.Context
+	stop            context.CancelFunc
+	done            chan struct{}
+	runs            sync.WaitGroup
 }
 
 // New starts a provider and its idle and retention watchdog. Close stops it.
+// DefaultMaxImageBytes is Config.MaxImageBytes when none is configured
+// (20 MiB). A provider forwarding image edits bounds its request bodies by
+// the same value.
+const DefaultMaxImageBytes = 20 << 20
+
 func New(cfg Config) (*Provider, error) {
 	if cfg.Router == nil || cfg.Decide == nil || cfg.Apply == nil {
 		return nil, errors.New("inference: router, decision function and applier required")
@@ -286,7 +376,7 @@ func New(cfg Config) (*Provider, error) {
 		cfg.HTTP = &http.Client{}
 	}
 	if cfg.MaxImageBytes <= 0 {
-		cfg.MaxImageBytes = 20 << 20
+		cfg.MaxImageBytes = DefaultMaxImageBytes
 	}
 	if cfg.MaxVisionBytes <= 0 {
 		cfg.MaxVisionBytes = 64 << 20
@@ -322,7 +412,7 @@ func New(cfg Config) (*Provider, error) {
 		cfg.Now = time.Now
 	}
 	ctx, stop := context.WithCancel(context.Background())
-	p := &Provider{cfg: cfg, ops: map[string]*operation{}, ctx: ctx, stop: stop, done: make(chan struct{})}
+	p := &Provider{cfg: cfg, ops: map[string]*operation{}, pendingModels: map[string]int{}, pendingSubjects: map[Subject]int{}, ctx: ctx, stop: stop, done: make(chan struct{})}
 	go p.watch()
 	return p, nil
 }
@@ -383,11 +473,20 @@ func refusal(outcome wire.StartOutcome, reason string) wire.Admission {
 // begins its upstream request. Nothing leaves the service before every check
 // passes.
 func (p *Provider) Start(ctx context.Context, subject Subject, req wire.Request) wire.Admission {
+	return p.start(ctx, subject, req, nil)
+}
+
+type selectedRoute struct {
+	host      *router.Host
+	model     string
+	bindingID string
+}
+
+func (p *Provider) start(ctx context.Context, subject Subject, req wire.Request, selected *selectedRoute) wire.Admission {
 	started := p.cfg.Now()
 	via := routeOf(ctx)
-	if via.name == RouteRemote {
-		via.claim = req.Extensions[ClaimExtension]
-	}
+	extensions := separateExtensions(ctx, req.Extensions, req.RequiredExtensions)
+	via.claim = extensions.claim
 	refuse := func(outcome wire.StartOutcome, reason string, host *router.Host, model string) wire.Admission {
 		r := Record{Route: via.name, Rung: via.rung, Account: subject.Account, Program: subject.Program, Model: req.Model, Family: familyOf(req.Model),
 			Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
@@ -409,14 +508,22 @@ func (p *Provider) Start(ctx context.Context, subject Subject, req wire.Request)
 	if reason := validate(req); reason != "" {
 		return refuse(wire.StartOutcomeInvalid, reason, nil, "")
 	}
-	host, model, reason := p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileChat)
+	if extensions.required != "" {
+		return refuse(wire.StartOutcomeUnsupportedFeature, "extension:"+extensions.required, nil, "")
+	}
+	req.Extensions = extensions.vendor
+	var host *router.Host
+	var model, reason string
+	if selected != nil {
+		if selected.host == nil || selected.bindingID != selected.host.BindingID || !p.selectedHostCurrent(selected.host) {
+			return refuse(wire.StartOutcomeNoHost, "selection:provider_stale", nil, "")
+		}
+		host, model = selected.host, selected.model
+	} else {
+		host, model, reason = p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileChat)
+	}
 	if host == nil {
 		return refuse(wire.StartOutcomeNoHost, reason, nil, "")
-	}
-	if p.cfg.Admit != nil {
-		if admitReason, ok := p.cfg.Admit(ctx, host, model); !ok {
-			return refuse(admitStartOutcome(admitReason), admitReason, host, model)
-		}
 	}
 	adapter := adapterFor(host.Wire)
 	if host.Wire == "" {
@@ -428,6 +535,11 @@ func (p *Provider) Start(ctx context.Context, subject Subject, req wire.Request)
 	if reason := adapter.unsupported(req); reason != "" {
 		return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
 	}
+	if host.Wire == router.WireNative || host.Wire == router.WireRemote {
+		if reason := unsupportedSelectedExtensions(host, router.ProfileChat, req.RequiredExtensions); reason != "" {
+			return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
+		}
+	}
 	word, err := p.cfg.Decide(ctx, subject, ActionComplete, ResourceHost(host.Name))
 	if err != nil || ctx.Err() != nil {
 		p.report(err)
@@ -436,6 +548,9 @@ func (p *Provider) Start(ctx context.Context, subject Subject, req wire.Request)
 	switch word {
 	case "permitted":
 	case "denied", "not_granted", "unknown_action":
+		if word == "not_granted" && len(imagePartDigests(req)) > 0 {
+			p.askInput(ctx, subject, InputImage)
+		}
 		return refuse(wire.StartOutcomeNotPermitted, "rights:"+word, host, model)
 	default:
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
@@ -481,21 +596,25 @@ func (p *Provider) Start(ctx context.Context, subject Subject, req wire.Request)
 		p.report(err)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
+	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileChat, model, &subject)
+	if !ok {
+		clear(headers)
+		if capacityRefusal {
+			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
+		}
+		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+	}
+	defer p.releaseModelActivity(activity)
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
 	op.route, op.remote = via, remote
-	if binding, pinned := ctx.Value(executionBindingKey{}).(ExecutionBinding); pinned {
-		op.bindingID = binding.BindingID
-	}
+	op.inputs = imagePartDigests(req)
+	p.bindOperation(ctx, op)
 	runCtx, cancel := context.WithCancel(p.ctx)
 	op.cancel = cancel
-	if outcome := p.admitOperation(op); outcome != wire.StartOutcomeAccepted {
+	if outcome, admitReason := p.admitOperationWithActivity(ctx, op, activity); outcome != wire.StartOutcomeAccepted {
 		cancel()
 		clear(headers)
-		reason := "capacity"
-		if outcome == wire.StartOutcomeUnavailable {
-			reason = "provider:closed"
-		}
-		return refuse(outcome, reason, host, model)
+		return refuse(outcome, admitReason, host, model)
 	}
 	go p.run(runCtx, op, adapter, req, images, headers)
 	a := wire.Admission{Outcome: wire.StartOutcomeAccepted, Operation: id, Host: host.Name, Model: model}
@@ -540,17 +659,20 @@ func (p *Provider) HasBindingOperations(bindingID string) bool {
 	return false
 }
 
-// ActiveForModel reports whether an operation for model is still active or
-// retained for observation. A provider whose Admit hook loads model as an
-// object uses it to tell a started or still-open operation from one that has
-// fully ended and aged out of retention, so its own idle clock can keep the
-// object it loaded for as long as the operation is open (INF-A5).
+// ActiveForModel reports whether a model admission is in progress or an
+// operation for model is still active or retained for observation. A provider
+// whose Admit hook loads model as an object uses it to protect the resident
+// across the hook and until the operation has fully ended and aged out of
+// retention (INF-A5).
 func (p *Provider) ActiveForModel(model string) bool {
 	if model == "" {
 		return false
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.pendingModels[model] > 0 {
+		return true
+	}
 	for _, op := range p.ops {
 		if op.model == model {
 			return true
@@ -638,7 +760,7 @@ func (p *Provider) observeProfile(ctx context.Context, subject Subject, id, prof
 		return refused(wire.PageOutcomeUnknown)
 	}
 	op.observeBegin()
-	defer op.observeEnd(p.cfg.Now())
+	defer func() { op.observeEnd(p.cfg.Now()) }()
 	return op.page(ctx, cursor, maxDeltas, maxBytes, time.Duration(waitMS)*time.Millisecond)
 }
 
@@ -688,15 +810,21 @@ func (p *Provider) visibleProfile(subject Subject, id, profile string) *operatio
 	return op
 }
 
-// watch cancels idle operations and retires ended ones after retention.
+// watch cancels idle operations and retires ended ones after retention. On
+// its standing clock it decides every running operation again (INF-A6).
 func (p *Provider) watch() {
 	defer close(p.done)
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
+	standing := time.NewTicker(standingInterval)
+	defer standing.Stop()
 	for {
 		select {
 		case <-p.ctx.Done():
 			return
+		case <-standing.C:
+			p.Recheck(p.ctx)
+			continue
 		case <-tick.C:
 		}
 		now := p.cfg.Now()

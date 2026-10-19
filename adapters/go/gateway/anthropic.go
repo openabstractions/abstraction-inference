@@ -108,7 +108,7 @@ func fromAnthropic(in antRequest) (wire.Request, error) {
 						return req, errUnsupported{inference.FeatureVision}
 					}
 					//unchecked: strings.Builder.WriteString never returns a non-nil error
-				text.WriteString(ib.Text)
+					text.WriteString(ib.Text)
 				}
 				results = append(results, wire.Part{Kind: wire.PartKindToolResult, CallID: b.ToolUseID, Text: text.String()})
 			case "image", "document":
@@ -196,7 +196,7 @@ func (w *Window) anthropicMessages(rw http.ResponseWriter, r *http.Request, b Bo
 	}
 	admission := w.start(r, b, grant, req)
 	if admission.Outcome != wire.StartOutcomeAccepted {
-		writeError(rw, status(admission.Outcome.String()), admission.Outcome.String(), refusalMessage(admission.Outcome.String(), admission.Reason))
+		refusalOf(admission.Outcome.String(), admission.Reason).write(rw)
 		return
 	}
 	id := "msg_" + admission.Operation
@@ -207,7 +207,7 @@ func (w *Window) anthropicMessages(rw http.ResponseWriter, r *http.Request, b Bo
 			return
 		}
 		if end.Outcome != wire.ReplyOutcomeCompleted {
-			writeError(rw, status(end.Outcome.String()), end.Outcome.String(), refusalMessage(end.Outcome.String(), end.Reason))
+			refusalOf(end.Outcome.String(), end.Reason).write(rw)
 			return
 		}
 		reply, _ := fold.Reply()
@@ -296,7 +296,7 @@ func (w *Window) anthropicMessages(rw http.ResponseWriter, r *http.Request, b Bo
 	}
 	closeOpen()
 	if end.Outcome != wire.ReplyOutcomeCompleted {
-		send("error", errorBody(status(end.Outcome.String()), end.Outcome.String(), refusalMessage(end.Outcome.String(), end.Reason)))
+		send("error", refusalOf(end.Outcome.String(), end.Reason).body())
 		return
 	}
 	send("message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": anthropicStop(end.StopReason), "stop_sequence": nil},

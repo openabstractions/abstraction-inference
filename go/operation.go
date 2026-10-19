@@ -30,6 +30,9 @@ type operation struct {
 	// remote is an operation delegated to a remote runtime, which counts its
 	// own ceilings.
 	remote bool
+	// inputs are the content digests the request names as input, held until
+	// the request ends (INF-V4). Set before the operation is admitted.
+	inputs []string
 
 	mu          sync.Mutex
 	deltas      []wire.Delta // the retained window; deltas[0] has sequence base
@@ -238,6 +241,8 @@ func (p *Provider) run(ctx context.Context, op *operation, adapter adapter, req 
 		end.Outcome, end.Reason, end.StopReason = wire.ReplyOutcomeCancelled, reason, wire.StopReasonNoStop
 	} else if p.ctx.Err() != nil {
 		end.Outcome, end.Reason, end.StopReason = wire.ReplyOutcomeCancelled, "caller", wire.StopReasonNoStop
+	} else if end.Outcome == wire.ReplyOutcomeRefused {
+		end.Reason = p.withObservedWindow(end.Reason, op.host.Name, op.model)
 	}
 	end.Host, end.Model = op.host.Name, op.model
 	end.Message = wire.Message{Role: wire.RoleAssistant, Parts: []wire.Part{}}

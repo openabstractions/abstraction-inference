@@ -241,6 +241,12 @@ class StartOutcome(_StrEnum):
     EXHAUSTED = "exhausted"
 
 
+class SelectionReason(_StrEnum):
+    EXPLICIT_MODEL = "explicit_model"
+    PREFERRED = "preferred"
+    PREFERRED_ROUTE_UNAVAILABLE = "preferred_route_unavailable"
+
+
 class PageOutcome(_StrEnum):
     PAGE = "page"
     GAP = "gap"
@@ -257,6 +263,19 @@ class CancelOutcome(_StrEnum):
     INVALID = "invalid"
     FORBIDDEN = "forbidden"
     UNAVAILABLE = "unavailable"
+
+
+class PreloadOutcome(_StrEnum):
+    EVALUATED = "evaluated"
+    LOADED = "loaded"
+    BUSY = "busy"
+    REFUSED = "refused"
+    NOT_PERMITTED = "not_permitted"
+    UNSUPPORTED_FEATURE = "unsupported_feature"
+    NO_HOST = "no_host"
+    UNAVAILABLE = "unavailable"
+    INVALID = "invalid"
+    FORBIDDEN = "forbidden"
 
 
 class EmbedOutcome(_StrEnum):
@@ -313,6 +332,18 @@ class ImageMode(_StrEnum):
     EDIT = "edit"
 
 
+class VideoState(_StrEnum):
+    QUEUED = "queued"
+    GENERATING = "generating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    UNKNOWN = "unknown"
+    INVALID = "invalid"
+    FORBIDDEN = "forbidden"
+    UNAVAILABLE = "unavailable"
+
+
 class ListOutcome(_StrEnum):
     PAGE = "page"
     INVALID = "invalid"
@@ -350,6 +381,19 @@ class AuditOutcome(_StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class CandidatePlacement(_StrEnum):
+    LOCAL = "local"
+    HOSTED = "hosted"
+
+
+class SelectionReadOutcome(_StrEnum):
+    FOUND = "found"
+    UNKNOWN = "unknown"
+    INVALID = "invalid"
+    FORBIDDEN = "forbidden"
+    UNAVAILABLE = "unavailable"
+
+
 class ServiceErrorCode(_StrEnum):
     HANDLER_ERROR = "handler_error"
     INVALID_RESULT = "invalid_result"
@@ -362,7 +406,7 @@ class ServiceErrorCode(_StrEnum):
 FEATURES = ["abstraction.inference/tools@1", "abstraction.inference/json-schema@1", "abstraction.inference/vision@1"]
 
 
-RESOURCE_ACTIONS = ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read"]
+RESOURCE_ACTIONS = ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read", "abstraction.inference/selection.manage", "abstraction.inference/selection.manage_for"]
 
 
 LOCAL_KEY_KINDS = ["openabstractions/local-key@1"]
@@ -465,6 +509,47 @@ class Request:
 
 
 @dataclasses.dataclass(kw_only=True)
+class Target:
+    """Exactly one nonempty member is required. model makes one explicit model
+    request. selection_policy names a policy scoped to the bound account and
+    observed program. The stored policy supplies each candidate's placement and
+    hosted credential as the caller's explicit preference, subject to live
+    rights and budget checks; it grants no authority."""
+
+    model: str = ""
+    selection_policy: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class RequestContent:
+    """The chat@1 Request fields except model, with identical message, tool, option
+    and extension validation and limits. An explicit model target uses
+    guarantees and credential exactly as chat@1 does. A named policy target
+    requires an empty guarantees list and empty credential; its stored
+    candidates supply those choices for each attempt, and the service checks
+    live rights and budget independently. Nonempty inline values in policy mode
+    are invalid."""
+
+    messages: list[Message] = dataclasses.field(default_factory=list)
+    tools: list[Tool] = dataclasses.field(default_factory=list)
+    options: Options | None = None
+    extensions: dict[str, str] = dataclasses.field(default_factory=dict)
+    required_extensions: list[str] = dataclasses.field(default_factory=list)
+    guarantees: list[RequestGuarantee | str] = dataclasses.field(default_factory=list)
+    credential: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class RequestV2:
+    """One chat call. Target is exclusive and nonempty. A named policy is resolved
+    by the service for the proven caller before host selection; the caller
+    leaves content.guarantees empty and content.credential empty in policy mode."""
+
+    target: Target = dataclasses.field(default_factory=Target)
+    content: RequestContent = dataclasses.field(default_factory=RequestContent)
+
+
+@dataclasses.dataclass(kw_only=True)
 class Usage:
     """Token counts the host reported: input, output, and cached input tokens
     counted within input. Zero where the host reported none."""
@@ -488,7 +573,9 @@ class Cost:
 class Reply:
     """The result of one operation. completed carries the assistant message and
     stop_reason other than no_stop; every other outcome carries no_stop. refused
-    means the host answered and refused the request (reason upstream:<status>).
+    means the host answered and refused the request: reason upstream:<status>,
+    or upstream:context_length_exceeded:<window>:<input> when the request
+    exceeds the context window, each number in tokens and 0 when unknown.
     not_permitted carries reason rights:<word> for the complete decision on
     host:<name>, or credential:<outcome>:<name> for an applier refusal.
     budget_exceeded carries ceiling:<unit>:<credential>. unsupported_feature
@@ -556,6 +643,29 @@ class Admission:
 
 
 @dataclasses.dataclass(kw_only=True)
+class AdmissionV2:
+    """The chat@2 admission. On accepted, host and model are the actual route,
+    preferred_model is the first policy candidate or explicit model, and
+    selection_reason says why that route was selected.
+    preferred_route_unavailable requires fresh definitive pre-dispatch listing
+    unavailability and makes no claim that every host is offline. Every refusal
+    has empty operation, host and model, zero bounds, and omits both selection
+    fields. RequestContent optional tools has the same absent-or-empty meaning
+    as chat@1 Request.tools."""
+
+    outcome: StartOutcome | None = None
+    reason: str = ""
+    operation: str = ""
+    host: str = ""
+    model: str = ""
+    retention_ms: int = 0
+    idle_ms: int = 0
+    retained_deltas: int = 0
+    preferred_model: str = ""
+    selection_reason: SelectionReason | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
 class DeltaPage:
     """page carries 0..max_deltas deltas from sequence cursor in order, within
     max_bytes of their compact JSON encoding except that a first delta larger
@@ -583,6 +693,27 @@ class Cancellation:
 
     outcome: CancelOutcome | None = None
     reply_outcome: ReplyOutcome | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class PreloadReply:
+    """evaluated means the model is loaded and its server evaluated tokens tokens
+    of the prefix. loaded means the model is loaded and the server evaluated
+    nothing, because the prefix was shorter than the provider's minimum. busy
+    means nothing was evaluated because other work comes first: the model's
+    server has served a request since it loaded (engine:used), another preload
+    runs there (preload:running), another request took the server during the
+    evaluation, or the model is not loaded and loading it would ask another
+    holder to yield (resources:held). refused carries the server's refusal of
+    the prefix in reason. Every other outcome carries the reason words of chat@1
+    Admission. host and model are the route on evaluated, loaded and busy, and
+    empty otherwise; tokens is zero except on evaluated."""
+
+    outcome: PreloadOutcome | None = None
+    reason: str = ""
+    host: str = ""
+    model: str = ""
+    tokens: int = 0
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -819,6 +950,37 @@ class ImageRequest:
 
 
 @dataclasses.dataclass(kw_only=True)
+class ImageRequestContent:
+    """The image@1 ImageRequest fields except model, with identical validation and
+    bounds. An explicit model target uses guarantees and credential as image@1
+    does. A named policy target requires empty guarantees and credential; each
+    stored candidate supplies these choices under live admission checks."""
+
+    mode: ImageMode | None = None
+    prompt: str = ""
+    size: str = ""
+    count: int = 0
+    image_digest: str = ""
+    image_media_type: str = ""
+    mask_digest: str = ""
+    mask_media_type: str = ""
+    guarantees: list[RequestGuarantee | str] = dataclasses.field(default_factory=list)
+    credential: str = ""
+    required_extensions: list[str] = dataclasses.field(default_factory=list)
+    extensions: dict[str, str] = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass(kw_only=True)
+class ImageRequestV2:
+    """One image call with exactly one explicit model or named policy. The policy
+    is scoped to the proven account and observed program. A policy target cannot
+    override candidate placement or credential inline."""
+
+    target: Target = dataclasses.field(default_factory=Target)
+    content: ImageRequestContent = dataclasses.field(default_factory=ImageRequestContent)
+
+
+@dataclasses.dataclass(kw_only=True)
 class ImageProgress:
     """One bounded progress update. percent, when nonzero, is 1..100; zero means
     the backend reported no numeric progress. message is at most 4096 UTF-8
@@ -853,6 +1015,78 @@ class ImageReply:
     host: str = ""
     model: str = ""
     cost: Cost | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class VideoRequest:
+    """One video generation forwarded by a designated runtime. request_id is 1..128
+    bytes the runtime chooses for one piece of work, its job operation id; a
+    Start repeating a request_id the provider holds names that same operation
+    (INF-G7). model is a name the provider lists. prompt is 1..32768 UTF-8
+    bytes. size is auto or WIDTHxHEIGHT with each side 64..4096 and a multiple
+    of 8. duration_ms is 1..600000. fps is 1..120, and zero selects the model
+    preset's rate. seed is 1..2^53, and zero lets the provider choose.
+    image_digest and image_media_type name one optional PNG, JPEG or WebP
+    initial frame the runtime stages in the provider's content store before
+    Start; a provider refuses a Start naming a digest its store does not hold as
+    invalid with reason content:unknown and never generates that clip from the
+    prompt alone. Steps, guidance scale, flow shift, scheduler and decoder
+    belong to the provider's preset for the model (INF-G8) and have no field
+    here. extensions carries openabstractions/claimed-program and the caller's
+    vendor controls with abstraction.inference/image@1 semantics: a provider
+    ignores an unknown key unless required_extensions names it, refuses a
+    required key it does not support as unsupported_feature with reason
+    extension:<key>, and never applies a key that would override its preset."""
+
+    model: str = ""
+    prompt: str = ""
+    size: str = ""
+    duration_ms: int = 0
+    fps: int = 0
+    seed: int = 0
+    image_digest: str = ""
+    image_media_type: str = ""
+    required_extensions: list[str] = dataclasses.field(default_factory=list)
+    extensions: dict[str, str] = dataclasses.field(default_factory=dict)
+    request_id: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class VideoAdmission:
+    """accepted carries an operation id of 1..128 bytes and retention_ms, how long
+    the operation stays observable after it ends. An accepted operation runs
+    until it ends or Cancel stops it; it is never cancelled for want of Observe.
+    Every refusal carries the Reply reason words, an empty operation and zero
+    retention_ms."""
+
+    outcome: StartOutcome | None = None
+    reason: str = ""
+    operation: str = ""
+    retention_ms: int = 0
+
+
+@dataclasses.dataclass(kw_only=True)
+class VideoObservation:
+    """The provider's current view of one operation. queued may carry
+    queue_position, 1 for the next to run, or zero when the engine reports none.
+    generating may carry step of steps, 1 <= step <= steps; a provider that
+    knows only a fraction reports it in its own steps, such as percent of 100.
+    completed carries exactly one local delivery: a canonical sha256 digest in
+    the provider's content store, media_type video/mp4, video/webm or video/avi
+    (video/x-msvideo is read as video/avi), and its size; the container carries
+    any audio track. failed carries reason, at most 4096 UTF-8 bytes with no
+    submitted content or credential material. unknown means no operation of that
+    id is visible to the caller: never started by it, retired after retention,
+    or lost when the provider or its engine restarted. invalid, forbidden and
+    unavailable are refusals of this call. Only completed carries a delivery;
+    only queued and generating carry progress."""
+
+    status: VideoState | None = None
+    step: int = 0
+    steps: int = 0
+    queue_position: int = 0
+    reason: str = ""
+    delivery: Delivery | None = None
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -1088,6 +1322,51 @@ class GatewayChange:
 
 
 @dataclasses.dataclass(kw_only=True)
+class SelectionChange:
+    """applied carries the new revision. conflict carries the current revision when
+    expected_revision did not match. unknown is used by Delete for an absent
+    policy. A creation requires an empty expected_revision."""
+
+    outcome: EditOutcome | None = None
+    revision: str = ""
+    reason: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class SelectionCandidateV2:
+    """One ordered candidate for chat@2 or image@2. provider optionally pins the
+    logical current registry declaration ID within this candidate. The service
+    checks the current eligible host and declaration generation. A missing or
+    stale pin refuses without another provider choice. A model alias does not
+    assert binary or model artifact identity."""
+
+    model: str = ""
+    placement: CandidatePlacement | None = None
+    credential: str = ""
+    provider: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class SelectionPolicyV2:
+    """A 1..8 candidate policy in the bound account and observed program. The first
+    candidate is preferred. Pinned and unpinned policies use one service-owned
+    store."""
+
+    name: str = ""
+    candidates: list[SelectionCandidateV2] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass(kw_only=True)
+class SelectionReadV2:
+    """found carries the policy and its revision. Other outcomes carry no policy or
+    revision."""
+
+    outcome: SelectionReadOutcome | None = None
+    revision: str = ""
+    policy: SelectionPolicyV2 | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
 class _ChatStartArguments:
     request: Request = dataclasses.field(default_factory=Request)
 
@@ -1104,6 +1383,30 @@ class _ChatObserveArguments:
 @dataclasses.dataclass(kw_only=True)
 class _ChatCancelArguments:
     operation: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV2StartArguments:
+    request: RequestV2 = dataclasses.field(default_factory=RequestV2)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV2ObserveArguments:
+    operation: str = ""
+    cursor: int = 0
+    max_deltas: int = 0
+    max_bytes: int = 0
+    wait_ms: int = 0
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV2CancelArguments:
+    operation: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _PreloaderPreloadArguments:
+    request: Request = dataclasses.field(default_factory=Request)
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -1200,6 +1503,40 @@ class _ImageCancelArguments:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _ImageV2StartArguments:
+    request: ImageRequestV2 = dataclasses.field(default_factory=ImageRequestV2)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ImageV2ObserveArguments:
+    operation: str = ""
+    cursor: int = 0
+    max_deltas: int = 0
+    max_bytes: int = 0
+    wait_ms: int = 0
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ImageV2CancelArguments:
+    operation: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _VideoStartArguments:
+    request: VideoRequest = dataclasses.field(default_factory=VideoRequest)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _VideoObserveArguments:
+    operation: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _VideoCancelArguments:
+    operation: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
 class _OperatorHostsArguments:
     pass
 
@@ -1251,6 +1588,26 @@ class _OperatorSetGatewayArguments:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2ReadArguments:
+    target_program: str = ""
+    name: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2PutArguments:
+    target_program: str = ""
+    expected_revision: str = ""
+    policy: SelectionPolicyV2 = dataclasses.field(default_factory=SelectionPolicyV2)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2DeletePolicyArguments:
+    target_program: str = ""
+    expected_revision: str = ""
+    name: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
 class _ServiceFrame:
     version: int = 0
     service: str = ""
@@ -1286,6 +1643,26 @@ class _ChatObserveResult:
 @dataclasses.dataclass(kw_only=True)
 class _ChatCancelResult:
     value: Cancellation = dataclasses.field(default_factory=Cancellation)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV2StartResult:
+    value: AdmissionV2 = dataclasses.field(default_factory=AdmissionV2)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV2ObserveResult:
+    value: DeltaPage = dataclasses.field(default_factory=DeltaPage)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV2CancelResult:
+    value: Cancellation = dataclasses.field(default_factory=Cancellation)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _PreloaderPreloadResult:
+    value: PreloadReply = dataclasses.field(default_factory=PreloadReply)
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -1364,6 +1741,36 @@ class _ImageCancelResult:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _ImageV2StartResult:
+    value: AdmissionV2 = dataclasses.field(default_factory=AdmissionV2)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ImageV2ObserveResult:
+    value: DeltaPage = dataclasses.field(default_factory=DeltaPage)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ImageV2CancelResult:
+    value: Cancellation = dataclasses.field(default_factory=Cancellation)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _VideoStartResult:
+    value: VideoAdmission = dataclasses.field(default_factory=VideoAdmission)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _VideoObserveResult:
+    value: VideoObservation = dataclasses.field(default_factory=VideoObservation)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _VideoCancelResult:
+    value: Cancellation = dataclasses.field(default_factory=Cancellation)
+
+
+@dataclasses.dataclass(kw_only=True)
 class _OperatorHostsResult:
     value: HostList = dataclasses.field(default_factory=HostList)
 
@@ -1406,6 +1813,21 @@ class _OperatorGatewayResult:
 @dataclasses.dataclass(kw_only=True)
 class _OperatorSetGatewayResult:
     value: GatewayChange = dataclasses.field(default_factory=GatewayChange)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2ReadResult:
+    value: SelectionReadV2 = dataclasses.field(default_factory=SelectionReadV2)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2PutResult:
+    value: SelectionChange = dataclasses.field(default_factory=SelectionChange)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2DeletePolicyResult:
+    value: SelectionChange = dataclasses.field(default_factory=SelectionChange)
 
 
 def _write_part(out, v, depth):
@@ -1618,6 +2040,105 @@ def _write_request(out, v, depth):
         _esc(out, "credential")
         out += b": "
         _esc(out, v.credential)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_target(out, v, depth):
+    out += b"{"
+    first = True
+    if v.model:
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "model")
+        out += b": "
+        _esc(out, v.model)
+    if v.selection_policy:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "selection_policy")
+        out += b": "
+        _esc(out, v.selection_policy)
+    if not first:
+        out += b"\n"
+        _pad(out, depth)
+    out += b"}"
+
+
+def _write_request_content(out, v, depth):
+    for item in v.guarantees:
+        if not isinstance(item, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "messages")
+    out += b": "
+    _write_list(out, v.messages, depth + 1, _write_message)
+    if v.tools:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "tools")
+        out += b": "
+        _write_list(out, v.tools, depth + 1, _write_tool)
+    if v.options is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "options")
+        out += b": "
+        _write_options(out, v.options, depth + 1)
+    if v.extensions:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "extensions")
+        out += b": "
+        _strmap(out, v.extensions, depth + 1)
+    if v.required_extensions:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "required_extensions")
+        out += b": "
+        _strs(out, v.required_extensions, depth + 1)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "guarantees")
+    out += b": "
+    _strs(out, v.guarantees, depth + 1)
+    if v.credential:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "credential")
+        out += b": "
+        _esc(out, v.credential)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_request_v2(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "target")
+    out += b": "
+    _write_target(out, v.target, depth + 1)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "content")
+    out += b": "
+    _write_request_content(out, v.content, depth + 1)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -1887,6 +2408,77 @@ def _write_admission(out, v, depth):
     out += b"}"
 
 
+def _write_admission_v2(out, v, depth):
+    _closed_enum(StartOutcome, v.outcome)
+    if v.selection_reason is not None:
+        _closed_enum(SelectionReason, v.selection_reason)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "reason")
+    out += b": "
+    _esc(out, v.reason)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "operation")
+    out += b": "
+    _esc(out, v.operation)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "host")
+    out += b": "
+    _esc(out, v.host)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "model")
+    out += b": "
+    _esc(out, v.model)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "retention_ms")
+    out += b": "
+    _num(out, v.retention_ms)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "idle_ms")
+    out += b": "
+    _num(out, v.idle_ms)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "retained_deltas")
+    out += b": "
+    _num(out, v.retained_deltas)
+    if v.preferred_model:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "preferred_model")
+        out += b": "
+        _esc(out, v.preferred_model)
+    if v.selection_reason is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "selection_reason")
+        out += b": "
+        _esc(out, v.selection_reason)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_delta_page(out, v, depth):
     _closed_enum(PageOutcome, v.outcome)
     out += b"{"
@@ -1935,6 +2527,43 @@ def _write_cancellation(out, v, depth):
         _esc(out, "reply_outcome")
         out += b": "
         _esc(out, v.reply_outcome)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_preload_reply(out, v, depth):
+    _closed_enum(PreloadOutcome, v.outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "reason")
+    out += b": "
+    _esc(out, v.reason)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "host")
+    out += b": "
+    _esc(out, v.host)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "model")
+    out += b": "
+    _esc(out, v.model)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "tokens")
+    out += b": "
+    _num(out, v.tokens)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -2591,6 +3220,113 @@ def _write_image_request(out, v, depth):
     out += b"}"
 
 
+def _write_image_request_content(out, v, depth):
+    _closed_enum(ImageMode, v.mode)
+    for item in v.guarantees:
+        if not isinstance(item, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "mode")
+    out += b": "
+    _esc(out, v.mode)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "prompt")
+    out += b": "
+    _esc(out, v.prompt)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "size")
+    out += b": "
+    _esc(out, v.size)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "count")
+    out += b": "
+    _num(out, v.count)
+    if v.image_digest:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "image_digest")
+        out += b": "
+        _esc(out, v.image_digest)
+    if v.image_media_type:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "image_media_type")
+        out += b": "
+        _esc(out, v.image_media_type)
+    if v.mask_digest:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "mask_digest")
+        out += b": "
+        _esc(out, v.mask_digest)
+    if v.mask_media_type:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "mask_media_type")
+        out += b": "
+        _esc(out, v.mask_media_type)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "guarantees")
+    out += b": "
+    _strs(out, v.guarantees, depth + 1)
+    if v.credential:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "credential")
+        out += b": "
+        _esc(out, v.credential)
+    if v.required_extensions:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "required_extensions")
+        out += b": "
+        _strs(out, v.required_extensions, depth + 1)
+    if v.extensions:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "extensions")
+        out += b": "
+        _strmap(out, v.extensions, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_image_request_v2(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "target")
+    out += b": "
+    _write_target(out, v.target, depth + 1)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "content")
+    out += b": "
+    _write_image_request_content(out, v.content, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_image_progress(out, v, depth):
     out += b"{"
     first = True
@@ -2682,6 +3418,163 @@ def _write_image_reply(out, v, depth):
         _esc(out, "cost")
         out += b": "
         _write_cost(out, v.cost, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_video_request(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "model")
+    out += b": "
+    _esc(out, v.model)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "prompt")
+    out += b": "
+    _esc(out, v.prompt)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "size")
+    out += b": "
+    _esc(out, v.size)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "duration_ms")
+    out += b": "
+    _num(out, v.duration_ms)
+    if v.fps != 0:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "fps")
+        out += b": "
+        _num(out, v.fps)
+    if v.seed != 0:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "seed")
+        out += b": "
+        _num(out, v.seed)
+    if v.image_digest:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "image_digest")
+        out += b": "
+        _esc(out, v.image_digest)
+    if v.image_media_type:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "image_media_type")
+        out += b": "
+        _esc(out, v.image_media_type)
+    if v.required_extensions:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "required_extensions")
+        out += b": "
+        _strs(out, v.required_extensions, depth + 1)
+    if v.extensions:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "extensions")
+        out += b": "
+        _strmap(out, v.extensions, depth + 1)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request_id")
+    out += b": "
+    _esc(out, v.request_id)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_video_admission(out, v, depth):
+    _closed_enum(StartOutcome, v.outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "reason")
+    out += b": "
+    _esc(out, v.reason)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "operation")
+    out += b": "
+    _esc(out, v.operation)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "retention_ms")
+    out += b": "
+    _num(out, v.retention_ms)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_video_observation(out, v, depth):
+    _closed_enum(VideoState, v.status)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "status")
+    out += b": "
+    _esc(out, v.status)
+    if v.step != 0:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "step")
+        out += b": "
+        _num(out, v.step)
+    if v.steps != 0:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "steps")
+        out += b": "
+        _num(out, v.steps)
+    if v.queue_position != 0:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "queue_position")
+        out += b": "
+        _num(out, v.queue_position)
+    if v.reason:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "reason")
+        out += b": "
+        _esc(out, v.reason)
+    if v.delivery is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "delivery")
+        out += b": "
+        _write_delivery(out, v.delivery, depth + 1)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -3292,6 +4185,108 @@ def _write_gateway_change(out, v, depth):
     out += b"}"
 
 
+def _write_selection_change(out, v, depth):
+    _closed_enum(EditOutcome, v.outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "revision")
+    out += b": "
+    _esc(out, v.revision)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "reason")
+    out += b": "
+    _esc(out, v.reason)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_selection_candidate_v2(out, v, depth):
+    _closed_enum(CandidatePlacement, v.placement)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "model")
+    out += b": "
+    _esc(out, v.model)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "placement")
+    out += b": "
+    _esc(out, v.placement)
+    if v.credential:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "credential")
+        out += b": "
+        _esc(out, v.credential)
+    if v.provider:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "provider")
+        out += b": "
+        _esc(out, v.provider)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_selection_policy_v2(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "name")
+    out += b": "
+    _esc(out, v.name)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "candidates")
+    out += b": "
+    _write_list(out, v.candidates, depth + 1, _write_selection_candidate_v2)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_selection_read_v2(out, v, depth):
+    _closed_enum(SelectionReadOutcome, v.outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "revision")
+    out += b": "
+    _esc(out, v.revision)
+    if v.policy is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "policy")
+        out += b": "
+        _write_selection_policy_v2(out, v.policy, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_chat_start_arguments(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -3347,6 +4342,78 @@ def _write_oa_chat_cancel_arguments(out, v, depth):
     _esc(out, "operation")
     out += b": "
     _esc(out, v.operation)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v2_start_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _write_request_v2(out, v.request, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v2_observe_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "operation")
+    out += b": "
+    _esc(out, v.operation)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "cursor")
+    out += b": "
+    _num(out, v.cursor)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "max_deltas")
+    out += b": "
+    _num(out, v.max_deltas)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "max_bytes")
+    out += b": "
+    _num(out, v.max_bytes)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "wait_ms")
+    out += b": "
+    _num(out, v.wait_ms)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v2_cancel_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "operation")
+    out += b": "
+    _esc(out, v.operation)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_preloader_preload_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _write_request(out, v.request, depth + 1)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -3640,6 +4707,102 @@ def _write_oa_image_cancel_arguments(out, v, depth):
     out += b"}"
 
 
+def _write_oa_image_v2_start_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _write_image_request_v2(out, v.request, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_image_v2_observe_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "operation")
+    out += b": "
+    _esc(out, v.operation)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "cursor")
+    out += b": "
+    _num(out, v.cursor)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "max_deltas")
+    out += b": "
+    _num(out, v.max_deltas)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "max_bytes")
+    out += b": "
+    _num(out, v.max_bytes)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "wait_ms")
+    out += b": "
+    _num(out, v.wait_ms)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_image_v2_cancel_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "operation")
+    out += b": "
+    _esc(out, v.operation)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_video_start_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _write_video_request(out, v.request, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_video_observe_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "operation")
+    out += b": "
+    _esc(out, v.operation)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_video_cancel_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "operation")
+    out += b": "
+    _esc(out, v.operation)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_operator_hosts_arguments(out, v, depth):
     out += b"{"
     out += b"}"
@@ -3763,6 +4926,72 @@ def _write_oa_operator_set_gateway_arguments(out, v, depth):
     out += b"}"
 
 
+def _write_oa_selection_operator_v2_read_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "target_program")
+    out += b": "
+    _esc(out, v.target_program)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "name")
+    out += b": "
+    _esc(out, v.name)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_put_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "target_program")
+    out += b": "
+    _esc(out, v.target_program)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "expected_revision")
+    out += b": "
+    _esc(out, v.expected_revision)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "policy")
+    out += b": "
+    _write_selection_policy_v2(out, v.policy, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_delete_policy_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "target_program")
+    out += b": "
+    _esc(out, v.target_program)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "expected_revision")
+    out += b": "
+    _esc(out, v.expected_revision)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "name")
+    out += b": "
+    _esc(out, v.name)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_service_frame(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -3878,6 +5107,54 @@ def _write_oa_chat_cancel_result(out, v, depth):
     _esc(out, "value")
     out += b": "
     _write_cancellation(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v2_start_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_admission_v2(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v2_observe_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_delta_page(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v2_cancel_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_cancellation(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_preloader_preload_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_preload_reply(out, v.value, depth + 1)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -4063,6 +5340,78 @@ def _write_oa_image_cancel_result(out, v, depth):
     out += b"}"
 
 
+def _write_oa_image_v2_start_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_admission_v2(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_image_v2_observe_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_delta_page(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_image_v2_cancel_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_cancellation(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_video_start_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_video_admission(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_video_observe_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_video_observation(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_video_cancel_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_cancellation(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_operator_hosts_result(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -4166,6 +5515,42 @@ def _write_oa_operator_set_gateway_result(out, v, depth):
     _esc(out, "value")
     out += b": "
     _write_gateway_change(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_read_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_selection_read_v2(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_put_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_selection_change(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_delete_policy_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_selection_change(out, v.value, depth + 1)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -4874,6 +6259,162 @@ def _read_request(r):
     return v
 
 
+def _read_target(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = Target()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "model":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.model = r.string()
+            elif key == "selection_policy":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.selection_policy = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    return v
+
+
+def _read_request_content(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = RequestContent()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "messages":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.messages = _read_list(r, _read_message)
+            elif key == "tools":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.tools = _read_list(r, _read_tool)
+            elif key == "options":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.options = _read_options(r)
+            elif key == "extensions":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.extensions = r.str_map()
+            elif key == "required_extensions":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.required_extensions = r.str_list()
+            elif key == "guarantees":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.guarantees = r.str_list()
+            elif key == "credential":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.credential = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 33 != 33:
+        raise r.refuse("missing_field")
+    v.guarantees = [_open_enum(RequestGuarantee, item) for item in v.guarantees]
+    return v
+
+
+def _read_request_v2(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = RequestV2()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "target":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.target = _read_target(r)
+            elif key == "content":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.content = _read_request_content(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_usage(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -5240,6 +6781,99 @@ def _read_admission(r):
     return v
 
 
+def _read_admission_v2(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = AdmissionV2()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "reason":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.reason = r.string()
+            elif key == "operation":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.operation = r.string()
+            elif key == "host":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.host = r.string()
+            elif key == "model":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.model = r.string()
+            elif key == "retention_ms":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.retention_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "idle_ms":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.idle_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "retained_deltas":
+                if seen & 128:
+                    raise r.refuse("duplicate_field")
+                seen |= 128
+                v.retained_deltas = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "preferred_model":
+                if seen & 256:
+                    raise r.refuse("duplicate_field")
+                seen |= 256
+                v.preferred_model = r.string()
+            elif key == "selection_reason":
+                if seen & 512:
+                    raise r.refuse("duplicate_field")
+                seen |= 512
+                v.selection_reason = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 255 != 255:
+        raise r.refuse("missing_field")
+    try:
+        v.outcome = StartOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    if v.selection_reason is not None:
+        try:
+            v.selection_reason = SelectionReason(v.selection_reason)
+        except ValueError:
+            raise r.refuse("bad_enum") from None
+    return v
+
+
 def _read_delta_page(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -5348,6 +6982,69 @@ def _read_cancellation(r):
             v.reply_outcome = ReplyOutcome(v.reply_outcome)
         except ValueError:
             raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_preload_reply(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = PreloadReply()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "reason":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.reason = r.string()
+            elif key == "host":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.host = r.string()
+            elif key == "model":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.model = r.string()
+            elif key == "tokens":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.tokens = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 31 != 31:
+        raise r.refuse("missing_field")
+    try:
+        v.outcome = PreloadOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
     return v
 
 
@@ -6307,6 +8004,149 @@ def _read_image_request(r):
     return v
 
 
+def _read_image_request_content(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ImageRequestContent()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "mode":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.mode = r.string()
+            elif key == "prompt":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.prompt = r.string()
+            elif key == "size":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.size = r.string()
+            elif key == "count":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.count = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "image_digest":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.image_digest = r.string()
+            elif key == "image_media_type":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.image_media_type = r.string()
+            elif key == "mask_digest":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.mask_digest = r.string()
+            elif key == "mask_media_type":
+                if seen & 128:
+                    raise r.refuse("duplicate_field")
+                seen |= 128
+                v.mask_media_type = r.string()
+            elif key == "guarantees":
+                if seen & 256:
+                    raise r.refuse("duplicate_field")
+                seen |= 256
+                v.guarantees = r.str_list()
+            elif key == "credential":
+                if seen & 512:
+                    raise r.refuse("duplicate_field")
+                seen |= 512
+                v.credential = r.string()
+            elif key == "required_extensions":
+                if seen & 1024:
+                    raise r.refuse("duplicate_field")
+                seen |= 1024
+                v.required_extensions = r.str_list()
+            elif key == "extensions":
+                if seen & 2048:
+                    raise r.refuse("duplicate_field")
+                seen |= 2048
+                v.extensions = r.str_map()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 271 != 271:
+        raise r.refuse("missing_field")
+    try:
+        v.mode = ImageMode(v.mode)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    v.guarantees = [_open_enum(RequestGuarantee, item) for item in v.guarantees]
+    return v
+
+
+def _read_image_request_v2(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ImageRequestV2()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "target":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.target = _read_target(r)
+            elif key == "content":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.content = _read_image_request_content(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_image_progress(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -6468,6 +8308,221 @@ def _read_image_reply(r):
         raise r.refuse("missing_field")
     try:
         v.outcome = ReplyOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_video_request(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = VideoRequest()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "model":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.model = r.string()
+            elif key == "prompt":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.prompt = r.string()
+            elif key == "size":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.size = r.string()
+            elif key == "duration_ms":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.duration_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "fps":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.fps = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "seed":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.seed = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "image_digest":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.image_digest = r.string()
+            elif key == "image_media_type":
+                if seen & 128:
+                    raise r.refuse("duplicate_field")
+                seen |= 128
+                v.image_media_type = r.string()
+            elif key == "required_extensions":
+                if seen & 256:
+                    raise r.refuse("duplicate_field")
+                seen |= 256
+                v.required_extensions = r.str_list()
+            elif key == "extensions":
+                if seen & 512:
+                    raise r.refuse("duplicate_field")
+                seen |= 512
+                v.extensions = r.str_map()
+            elif key == "request_id":
+                if seen & 1024:
+                    raise r.refuse("duplicate_field")
+                seen |= 1024
+                v.request_id = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1039 != 1039:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_video_admission(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = VideoAdmission()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "reason":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.reason = r.string()
+            elif key == "operation":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.operation = r.string()
+            elif key == "retention_ms":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.retention_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 15 != 15:
+        raise r.refuse("missing_field")
+    try:
+        v.outcome = StartOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_video_observation(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = VideoObservation()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "status":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.status = r.string()
+            elif key == "step":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.step = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "steps":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.steps = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "queue_position":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.queue_position = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "reason":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.reason = r.string()
+            elif key == "delivery":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.delivery = _read_delivery(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    try:
+        v.status = VideoState(v.status)
     except ValueError:
         raise r.refuse("bad_enum") from None
     return v
@@ -7382,6 +9437,214 @@ def _read_gateway_change(r):
     return v
 
 
+def _read_selection_change(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = SelectionChange()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "revision":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.revision = r.string()
+            elif key == "reason":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.reason = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    try:
+        v.outcome = EditOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_selection_candidate_v2(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = SelectionCandidateV2()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "model":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.model = r.string()
+            elif key == "placement":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.placement = r.string()
+            elif key == "credential":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.credential = r.string()
+            elif key == "provider":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.provider = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    try:
+        v.placement = CandidatePlacement(v.placement)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_selection_policy_v2(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = SelectionPolicyV2()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "name":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.name = r.string()
+            elif key == "candidates":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.candidates = _read_list(r, _read_selection_candidate_v2)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_selection_read_v2(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = SelectionReadV2()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "revision":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.revision = r.string()
+            elif key == "policy":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.policy = _read_selection_policy_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    try:
+        v.outcome = SelectionReadOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
 def _read_oa_chat_start_arguments(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -7504,6 +9767,182 @@ def _read_oa_chat_cancel_arguments(r):
                     raise r.refuse("duplicate_field")
                 seen |= 1
                 v.operation = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v2_start_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV2StartArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = _read_request_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v2_observe_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV2ObserveArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "operation":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.operation = r.string()
+            elif key == "cursor":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.cursor = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "max_deltas":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.max_deltas = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "max_bytes":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.max_bytes = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "wait_ms":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.wait_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 31 != 31:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v2_cancel_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV2CancelArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "operation":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.operation = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_preloader_preload_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _PreloaderPreloadArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = _read_request(r)
             else:
                 raise r.refuse("unknown_field")
             r.ws()
@@ -8194,6 +10633,260 @@ def _read_oa_image_cancel_arguments(r):
     return v
 
 
+def _read_oa_image_v2_start_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ImageV2StartArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = _read_image_request_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_image_v2_observe_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ImageV2ObserveArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "operation":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.operation = r.string()
+            elif key == "cursor":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.cursor = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "max_deltas":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.max_deltas = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "max_bytes":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.max_bytes = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "wait_ms":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.wait_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 31 != 31:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_image_v2_cancel_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ImageV2CancelArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "operation":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.operation = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_video_start_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _VideoStartArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = _read_video_request(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_video_observe_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _VideoObserveArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "operation":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.operation = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_video_cancel_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _VideoCancelArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "operation":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.operation = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_oa_operator_hosts_arguments(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -8560,6 +11253,148 @@ def _read_oa_operator_set_gateway_arguments(r):
     return v
 
 
+def _read_oa_selection_operator_v2_read_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2ReadArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "target_program":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.target_program = r.string()
+            elif key == "name":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.name = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_selection_operator_v2_put_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2PutArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "target_program":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.target_program = r.string()
+            elif key == "expected_revision":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.expected_revision = r.string()
+            elif key == "policy":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.policy = _read_selection_policy_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_selection_operator_v2_delete_policy_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2DeletePolicyArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "target_program":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.target_program = r.string()
+            elif key == "expected_revision":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.expected_revision = r.string()
+            elif key == "name":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.name = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_oa_service_frame(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -8819,6 +11654,162 @@ def _read_oa_chat_cancel_result(r):
                     raise r.refuse("duplicate_field")
                 seen |= 1
                 v.value = _read_cancellation(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v2_start_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV2StartResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_admission_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v2_observe_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV2ObserveResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_delta_page(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v2_cancel_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV2CancelResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_cancellation(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_preloader_preload_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _PreloaderPreloadResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_preload_reply(r)
             else:
                 raise r.refuse("unknown_field")
             r.ws()
@@ -9419,6 +12410,240 @@ def _read_oa_image_cancel_result(r):
     return v
 
 
+def _read_oa_image_v2_start_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ImageV2StartResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_admission_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_image_v2_observe_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ImageV2ObserveResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_delta_page(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_image_v2_cancel_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ImageV2CancelResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_cancellation(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_video_start_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _VideoStartResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_video_admission(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_video_observe_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _VideoObserveResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_video_observation(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_video_cancel_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _VideoCancelResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_cancellation(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_oa_operator_hosts_result(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -9770,6 +12995,123 @@ def _read_oa_operator_set_gateway_result(r):
     return v
 
 
+def _read_oa_selection_operator_v2_read_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2ReadResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_selection_read_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_selection_operator_v2_put_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2PutResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_selection_change(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_selection_operator_v2_delete_policy_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2DeletePolicyResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_selection_change(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
 def decode(data):
     r = _Reader(bytes(data))
     r.ws()
@@ -9788,39 +13130,21 @@ _REFUSALS = ["malformed", "bad_string", "bad_binary", "number_spelling", "wrong_
 def _refusal_rank(word):
     return _REFUSALS.index(word) if word in _REFUSALS else -1
 
+import base64
+import binascii
+
 def _encode_binary(value):
     if type(value) is not bytes:
         raise Refusal("wrong_type", 0)
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-    out = []
-    for i in range(0, len(value), 3):
-        chunk = value[i:i+3]
-        v = int.from_bytes(chunk, "big") << (8 * (3-len(chunk)))
-        out.extend((alphabet[v >> 18], alphabet[(v >> 12) & 63], alphabet[(v >> 6) & 63] if len(chunk)>1 else "=", alphabet[v & 63] if len(chunk)>2 else "="))
-    return "".join(out)
+    return base64.b64encode(value).decode("ascii")
 
 def _decode_binary(text):
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
     def bad():
         raise _Reader(b"").refuse("bad_binary")
-    if len(text) % 4: bad()
-    out = bytearray()
-    for i in range(0,len(text),4):
-        v, pad = 0, 0
-        for j,c in enumerate(text[i:i+4]):
-            if c == "=":
-                if j<2 or i+4 != len(text): bad()
-                pad += 1
-                digit = 0
-            else:
-                if pad: bad()
-                digit = alphabet.find(c)
-                if digit < 0: bad()
-            v = (v << 6) | digit
-        out.append(v >> 16)
-        if pad < 2: out.append((v >> 8) & 255)
-        if pad == 0: out.append(v & 255)
-    result = bytes(out)
+    try:
+        result = base64.b64decode(text, validate=True)
+    except (ValueError, binascii.Error):
+        bad()
     if _encode_binary(result) != text: bad()
     return result
 
@@ -9945,13 +13269,18 @@ _SERVICE_RECORDS = {
     "Temperature": (Temperature, [("milli", "i64", "never"), ]),
     "Options": (Options, [("max_output", "i64", "zero"), ("temperature", "Temperature", "absent"), ("stop", "list<string>", "zero"), ("json_schema", "string", "zero"), ]),
     "Request": (Request, [("model", "string", "never"), ("messages", "list<Message>", "never"), ("tools", "list<Tool>", "zero"), ("options", "Options", "absent"), ("extensions", "map<string,string>", "zero"), ("required_extensions", "list<string>", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ]),
+    "Target": (Target, [("model", "string", "zero"), ("selection_policy", "string", "zero"), ]),
+    "RequestContent": (RequestContent, [("messages", "list<Message>", "never"), ("tools", "list<Tool>", "zero"), ("options", "Options", "absent"), ("extensions", "map<string,string>", "zero"), ("required_extensions", "list<string>", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ]),
+    "RequestV2": (RequestV2, [("target", "Target", "never"), ("content", "RequestContent", "never"), ]),
     "Usage": (Usage, [("input", "i64", "never"), ("output", "i64", "never"), ("cached", "i64", "never"), ]),
     "Cost": (Cost, [("micros", "i64", "never"), ("currency", "string", "never"), ]),
     "Reply": (Reply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("message", "Message", "never"), ("stop_reason", "enum", "never"), ("usage", "Usage", "never"), ("host", "string", "never"), ("model", "string", "never"), ("cost", "Cost", "absent"), ]),
     "Delta": (Delta, [("sequence", "i64", "never"), ("kind", "enum", "never"), ("index", "i64", "zero"), ("part", "Part", "absent"), ("usage", "Usage", "absent"), ("end", "Reply", "absent"), ("segment", "TranscriptSegment", "absent"), ("transcription_end", "TranscriptionReply", "absent"), ("audio", "AudioChunk", "absent"), ("speech_end", "SpeechReply", "absent"), ("transcript", "LiveTranscript", "absent"), ("live_end", "LiveReply", "absent"), ("image_progress", "ImageProgress", "absent"), ("image_result", "ImageResult", "absent"), ("image_end", "ImageReply", "absent"), ]),
     "Admission": (Admission, [("outcome", "enum", "never"), ("reason", "string", "never"), ("operation", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("retention_ms", "i64", "never"), ("idle_ms", "i64", "never"), ("retained_deltas", "i64", "never"), ]),
+    "AdmissionV2": (AdmissionV2, [("outcome", "enum", "never"), ("reason", "string", "never"), ("operation", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("retention_ms", "i64", "never"), ("idle_ms", "i64", "never"), ("retained_deltas", "i64", "never"), ("preferred_model", "string", "zero"), ("selection_reason", "enum", "absent"), ]),
     "DeltaPage": (DeltaPage, [("outcome", "enum", "never"), ("deltas", "list<Delta>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ]),
     "Cancellation": (Cancellation, [("outcome", "enum", "never"), ("reply_outcome", "enum", "absent"), ]),
+    "PreloadReply": (PreloadReply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("tokens", "i64", "never"), ]),
     "EmbedRequest": (EmbedRequest, [("model", "string", "never"), ("inputs", "list<string>", "never"), ("dimensions", "i64", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("extensions", "map<string,string>", "zero"), ]),
     "Embeddings": (Embeddings, [("outcome", "enum", "never"), ("reason", "string", "never"), ("vectors", "list<string>", "never"), ("dimensions", "i64", "never"), ("usage", "Usage", "never"), ("host", "string", "never"), ("model", "string", "never"), ("cost", "Cost", "absent"), ]),
     "TranscriptionRequest": (TranscriptionRequest, [("model", "string", "never"), ("audio_digest", "string", "never"), ("media_type", "string", "never"), ("language", "string", "zero"), ("timestamps", "enum", "never"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("extensions", "map<string,string>", "zero"), ]),
@@ -9966,9 +13295,14 @@ _SERVICE_RECORDS = {
     "LiveTranscript": (LiveTranscript, [("text", "string", "never"), ("is_final", "bool", "never"), ]),
     "LiveReply": (LiveReply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("delivery", "Delivery", "never"), ("usage", "Usage", "never"), ("input_audio_bytes", "i64", "never"), ("output_audio_bytes", "i64", "never"), ("host", "string", "never"), ("model", "string", "never"), ]),
     "ImageRequest": (ImageRequest, [("model", "string", "never"), ("mode", "enum", "never"), ("prompt", "string", "never"), ("size", "string", "never"), ("count", "i64", "never"), ("image_digest", "string", "zero"), ("image_media_type", "string", "zero"), ("mask_digest", "string", "zero"), ("mask_media_type", "string", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("required_extensions", "list<string>", "zero"), ("extensions", "map<string,string>", "zero"), ]),
+    "ImageRequestContent": (ImageRequestContent, [("mode", "enum", "never"), ("prompt", "string", "never"), ("size", "string", "never"), ("count", "i64", "never"), ("image_digest", "string", "zero"), ("image_media_type", "string", "zero"), ("mask_digest", "string", "zero"), ("mask_media_type", "string", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("required_extensions", "list<string>", "zero"), ("extensions", "map<string,string>", "zero"), ]),
+    "ImageRequestV2": (ImageRequestV2, [("target", "Target", "never"), ("content", "ImageRequestContent", "never"), ]),
     "ImageProgress": (ImageProgress, [("percent", "i64", "zero"), ("message", "string", "never"), ]),
     "ImageResult": (ImageResult, [("index", "i64", "never"), ("delivery", "Delivery", "never"), ]),
     "ImageReply": (ImageReply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("deliveries", "list<Delivery>", "never"), ("images", "i64", "never"), ("usage", "Usage", "never"), ("host", "string", "never"), ("model", "string", "never"), ("cost", "Cost", "absent"), ]),
+    "VideoRequest": (VideoRequest, [("model", "string", "never"), ("prompt", "string", "never"), ("size", "string", "never"), ("duration_ms", "i64", "never"), ("fps", "i64", "zero"), ("seed", "i64", "zero"), ("image_digest", "string", "zero"), ("image_media_type", "string", "zero"), ("required_extensions", "list<string>", "zero"), ("extensions", "map<string,string>", "zero"), ("request_id", "string", "never"), ]),
+    "VideoAdmission": (VideoAdmission, [("outcome", "enum", "never"), ("reason", "string", "never"), ("operation", "string", "never"), ("retention_ms", "i64", "never"), ]),
+    "VideoObservation": (VideoObservation, [("status", "enum", "never"), ("step", "i64", "zero"), ("steps", "i64", "zero"), ("queue_position", "i64", "zero"), ("reason", "string", "zero"), ("delivery", "Delivery", "absent"), ]),
     "CeilingLimit": (CeilingLimit, [("tokens_per_day", "i64", "zero"), ("micros_per_day", "i64", "zero"), ("requests_per_day", "i64", "zero"), ("images_per_day", "i64", "zero"), ("audio_seconds_per_day", "i64", "zero"), ("characters_per_day", "i64", "zero"), ]),
     "HostEntry": (HostEntry, [("name", "string", "never"), ("hosted", "bool", "never"), ("kind", "string", "never"), ("base", "string", "never"), ("credential", "string", "zero"), ("ceiling", "CeilingLimit", "absent"), ("profiles", "list<string>", "zero"), ("declared_by", "string", "zero"), ]),
     "Spend": (Spend, [("day", "string", "never"), ("tokens", "i64", "never"), ("micros", "i64", "never"), ("requests", "i64", "zero"), ("audio_seconds", "i64", "zero"), ("characters", "i64", "zero"), ("images", "i64", "zero"), ]),
@@ -9983,9 +13317,17 @@ _SERVICE_RECORDS = {
     "AuditPage": (AuditPage, [("outcome", "enum", "never"), ("entries", "list<AuditEntry>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ]),
     "GatewayState": (GatewayState, [("outcome", "enum", "never"), ("revision", "string", "never"), ("open", "bool", "never"), ("address", "string", "never"), ("listening", "bool", "never"), ("listening_address", "string", "never"), ("why", "string", "never"), ]),
     "GatewayChange": (GatewayChange, [("outcome", "enum", "never"), ("revision", "string", "never"), ("reason", "string", "never"), ]),
+    "SelectionChange": (SelectionChange, [("outcome", "enum", "never"), ("revision", "string", "never"), ("reason", "string", "never"), ]),
+    "SelectionCandidateV2": (SelectionCandidateV2, [("model", "string", "never"), ("placement", "enum", "never"), ("credential", "string", "zero"), ("provider", "string", "zero"), ]),
+    "SelectionPolicyV2": (SelectionPolicyV2, [("name", "string", "never"), ("candidates", "list<SelectionCandidateV2>", "never"), ]),
+    "SelectionReadV2": (SelectionReadV2, [("outcome", "enum", "never"), ("revision", "string", "never"), ("policy", "SelectionPolicyV2", "absent"), ]),
     "OAChatStartArguments": (_ChatStartArguments, [("request", "Request", "never"), ]),
     "OAChatObserveArguments": (_ChatObserveArguments, [("operation", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
     "OAChatCancelArguments": (_ChatCancelArguments, [("operation", "string", "never"), ]),
+    "OAChatV2StartArguments": (_ChatV2StartArguments, [("request", "RequestV2", "never"), ]),
+    "OAChatV2ObserveArguments": (_ChatV2ObserveArguments, [("operation", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
+    "OAChatV2CancelArguments": (_ChatV2CancelArguments, [("operation", "string", "never"), ]),
+    "OAPreloaderPreloadArguments": (_PreloaderPreloadArguments, [("request", "Request", "never"), ]),
     "OAEmbedderEmbedArguments": (_EmbedderEmbedArguments, [("request", "EmbedRequest", "never"), ]),
     "OATranscriptionStartArguments": (_TranscriptionStartArguments, [("request", "TranscriptionRequest", "never"), ]),
     "OATranscriptionObserveArguments": (_TranscriptionObserveArguments, [("operation", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
@@ -10001,6 +13343,12 @@ _SERVICE_RECORDS = {
     "OAImageStartArguments": (_ImageStartArguments, [("request", "ImageRequest", "never"), ]),
     "OAImageObserveArguments": (_ImageObserveArguments, [("operation", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
     "OAImageCancelArguments": (_ImageCancelArguments, [("operation", "string", "never"), ]),
+    "OAImageV2StartArguments": (_ImageV2StartArguments, [("request", "ImageRequestV2", "never"), ]),
+    "OAImageV2ObserveArguments": (_ImageV2ObserveArguments, [("operation", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
+    "OAImageV2CancelArguments": (_ImageV2CancelArguments, [("operation", "string", "never"), ]),
+    "OAVideoStartArguments": (_VideoStartArguments, [("request", "VideoRequest", "never"), ]),
+    "OAVideoObserveArguments": (_VideoObserveArguments, [("operation", "string", "never"), ]),
+    "OAVideoCancelArguments": (_VideoCancelArguments, [("operation", "string", "never"), ]),
     "OAOperatorHostsArguments": (_OperatorHostsArguments, []),
     "OAOperatorAddHostArguments": (_OperatorAddHostArguments, [("expected_revision", "string", "never"), ("host", "HostEntry", "never"), ]),
     "OAOperatorRemoveHostArguments": (_OperatorRemoveHostArguments, [("expected_revision", "string", "never"), ("name", "string", "never"), ]),
@@ -10010,12 +13358,19 @@ _SERVICE_RECORDS = {
     "OAOperatorAuditArguments": (_OperatorAuditArguments, [("cursor", "i64", "never"), ("max_entries", "i64", "never"), ]),
     "OAOperatorGatewayArguments": (_OperatorGatewayArguments, []),
     "OAOperatorSetGatewayArguments": (_OperatorSetGatewayArguments, [("expected_revision", "string", "never"), ("open", "bool", "never"), ("address", "string", "never"), ]),
+    "OASelectionOperatorV2ReadArguments": (_SelectionOperatorV2ReadArguments, [("target_program", "string", "never"), ("name", "string", "never"), ]),
+    "OASelectionOperatorV2PutArguments": (_SelectionOperatorV2PutArguments, [("target_program", "string", "never"), ("expected_revision", "string", "never"), ("policy", "SelectionPolicyV2", "never"), ]),
+    "OASelectionOperatorV2DeletePolicyArguments": (_SelectionOperatorV2DeletePolicyArguments, [("target_program", "string", "never"), ("expected_revision", "string", "never"), ("name", "string", "never"), ]),
     "OAServiceFrame": (_ServiceFrame, [("version", "i32", "never"), ("service", "string", "never"), ("method", "string", "never"), ("arguments", "json", "never"), ]),
     "OAServiceReply": (_ServiceReply, [("version", "i32", "never"), ("service", "string", "never"), ("method", "string", "never"), ("ok", "bool", "never"), ("payload", "json", "never"), ]),
     "OAServiceError": (_ServiceError, [("code", "string", "never"), ("message", "string", "never"), ]),
     "OAChatStartResult": (_ChatStartResult, [("value", "Admission", "never"), ]),
     "OAChatObserveResult": (_ChatObserveResult, [("value", "DeltaPage", "never"), ]),
     "OAChatCancelResult": (_ChatCancelResult, [("value", "Cancellation", "never"), ]),
+    "OAChatV2StartResult": (_ChatV2StartResult, [("value", "AdmissionV2", "never"), ]),
+    "OAChatV2ObserveResult": (_ChatV2ObserveResult, [("value", "DeltaPage", "never"), ]),
+    "OAChatV2CancelResult": (_ChatV2CancelResult, [("value", "Cancellation", "never"), ]),
+    "OAPreloaderPreloadResult": (_PreloaderPreloadResult, [("value", "PreloadReply", "never"), ]),
     "OAEmbedderEmbedResult": (_EmbedderEmbedResult, [("value", "Embeddings", "never"), ]),
     "OATranscriptionStartResult": (_TranscriptionStartResult, [("value", "Admission", "never"), ]),
     "OATranscriptionObserveResult": (_TranscriptionObserveResult, [("value", "DeltaPage", "never"), ]),
@@ -10031,6 +13386,12 @@ _SERVICE_RECORDS = {
     "OAImageStartResult": (_ImageStartResult, [("value", "Admission", "never"), ]),
     "OAImageObserveResult": (_ImageObserveResult, [("value", "DeltaPage", "never"), ]),
     "OAImageCancelResult": (_ImageCancelResult, [("value", "Cancellation", "never"), ]),
+    "OAImageV2StartResult": (_ImageV2StartResult, [("value", "AdmissionV2", "never"), ]),
+    "OAImageV2ObserveResult": (_ImageV2ObserveResult, [("value", "DeltaPage", "never"), ]),
+    "OAImageV2CancelResult": (_ImageV2CancelResult, [("value", "Cancellation", "never"), ]),
+    "OAVideoStartResult": (_VideoStartResult, [("value", "VideoAdmission", "never"), ]),
+    "OAVideoObserveResult": (_VideoObserveResult, [("value", "VideoObservation", "never"), ]),
+    "OAVideoCancelResult": (_VideoCancelResult, [("value", "Cancellation", "never"), ]),
     "OAOperatorHostsResult": (_OperatorHostsResult, [("value", "HostList", "never"), ]),
     "OAOperatorAddHostResult": (_OperatorAddHostResult, [("value", "HostChange", "never"), ]),
     "OAOperatorRemoveHostResult": (_OperatorRemoveHostResult, [("value", "HostChange", "never"), ]),
@@ -10040,6 +13401,9 @@ _SERVICE_RECORDS = {
     "OAOperatorAuditResult": (_OperatorAuditResult, [("value", "AuditPage", "never"), ]),
     "OAOperatorGatewayResult": (_OperatorGatewayResult, [("value", "GatewayState", "never"), ]),
     "OAOperatorSetGatewayResult": (_OperatorSetGatewayResult, [("value", "GatewayChange", "never"), ]),
+    "OASelectionOperatorV2ReadResult": (_SelectionOperatorV2ReadResult, [("value", "SelectionReadV2", "never"), ]),
+    "OASelectionOperatorV2PutResult": (_SelectionOperatorV2PutResult, [("value", "SelectionChange", "never"), ]),
+    "OASelectionOperatorV2DeletePolicyResult": (_SelectionOperatorV2DeletePolicyResult, [("value", "SelectionChange", "never"), ]),
 }
 
 
@@ -10125,6 +13489,123 @@ class ChatClient(Chat):
         _request = _service_request("abstraction.inference/chat@1", "Cancel", _arguments)
         _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@1", "Cancel")
         _result = _service_decode(_read_oa_chat_cancel_result, _payload, 1)
+        return _result.value
+
+
+class ChatV2:
+    """Typed explicit model or named service-owned model selection for a bound
+    caller. A runtime without chat@2 refuses this service version explicitly."""
+
+    def start(self, request: RequestV2) -> AdmissionV2:
+        """Resolve the explicit target or named policy for the bound caller and
+        admit one selected model. Each candidate must pass all chat@1
+        guarantees, features, rights, credential, budget and capacity checks. A
+        later candidate is considered only after a fresh definitive
+        preferred-route absence before admission or dispatch. A possible send,
+        accepted operation, partial output or tool effect never retries another
+        candidate."""
+        raise NotImplementedError
+
+    def observe(self, operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage:
+        """Observe the same caller-bound operation registry and DeltaPage as
+        chat@1, without reselecting the model."""
+        raise NotImplementedError
+
+    def cancel(self, operation: str) -> Cancellation:
+        """Cancel the same caller-bound operation as chat@1, without reselecting
+        the model."""
+        raise NotImplementedError
+
+
+class ChatV2Client(ChatV2):
+    """Calls abstraction.inference/chat@2 through a transport that exchanges frames."""
+
+    def __init__(self, transport):
+        self._transport = transport
+
+    def start(self, request: RequestV2) -> AdmissionV2:
+        _service_check("RequestV2", request)
+        _args = _ChatV2StartArguments()
+        _args.request = request
+        _arguments = _service_encode(_write_oa_chat_v2_start_arguments, _args, 1)
+        _service_decode(_read_oa_chat_v2_start_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/chat@2", "Start", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@2", "Start")
+        _result = _service_decode(_read_oa_chat_v2_start_result, _payload, 1)
+        return _result.value
+
+    def observe(self, operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage:
+        _service_check("string", operation)
+        _service_check("i64", cursor)
+        _service_check("i64", max_deltas)
+        _service_check("i64", max_bytes)
+        _service_check("i64", wait_ms)
+        _args = _ChatV2ObserveArguments()
+        _args.operation = operation
+        _args.cursor = cursor
+        _args.max_deltas = max_deltas
+        _args.max_bytes = max_bytes
+        _args.wait_ms = wait_ms
+        _arguments = _service_encode(_write_oa_chat_v2_observe_arguments, _args, 1)
+        _service_decode(_read_oa_chat_v2_observe_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/chat@2", "Observe", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@2", "Observe")
+        _result = _service_decode(_read_oa_chat_v2_observe_result, _payload, 1)
+        return _result.value
+
+    def cancel(self, operation: str) -> Cancellation:
+        _service_check("string", operation)
+        _args = _ChatV2CancelArguments()
+        _args.operation = operation
+        _arguments = _service_encode(_write_oa_chat_v2_cancel_arguments, _args, 1)
+        _service_decode(_read_oa_chat_v2_cancel_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/chat@2", "Cancel", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@2", "Cancel")
+        _result = _service_decode(_read_oa_chat_v2_cancel_result, _payload, 1)
+        return _result.value
+
+
+class Preloader:
+    """The first request of a conversation on a local model waits for its whole
+    prompt to be evaluated: OpenCode's Local assistant's first answer on
+    Qwen3.6-35B-A3B took 10.6-12 s, against 3.6 s with its fixed prefix
+    evaluated ahead (research/live-runs/2026-10-02-demo-model-opencode.md).
+    Preload lets an application have its own prefix evaluated before it sends
+    that request. Only a server whose provider evaluates prefixes serves it;
+    every other host answers unsupported_feature."""
+
+    def preload(self, request: Request) -> PreloadReply:
+        """Load the model a chat request for the bound caller would reach and have
+        its server evaluate the request's messages and tools as the prefix of
+        the caller's next request. request is a chat@1 Request whose last
+        message is not a user message: the caller's next request is these
+        messages followed by its user message. Admission follows chat@1 Start's
+        order: argument shape, guarantees and host selection, host support, the
+        rights decision for abstraction.inference/complete on host:<name>, then
+        the provider's model load. A preload is speculative work: it never asks
+        another holder to yield, and its evaluation is never model use, so a
+        yield stops the server under it and it answers unavailable, reason
+        engine:stopped. The provider keeps nothing of the request after the
+        call. The call returns when the server has evaluated the prefix, refused
+        it, or the call budget ends."""
+        raise NotImplementedError
+
+
+class PreloaderClient(Preloader):
+    """Calls abstraction.inference/preload@1 through a transport that exchanges frames."""
+
+    def __init__(self, transport):
+        self._transport = transport
+
+    def preload(self, request: Request) -> PreloadReply:
+        _service_check("Request", request)
+        _args = _PreloaderPreloadArguments()
+        _args.request = request
+        _arguments = _service_encode(_write_oa_preloader_preload_arguments, _args, 1)
+        _service_decode(_read_oa_preloader_preload_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/preload@1", "Preload", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/preload@1", "Preload")
+        _result = _service_decode(_read_oa_preloader_preload_result, _payload, 1)
         return _result.value
 
 
@@ -10490,6 +13971,144 @@ class ImageClient(Image):
         return _result.value
 
 
+class ImageV2:
+    """Image generation and edit using the account and program scoped selection
+    policy. Image@1 remains available for explicit model calls."""
+
+    def start(self, request: ImageRequestV2) -> AdmissionV2:
+        """Select an explicit model or a bounded named policy before image
+        admission. A selected route runs one image@1 admission; fallback is
+        limited to a proven unavailable route before admission."""
+        raise NotImplementedError
+
+    def observe(self, operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage:
+        """Observe an image@2 operation through the shared image lifecycle."""
+        raise NotImplementedError
+
+    def cancel(self, operation: str) -> Cancellation:
+        """Cancel an image@2 operation through the shared image lifecycle."""
+        raise NotImplementedError
+
+
+class ImageV2Client(ImageV2):
+    """Calls abstraction.inference/image@2 through a transport that exchanges frames."""
+
+    def __init__(self, transport):
+        self._transport = transport
+
+    def start(self, request: ImageRequestV2) -> AdmissionV2:
+        _service_check("ImageRequestV2", request)
+        _args = _ImageV2StartArguments()
+        _args.request = request
+        _arguments = _service_encode(_write_oa_image_v2_start_arguments, _args, 1)
+        _service_decode(_read_oa_image_v2_start_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/image@2", "Start", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/image@2", "Start")
+        _result = _service_decode(_read_oa_image_v2_start_result, _payload, 1)
+        return _result.value
+
+    def observe(self, operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage:
+        _service_check("string", operation)
+        _service_check("i64", cursor)
+        _service_check("i64", max_deltas)
+        _service_check("i64", max_bytes)
+        _service_check("i64", wait_ms)
+        _args = _ImageV2ObserveArguments()
+        _args.operation = operation
+        _args.cursor = cursor
+        _args.max_deltas = max_deltas
+        _args.max_bytes = max_bytes
+        _args.wait_ms = wait_ms
+        _arguments = _service_encode(_write_oa_image_v2_observe_arguments, _args, 1)
+        _service_decode(_read_oa_image_v2_observe_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/image@2", "Observe", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/image@2", "Observe")
+        _result = _service_decode(_read_oa_image_v2_observe_result, _payload, 1)
+        return _result.value
+
+    def cancel(self, operation: str) -> Cancellation:
+        _service_check("string", operation)
+        _args = _ImageV2CancelArguments()
+        _args.operation = operation
+        _arguments = _service_encode(_write_oa_image_v2_cancel_arguments, _args, 1)
+        _service_decode(_read_oa_image_v2_cancel_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/image@2", "Cancel", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/image@2", "Cancel")
+        _result = _service_decode(_read_oa_image_v2_cancel_result, _payload, 1)
+        return _result.value
+
+
+class Video:
+    """Video generation by a native provider for its designated runtime. Operations
+    are visible only to the program that started them and live in the provider's
+    memory: a provider or engine restart forgets them, and Observe then answers
+    unknown."""
+
+    def start(self, request: VideoRequest) -> VideoAdmission:
+        """Admit one video for the bound designated runtime after argument, model,
+        extension, rights and input checks, before engine work. A Start whose
+        request_id the provider already holds from the same caller starts
+        nothing, ignores the request's frame and returns that operation's
+        admission again, and a runtime whose reply was lost sends the same Start
+        again. Any other Start naming an image_digest the provider's content
+        store does not hold is refused as invalid with reason content:unknown,
+        and nothing is generated from the prompt alone. A provider holds each
+        request_id until at least 24 hours after its operation ends; a provider
+        that restarted holds none and admits the Start as new work (INF-G5,
+        INF-G7)."""
+        raise NotImplementedError
+
+    def observe(self, operation: str) -> VideoObservation:
+        """Return the operation's current state without waiting."""
+        raise NotImplementedError
+
+    def cancel(self, operation: str) -> Cancellation:
+        """Stop the operation and its engine job. cancelled means this call stopped
+        it; ended carries how it had already ended; unknown means no such
+        operation is visible."""
+        raise NotImplementedError
+
+
+class VideoClient(Video):
+    """Calls abstraction.inference/video@1 through a transport that exchanges frames."""
+
+    def __init__(self, transport):
+        self._transport = transport
+
+    def start(self, request: VideoRequest) -> VideoAdmission:
+        _service_check("VideoRequest", request)
+        _args = _VideoStartArguments()
+        _args.request = request
+        _arguments = _service_encode(_write_oa_video_start_arguments, _args, 1)
+        _service_decode(_read_oa_video_start_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/video@1", "Start", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/video@1", "Start")
+        _result = _service_decode(_read_oa_video_start_result, _payload, 1)
+        return _result.value
+
+    def observe(self, operation: str) -> VideoObservation:
+        _service_check("string", operation)
+        _args = _VideoObserveArguments()
+        _args.operation = operation
+        _arguments = _service_encode(_write_oa_video_observe_arguments, _args, 1)
+        _service_decode(_read_oa_video_observe_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/video@1", "Observe", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/video@1", "Observe")
+        _result = _service_decode(_read_oa_video_observe_result, _payload, 1)
+        return _result.value
+
+    def cancel(self, operation: str) -> Cancellation:
+        _service_check("string", operation)
+        _args = _VideoCancelArguments()
+        _args.operation = operation
+        _arguments = _service_encode(_write_oa_video_cancel_arguments, _args, 1)
+        _service_decode(_read_oa_video_cancel_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/video@1", "Cancel", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/video@1", "Cancel")
+        _result = _service_decode(_read_oa_video_cancel_result, _payload, 1)
+        return _result.value
+
+
 class Operator:
     """Administer the runtime's inference hosts, the gateway window and its local
     keys, and read the inference audit. Each call is a rights decision for the
@@ -10666,4 +14285,82 @@ class OperatorClient(Operator):
         _request = _service_request("abstraction.inference/operator@1", "SetGateway", _arguments)
         _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/operator@1", "SetGateway")
         _result = _service_decode(_read_oa_operator_set_gateway_result, _payload, 1)
+        return _result.value
+
+
+class SelectionOperatorV2:
+    """Manage policies for this program or an explicit executable in the bound
+    account, with optional logical provider pins. Cross-program management
+    requires selection.manage_for; the target program is a policy namespace,
+    never requesting identity. Reads of the bound program need no grant; edits
+    retain selection.manage."""
+
+    def read(self, target_program: str, name: str) -> SelectionReadV2:
+        """Read a policy for target_program in the bound account. Empty or the
+        caller's own normalized executable reads self scope with no grant;
+        another absolute canonical executable needs selection.manage_for on
+        account. target_program names the managed scope, never the caller
+        identity."""
+        raise NotImplementedError
+
+    def put(self, target_program: str, expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange:
+        """Conditionally create or replace a policy for target_program in the
+        shared store. Empty or self target needs selection.manage; another
+        program needs selection.manage_for on account."""
+        raise NotImplementedError
+
+    def delete_policy(self, target_program: str, expected_revision: str, name: str) -> SelectionChange:
+        """Conditionally delete a policy for target_program in the shared store.
+        Empty or self target needs selection.manage; another program needs
+        selection.manage_for on account."""
+        raise NotImplementedError
+
+
+class SelectionOperatorV2Client(SelectionOperatorV2):
+    """Calls abstraction.inference/selection-operator@2 through a transport that exchanges frames."""
+
+    def __init__(self, transport):
+        self._transport = transport
+
+    def read(self, target_program: str, name: str) -> SelectionReadV2:
+        _service_check("string", target_program)
+        _service_check("string", name)
+        _args = _SelectionOperatorV2ReadArguments()
+        _args.target_program = target_program
+        _args.name = name
+        _arguments = _service_encode(_write_oa_selection_operator_v2_read_arguments, _args, 1)
+        _service_decode(_read_oa_selection_operator_v2_read_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/selection-operator@2", "Read", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/selection-operator@2", "Read")
+        _result = _service_decode(_read_oa_selection_operator_v2_read_result, _payload, 1)
+        return _result.value
+
+    def put(self, target_program: str, expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange:
+        _service_check("string", target_program)
+        _service_check("string", expected_revision)
+        _service_check("SelectionPolicyV2", policy)
+        _args = _SelectionOperatorV2PutArguments()
+        _args.target_program = target_program
+        _args.expected_revision = expected_revision
+        _args.policy = policy
+        _arguments = _service_encode(_write_oa_selection_operator_v2_put_arguments, _args, 1)
+        _service_decode(_read_oa_selection_operator_v2_put_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/selection-operator@2", "Put", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/selection-operator@2", "Put")
+        _result = _service_decode(_read_oa_selection_operator_v2_put_result, _payload, 1)
+        return _result.value
+
+    def delete_policy(self, target_program: str, expected_revision: str, name: str) -> SelectionChange:
+        _service_check("string", target_program)
+        _service_check("string", expected_revision)
+        _service_check("string", name)
+        _args = _SelectionOperatorV2DeletePolicyArguments()
+        _args.target_program = target_program
+        _args.expected_revision = expected_revision
+        _args.name = name
+        _arguments = _service_encode(_write_oa_selection_operator_v2_delete_policy_arguments, _args, 1)
+        _service_decode(_read_oa_selection_operator_v2_delete_policy_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/selection-operator@2", "DeletePolicy", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/selection-operator@2", "DeletePolicy")
+        _result = _service_decode(_read_oa_selection_operator_v2_delete_policy_result, _payload, 1)
         return _result.value

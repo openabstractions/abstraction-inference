@@ -35,7 +35,9 @@ func RemoteHandler(provider *inference.Provider, routes *router.Router, authoriz
 		if err != nil || subject.Account == "" || subject.Program == "" {
 			return nil, errors.New("inference remote: peer not mapped")
 		}
-		r := &remoteChat{provider: provider, subject: subject, ctx: inference.WithRemote(ctx, domain, "tls-remote/"+domain)}
+		// The caller is a certificate mapped to a subject, with no local peer
+		// behind it: Decide gets no peer.
+		r := &remoteChat{provider: provider, subject: subject, ctx: inference.WithPeer(inference.WithRemote(ctx, domain, "tls-remote/"+domain), nil)}
 		// The services this runtime serves over the remote transport, as a
 		// registry reads them before it offers the remote.
 		services := []wire.ServedService{&wire.ChatDispatcher{Handler: r}, &wire.EmbedderDispatcher{Handler: r}, &wire.TranscriptionDispatcher{Handler: &remoteTranscription{r}}, &wire.SpeechDispatcher{Handler: &remoteSpeech{r}}, &wire.ImageDispatcher{Handler: &remoteImage{r}}}

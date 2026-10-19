@@ -142,6 +142,8 @@ func (anthropic) run(ctx context.Context, client *http.Client, host *router.Host
 	next := int64(0)
 	stopped, malformed := false, false
 	var upstreamError string
+	var overflow bool
+	var window, input int64
 	err := events(resp.Body, func(event, data string) bool {
 		var e anthropicEvent
 		if json.Unmarshal([]byte(data), &e) != nil {
@@ -191,6 +193,7 @@ func (anthropic) run(ctx context.Context, client *http.Client, host *router.Host
 			return false
 		case "error":
 			upstreamError = "upstream:error"
+			window, input, overflow = contextOverflow([]byte(data))
 			return false
 		}
 		return true
@@ -200,6 +203,9 @@ func (anthropic) run(ctx context.Context, client *http.Client, host *router.Host
 		return failed(wire.ReplyOutcomeUnavailable, "upstream:malformed")
 	case upstreamError != "":
 		r := failed(wire.ReplyOutcomeUnavailable, upstreamError)
+		if overflow {
+			r = overflowed(window, input)
+		}
 		r.Usage = reply.Usage
 		return r
 	case err != nil || !stopped:

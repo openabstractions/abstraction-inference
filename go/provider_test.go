@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,6 +43,18 @@ type upstream struct {
 	hold     bool
 	interval time.Duration
 	closed   chan time.Time
+	// streamError emits a top-level OpenAI-compatible SSE error after the text
+	// chunks; streamErrorDone appends [DONE] to exercise misleading terminals.
+	streamError     string
+	streamErrorDone bool
+	streamExtension string
+	// streamDrop ends a chat stream after its text chunks with no terminal
+	// event, as an engine process that exits mid-reply leaves it.
+	streamDrop bool
+	// chatStatus, when nonzero, answers chat requests on both wires with this
+	// HTTP status and chatBody instead of a stream.
+	chatStatus int
+	chatBody   string
 	// release, when set, holds each stream after its first chunk until it is
 	// closed, so a test can read before the retained window moves.
 	release chan struct{}
@@ -154,6 +167,10 @@ func (u *upstream) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/listen":
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"metadata":{"duration":30},"results":{"utterances":[{"start":0,"end":30,"transcript":"deep gram"}],"channels":[{"detected_language":"en","alternatives":[{"words":[{"start":0,"end":1,"word":"deep"},{"start":1,"end":2,"word":"gram"}]}]}]}}`)
+	case r.Method == http.MethodPost && u.chatStatus != 0 && (r.URL.Path == "/api/v1/chat/completions" || r.URL.Path == "/v1/messages"):
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(u.chatStatus)
+		_, _ = io.WriteString(w, u.chatBody)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/chat/completions":
 		w.Header().Set("Content-Type", "text/event-stream")
 		for i, c := range u.chunks {
@@ -162,6 +179,19 @@ func (u *upstream) serve(w http.ResponseWriter, r *http.Request) {
 			if !u.paused(r, i+1) {
 				return
 			}
+		}
+		if u.streamDrop {
+			return
+		}
+		if u.streamExtension != "" {
+			send("", u.streamExtension)
+		}
+		if u.streamError != "" {
+			send("", u.streamError)
+			if u.streamErrorDone {
+				send("", "[DONE]")
+			}
+			return
 		}
 		if u.hold {
 			u.holdOpen(r, func() { send("", `{"choices":[{"delta":{"content":"."}}]}`) })
@@ -184,6 +214,10 @@ func (u *upstream) serve(w http.ResponseWriter, r *http.Request) {
 			if !u.paused(r, i+1) {
 				return
 			}
+		}
+		if u.streamError != "" {
+			send("error", u.streamError)
+			return
 		}
 		if u.hold {
 			u.holdOpen(r, func() {
@@ -444,6 +478,69 @@ func TestTheCredentialHeaderAppearsOncePerUpstreamRequestAndNowhereElse(t *testi
 	}
 }
 
+func TestOpenAITopLevelStreamErrorsFailWithoutLeakingDetails(t *testing.T) {
+	const secretDetail = "exceed_context_size_error: private upstream detail"
+	for _, tc := range []struct {
+		name     string
+		withDone bool
+		partial  bool
+	}{
+		{name: "error then EOF"},
+		{name: "error then DONE", withDone: true},
+		{name: "error after partial output", partial: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := setup(t, router.WireOpenAICompatible, nil)
+			f.up.chunks = nil
+			if tc.partial {
+				f.up.chunks = []string{"partial output"}
+			}
+			f.up.streamError = `{"error":{"message":"` + secretDetail + `","type":"invalid_request_error"}}`
+			f.up.streamErrorDone = tc.withDone
+			a := f.provider.Start(context.Background(), caller, hostedRequest("openrouter"))
+			if a.Outcome != wire.StartOutcomeAccepted {
+				t.Fatalf("admission %+v", a)
+			}
+			text, reply, deltas := drain(t, f.provider, caller, a.Operation)
+			if reply.Outcome != wire.ReplyOutcomeUnavailable || reply.Reason != "upstream:error" || reply.StopReason != wire.StopReasonNoStop {
+				t.Fatalf("reply %+v", reply)
+			}
+			wantText := ""
+			if tc.partial {
+				wantText = "partial output"
+			}
+			if text != wantText {
+				t.Fatalf("partial text %q, want %q", text, wantText)
+			}
+			records := f.waitLogged(t, 1)
+			if len(records) != 1 || records[0].Outcome != "unavailable" || records[0].Reason != "upstream:error" {
+				t.Fatalf("audit records %+v", records)
+			}
+			evidence, err := json.Marshal([]any{reply, deltas, records})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(evidence), secretDetail) {
+				t.Fatalf("provider detail leaked in result: %s", evidence)
+			}
+		})
+	}
+}
+
+func TestOpenAIUnknownExtensionEventDoesNotFailStream(t *testing.T) {
+	f := setup(t, router.WireOpenAICompatible, nil)
+	f.up.chunks = nil
+	f.up.streamExtension = `{"type":"provider.notice","message":"future extension"}`
+	a := f.provider.Start(context.Background(), caller, hostedRequest("openrouter"))
+	if a.Outcome != wire.StartOutcomeAccepted {
+		t.Fatalf("admission %+v", a)
+	}
+	text, reply, _ := drain(t, f.provider, caller, a.Operation)
+	if text != "" || reply.Outcome != wire.ReplyOutcomeCompleted || reply.StopReason != wire.StopReasonEnd {
+		t.Fatalf("reply %q %+v", text, reply)
+	}
+}
+
 func TestAProgramWithoutARuleIsNotPermittedAndTheUpstreamSeesNothing(t *testing.T) {
 	f := setup(t, router.WireOpenAICompatible, nil)
 	seen := len(f.up.requests())
@@ -620,6 +717,73 @@ func TestAnObserverInFlightKeepsTheOperationAlive(t *testing.T) {
 	c = f.provider.Cancel(caller, a.Operation)
 	if c.Outcome != wire.CancelOutcomeEnded || *c.ReplyOutcome != wire.ReplyOutcomeCancelled {
 		t.Fatalf("second cancel %+v", c)
+	}
+}
+
+func TestObserveFinishingStartsIdleClockAtCompletion(t *testing.T) {
+	for _, profile := range []string{router.ProfileChat, router.ProfileImage, router.ProfileSpeech,
+		router.ProfileTranscription, router.ProfileLive} {
+		t.Run(profile, func(t *testing.T) {
+			started := time.Unix(100, 0)
+			var clock atomic.Int64
+			clock.Store(started.UnixNano())
+			now := func() time.Time { return time.Unix(0, clock.Load()) }
+			op := newOperation("long-poll", caller, nil, "model", "", 16, started)
+			op.profile = profile
+			cancelled := make(chan struct{})
+			op.cancel = func() { close(cancelled) }
+			p := &Provider{cfg: Config{Now: now}, ops: map[string]*operation{op.id: op}}
+
+			ctx, endObserve := context.WithCancel(context.Background())
+			defer endObserve()
+			finished := make(chan wire.DeltaPage, 1)
+			go func() {
+				finished <- p.observeProfile(ctx, caller, op.id, profile, 0, 256, 65536, 30000)
+			}()
+			deadline := time.After(5 * time.Second)
+			for {
+				op.mu.Lock()
+				observing := op.observing
+				op.mu.Unlock()
+				if observing == 1 {
+					break
+				}
+				select {
+				case <-deadline:
+					t.Fatal("Observe never entered its long poll")
+				default:
+					time.Sleep(time.Millisecond)
+				}
+			}
+
+			// The long poll outlives idle_ms while the caller remains attached.
+			ended := started.Add(25 * time.Second)
+			clock.Store(ended.UnixNano())
+			if op.stopIdle(now(), 10*time.Second) {
+				t.Fatal("watchdog cancelled an in-flight Observe")
+			}
+			endObserve()
+			select {
+			case page := <-finished:
+				if page.Outcome != wire.PageOutcomePage || len(page.Deltas) != 0 {
+					t.Fatalf("empty observed page = %+v", page)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("cancelled long poll did not return")
+			}
+			if op.idleSince(now()) != 0 || op.stopIdle(now(), 10*time.Second) {
+				t.Fatal("watchdog treated a just-finished Observe as idle")
+			}
+			select {
+			case <-cancelled:
+				t.Fatal("operation was cancelled while actively observed")
+			default:
+			}
+			clock.Store(ended.Add(10 * time.Second).UnixNano())
+			if !op.stopIdle(now(), 10*time.Second) {
+				t.Fatal("watchdog did not cancel after ten unobserved seconds")
+			}
+		})
 	}
 }
 

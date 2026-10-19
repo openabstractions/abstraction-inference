@@ -5,8 +5,8 @@ import wire "github.com/openabstractions/abstraction-inference/go/abstraction/in
 type liveReceiver struct{ *receiver }
 
 func (r *liveReceiver) Start(q wire.LiveRequest) (wire.Admission, error) {
-	s, rung := r.bound()
-	return r.host.provider.StartLive(r.admittingContext(rung), s, q), nil
+	s, rung, peer := r.bound()
+	return r.host.provider.StartLive(r.admittingContext(s, rung, peer), s, q), nil
 }
 func (r *liveReceiver) Append(id string, seq int64, data []byte) (wire.LiveInputResult, error) {
 	return r.host.provider.AppendLive(r.ctx, r.caller(), id, seq, data), nil

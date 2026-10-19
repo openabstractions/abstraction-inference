@@ -27,6 +27,27 @@ export interface Admission {
   retainedDeltas: bigint;
 }
 
+// The chat@2 admission. On accepted, host and model are the actual route,
+// preferred_model is the first policy candidate or explicit model, and
+// selection_reason says why that route was selected.
+// preferred_route_unavailable requires fresh definitive pre-dispatch listing
+// unavailability and makes no claim that every host is offline. Every refusal
+// has empty operation, host and model, zero bounds, and omits both selection
+// fields. RequestContent optional tools has the same absent-or-empty meaning as
+// chat@1 Request.tools.
+export interface AdmissionV2 {
+  outcome: StartOutcome;
+  reason: string;
+  operation: string;
+  host: string;
+  model: string;
+  retentionMs: bigint;
+  idleMs: bigint;
+  retainedDeltas: bigint;
+  preferredModel: string;
+  selectionReason: SelectionReason | null;
+}
+
 // One ordered speech output chunk. index starts at zero and data is 1..65536
 // bytes. Concatenating chunks byte-for-byte yields the content named by
 // SpeechReply.delivery.digest.
@@ -100,6 +121,9 @@ export interface Cancellation {
   replyOutcome: ReplyOutcome | null;
 }
 
+export type CandidatePlacement = (typeof CandidatePlacement)[keyof typeof CandidatePlacement];
+export declare const CandidatePlacement: Readonly<{ Local: "local"; Hosted: "hosted" }>;
+
 // A credential's daily limits per UTC day: tokens (input plus output), spend in
 // currency millionths, requests, images, audio seconds and characters. Zero or
 // absent means no limit in that unit. The provider enforces every configured
@@ -125,6 +149,19 @@ export declare class ChatClient {
 }
 
 export declare const ChatService: Readonly<{ wireName: "abstraction.inference/chat@1"; Client: typeof ChatClient }>;
+
+/** Typed explicit model or named service-owned model selection for a bound caller. A runtime without chat@2 refuses this service version explicitly. */
+export declare class ChatV2Client {
+  constructor(transport: FrameTransport);
+  /** Resolve the explicit target or named policy for the bound caller and admit one selected model. Each candidate must pass all chat@1 guarantees, features, rights, credential, budget and capacity checks. A later candidate is considered only after a fresh definitive preferred-route absence before admission or dispatch. A possible send, accepted operation, partial output or tool effect never retries another candidate. */
+  start(request: RequestV2): Promise<AdmissionV2>;
+  /** Observe the same caller-bound operation registry and DeltaPage as chat@1, without reselecting the model. */
+  observe(operation: string, cursor: bigint, maxDeltas: bigint, maxBytes: bigint, waitMs: bigint): Promise<DeltaPage>;
+  /** Cancel the same caller-bound operation as chat@1, without reselecting the model. */
+  cancel(operation: string): Promise<Cancellation>;
+}
+
+export declare const ChatV2Service: Readonly<{ wireName: "abstraction.inference/chat@2"; Client: typeof ChatV2Client }>;
 
 // Spend the host reported for this reply, in millionths of currency, an ISO
 // 4217 code or the host's own credit unit. Absent when the host reports no
@@ -392,6 +429,33 @@ export interface ImageRequest {
   extensions: { [key: string]: string };
 }
 
+// The image@1 ImageRequest fields except model, with identical validation and
+// bounds. An explicit model target uses guarantees and credential as image@1
+// does. A named policy target requires empty guarantees and credential; each
+// stored candidate supplies these choices under live admission checks.
+export interface ImageRequestContent {
+  mode: ImageMode;
+  prompt: string;
+  size: string;
+  count: bigint;
+  imageDigest: string;
+  imageMediaType: string;
+  maskDigest: string;
+  maskMediaType: string;
+  guarantees: Array<RequestGuarantee | (string & {})>;
+  credential: string;
+  requiredExtensions: string[];
+  extensions: { [key: string]: string };
+}
+
+// One image call with exactly one explicit model or named policy. The policy is
+// scoped to the proven account and observed program. A policy target cannot
+// override candidate placement or credential inline.
+export interface ImageRequestV2 {
+  target: Target;
+  content: ImageRequestContent;
+}
+
 // One completed image in request order. index is 0..count-1. delivery
 // identifies an authorized PNG, JPEG or WebP result and the runtime that owns
 // it.
@@ -401,6 +465,19 @@ export interface ImageResult {
 }
 
 export declare const ImageService: Readonly<{ wireName: "abstraction.inference/image@1"; Client: typeof ImageClient }>;
+
+/** Image generation and edit using the account and program scoped selection policy. Image@1 remains available for explicit model calls. */
+export declare class ImageV2Client {
+  constructor(transport: FrameTransport);
+  /** Select an explicit model or a bounded named policy before image admission. A selected route runs one image@1 admission; fallback is limited to a proven unavailable route before admission. */
+  start(request: ImageRequestV2): Promise<AdmissionV2>;
+  /** Observe an image@2 operation through the shared image lifecycle. */
+  observe(operation: string, cursor: bigint, maxDeltas: bigint, maxBytes: bigint, waitMs: bigint): Promise<DeltaPage>;
+  /** Cancel an image@2 operation through the shared image lifecycle. */
+  cancel(operation: string): Promise<Cancellation>;
+}
+
+export declare const ImageV2Service: Readonly<{ wireName: "abstraction.inference/image@2"; Client: typeof ImageV2Client }>;
 
 // applied carries the key, once, and its record. The key is the only secret
 // operator@1 ever returns: the runtime minted it, it authorizes nothing by
@@ -590,6 +667,37 @@ export interface Part {
 export type PartKind = (typeof PartKind)[keyof typeof PartKind];
 export declare const PartKind: Readonly<{ Text: "text"; Image: "image"; ToolCall: "tool_call"; ToolResult: "tool_result" }>;
 
+export type PreloadOutcome = (typeof PreloadOutcome)[keyof typeof PreloadOutcome];
+export declare const PreloadOutcome: Readonly<{ Evaluated: "evaluated"; Loaded: "loaded"; Busy: "busy"; Refused: "refused"; NotPermitted: "not_permitted"; UnsupportedFeature: "unsupported_feature"; NoHost: "no_host"; Unavailable: "unavailable"; Invalid: "invalid"; Forbidden: "forbidden" }>;
+
+// evaluated means the model is loaded and its server evaluated tokens tokens of
+// the prefix. loaded means the model is loaded and the server evaluated
+// nothing, because the prefix was shorter than the provider's minimum. busy
+// means nothing was evaluated because other work comes first: the model's
+// server has served a request since it loaded (engine:used), another preload
+// runs there (preload:running), another request took the server during the
+// evaluation, or the model is not loaded and loading it would ask another
+// holder to yield (resources:held). refused carries the server's refusal of the
+// prefix in reason. Every other outcome carries the reason words of chat@1
+// Admission. host and model are the route on evaluated, loaded and busy, and
+// empty otherwise; tokens is zero except on evaluated.
+export interface PreloadReply {
+  outcome: PreloadOutcome;
+  reason: string;
+  host: string;
+  model: string;
+  tokens: bigint;
+}
+
+/** The first request of a conversation on a local model waits for its whole prompt to be evaluated: OpenCode's Local assistant's first answer on Qwen3.6-35B-A3B took 10.6-12 s, against 3.6 s with its fixed prefix evaluated ahead (research/live-runs/2026-10-02-demo-model-opencode.md). Preload lets an application have its own prefix evaluated before it sends that request. Only a server whose provider evaluates prefixes serves it; every other host answers unsupported_feature. */
+export declare class PreloaderClient {
+  constructor(transport: FrameTransport);
+  /** Load the model a chat request for the bound caller would reach and have its server evaluate the request's messages and tools as the prefix of the caller's next request. request is a chat@1 Request whose last message is not a user message: the caller's next request is these messages followed by its user message. Admission follows chat@1 Start's order: argument shape, guarantees and host selection, host support, the rights decision for abstraction.inference/complete on host:<name>, then the provider's model load. A preload is speculative work: it never asks another holder to yield, and its evaluation is never model use, so a yield stops the server under it and it answers unavailable, reason engine:stopped. The provider keeps nothing of the request after the call. The call returns when the server has evaluated the prefix, refused it, or the call budget ends. */
+  preload(request: Request): Promise<PreloadReply>;
+}
+
+export declare const PreloaderService: Readonly<{ wireName: "abstraction.inference/preload@1"; Client: typeof PreloaderClient }>;
+
 export declare class Refusal extends Error {
   constructor(word: string, offset: number);
   word: "malformed" | "bad_string" | "bad_binary" | "number_spelling" | "wrong_type" | "depth_exceeded" | "duplicate_key" | "duplicate_field" | "unknown_field" | "missing_field" | "bad_enum" | "trailing_bytes";
@@ -598,16 +706,18 @@ export declare class Refusal extends Error {
 
 // The result of one operation. completed carries the assistant message and
 // stop_reason other than no_stop; every other outcome carries no_stop. refused
-// means the host answered and refused the request (reason upstream:<status>).
-// not_permitted carries reason rights:<word> for the complete decision on
-// host:<name>, or credential:<outcome>:<name> for an applier refusal.
-// budget_exceeded carries ceiling:<unit>:<credential>. unsupported_feature
-// carries feature:<name> or extension:<key>. no_host carries router:<verdict>.
-// cancelled carries cancel, idle or caller. unavailable carries
-// rights:unavailable, credential:unavailable:<name> or upstream:<detail>; parts
-// already delivered stay delivered. host and model name what served it, and are
-// empty when nothing did. In the terminal delta message.parts is empty; the
-// parts arrived in the deltas before it.
+// means the host answered and refused the request: reason upstream:<status>, or
+// upstream:context_length_exceeded:<window>:<input> when the request exceeds
+// the context window, each number in tokens and 0 when unknown. not_permitted
+// carries reason rights:<word> for the complete decision on host:<name>, or
+// credential:<outcome>:<name> for an applier refusal. budget_exceeded carries
+// ceiling:<unit>:<credential>. unsupported_feature carries feature:<name> or
+// extension:<key>. no_host carries router:<verdict>. cancelled carries cancel,
+// idle or caller. unavailable carries rights:unavailable,
+// credential:unavailable:<name> or upstream:<detail>; parts already delivered
+// stay delivered. host and model name what served it, and are empty when
+// nothing did. In the terminal delta message.parts is empty; the parts arrived
+// in the deltas before it.
 export interface Reply {
   outcome: ReplyOutcome;
   reason: string;
@@ -642,11 +752,91 @@ export interface Request {
   credential: string;
 }
 
+// The chat@1 Request fields except model, with identical message, tool, option
+// and extension validation and limits. An explicit model target uses guarantees
+// and credential exactly as chat@1 does. A named policy target requires an
+// empty guarantees list and empty credential; its stored candidates supply
+// those choices for each attempt, and the service checks live rights and budget
+// independently. Nonempty inline values in policy mode are invalid.
+export interface RequestContent {
+  messages: Message[];
+  tools: Tool[];
+  options: Options | null;
+  extensions: { [key: string]: string };
+  requiredExtensions: string[];
+  guarantees: Array<RequestGuarantee | (string & {})>;
+  credential: string;
+}
+
 export type RequestGuarantee = (typeof RequestGuarantee)[keyof typeof RequestGuarantee];
 export declare const RequestGuarantee: Readonly<{ LocalOnly: "abstraction.inference/local-only@1"; HostedAllowed: "abstraction.inference/hosted-allowed@1" }>;
 
+// One chat call. Target is exclusive and nonempty. A named policy is resolved
+// by the service for the proven caller before host selection; the caller leaves
+// content.guarantees empty and content.credential empty in policy mode.
+export interface RequestV2 {
+  target: Target;
+  content: RequestContent;
+}
+
 export type Role = (typeof Role)[keyof typeof Role];
 export declare const Role: Readonly<{ System: "system"; User: "user"; Assistant: "assistant"; Tool: "tool" }>;
+
+// One ordered candidate for chat@2 or image@2. provider optionally pins the
+// logical current registry declaration ID within this candidate. The service
+// checks the current eligible host and declaration generation. A missing or
+// stale pin refuses without another provider choice. A model alias does not
+// assert binary or model artifact identity.
+export interface SelectionCandidateV2 {
+  model: string;
+  placement: CandidatePlacement;
+  credential: string;
+  provider: string;
+}
+
+// applied carries the new revision. conflict carries the current revision when
+// expected_revision did not match. unknown is used by Delete for an absent
+// policy. A creation requires an empty expected_revision.
+export interface SelectionChange {
+  outcome: EditOutcome;
+  revision: string;
+  reason: string;
+}
+
+/** Manage policies for this program or an explicit executable in the bound account, with optional logical provider pins. Cross-program management requires selection.manage_for; the target program is a policy namespace, never requesting identity. Reads of the bound program need no grant; edits retain selection.manage. */
+export declare class SelectionOperatorV2Client {
+  constructor(transport: FrameTransport);
+  /** Read a policy for target_program in the bound account. Empty or the caller's own normalized executable reads self scope with no grant; another absolute canonical executable needs selection.manage_for on account. target_program names the managed scope, never the caller identity. */
+  read(targetProgram: string, name: string): Promise<SelectionReadV2>;
+  /** Conditionally create or replace a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account. */
+  put(targetProgram: string, expectedRevision: string, policy: SelectionPolicyV2): Promise<SelectionChange>;
+  /** Conditionally delete a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account. */
+  deletePolicy(targetProgram: string, expectedRevision: string, name: string): Promise<SelectionChange>;
+}
+
+export declare const SelectionOperatorV2Service: Readonly<{ wireName: "abstraction.inference/selection-operator@2"; Client: typeof SelectionOperatorV2Client }>;
+
+// A 1..8 candidate policy in the bound account and observed program. The first
+// candidate is preferred. Pinned and unpinned policies use one service-owned
+// store.
+export interface SelectionPolicyV2 {
+  name: string;
+  candidates: SelectionCandidateV2[];
+}
+
+export type SelectionReadOutcome = (typeof SelectionReadOutcome)[keyof typeof SelectionReadOutcome];
+export declare const SelectionReadOutcome: Readonly<{ Found: "found"; Unknown: "unknown"; Invalid: "invalid"; Forbidden: "forbidden"; Unavailable: "unavailable" }>;
+
+// found carries the policy and its revision. Other outcomes carry no policy or
+// revision.
+export interface SelectionReadV2 {
+  outcome: SelectionReadOutcome;
+  revision: string;
+  policy: SelectionPolicyV2 | null;
+}
+
+export type SelectionReason = (typeof SelectionReason)[keyof typeof SelectionReason];
+export declare const SelectionReason: Readonly<{ ExplicitModel: "explicit_model"; Preferred: "preferred"; PreferredRouteUnavailable: "preferred_route_unavailable" }>;
 
 export declare class ServiceError extends Error {
   constructor(code: string, message?: string);
@@ -720,6 +910,16 @@ export declare const StartOutcome: Readonly<{ Accepted: "accepted"; NotPermitted
 
 export type StopReason = (typeof StopReason)[keyof typeof StopReason];
 export declare const StopReason: Readonly<{ NoStop: "no_stop"; End: "end"; MaxOutput: "max_output"; StopSequence: "stop_sequence"; ToolCalls: "tool_calls"; ContentFilter: "content_filter"; Other: "other" }>;
+
+// Exactly one nonempty member is required. model makes one explicit model
+// request. selection_policy names a policy scoped to the bound account and
+// observed program. The stored policy supplies each candidate's placement and
+// hosted credential as the caller's explicit preference, subject to live rights
+// and budget checks; it grants no authority.
+export interface Target {
+  model: string;
+  selectionPolicy: string;
+}
 
 // Sampling temperature in thousandths, 0..2000.
 export interface Temperature {
@@ -808,6 +1008,88 @@ export interface Usage {
   cached: bigint;
 }
 
+// accepted carries an operation id of 1..128 bytes and retention_ms, how long
+// the operation stays observable after it ends. An accepted operation runs
+// until it ends or Cancel stops it; it is never cancelled for want of Observe.
+// Every refusal carries the Reply reason words, an empty operation and zero
+// retention_ms.
+export interface VideoAdmission {
+  outcome: StartOutcome;
+  reason: string;
+  operation: string;
+  retentionMs: bigint;
+}
+
+/** Video generation by a native provider for its designated runtime. Operations are visible only to the program that started them and live in the provider's memory: a provider or engine restart forgets them, and Observe then answers unknown. */
+export declare class VideoClient {
+  constructor(transport: FrameTransport);
+  /** Admit one video for the bound designated runtime after argument, model, extension, rights and input checks, before engine work. A Start whose request_id the provider already holds from the same caller starts nothing, ignores the request's frame and returns that operation's admission again, and a runtime whose reply was lost sends the same Start again. Any other Start naming an image_digest the provider's content store does not hold is refused as invalid with reason content:unknown, and nothing is generated from the prompt alone. A provider holds each request_id until at least 24 hours after its operation ends; a provider that restarted holds none and admits the Start as new work (INF-G5, INF-G7). */
+  start(request: VideoRequest): Promise<VideoAdmission>;
+  /** Return the operation's current state without waiting. */
+  observe(operation: string): Promise<VideoObservation>;
+  /** Stop the operation and its engine job. cancelled means this call stopped it; ended carries how it had already ended; unknown means no such operation is visible. */
+  cancel(operation: string): Promise<Cancellation>;
+}
+
+// The provider's current view of one operation. queued may carry
+// queue_position, 1 for the next to run, or zero when the engine reports none.
+// generating may carry step of steps, 1 <= step <= steps; a provider that knows
+// only a fraction reports it in its own steps, such as percent of 100.
+// completed carries exactly one local delivery: a canonical sha256 digest in
+// the provider's content store, media_type video/mp4, video/webm or video/avi
+// (video/x-msvideo is read as video/avi), and its size; the container carries
+// any audio track. failed carries reason, at most 4096 UTF-8 bytes with no
+// submitted content or credential material. unknown means no operation of that
+// id is visible to the caller: never started by it, retired after retention, or
+// lost when the provider or its engine restarted. invalid, forbidden and
+// unavailable are refusals of this call. Only completed carries a delivery;
+// only queued and generating carry progress.
+export interface VideoObservation {
+  status: VideoState;
+  step: bigint;
+  steps: bigint;
+  queuePosition: bigint;
+  reason: string;
+  delivery: Delivery | null;
+}
+
+// One video generation forwarded by a designated runtime. request_id is 1..128
+// bytes the runtime chooses for one piece of work, its job operation id; a
+// Start repeating a request_id the provider holds names that same operation
+// (INF-G7). model is a name the provider lists. prompt is 1..32768 UTF-8 bytes.
+// size is auto or WIDTHxHEIGHT with each side 64..4096 and a multiple of 8.
+// duration_ms is 1..600000. fps is 1..120, and zero selects the model preset's
+// rate. seed is 1..2^53, and zero lets the provider choose. image_digest and
+// image_media_type name one optional PNG, JPEG or WebP initial frame the
+// runtime stages in the provider's content store before Start; a provider
+// refuses a Start naming a digest its store does not hold as invalid with
+// reason content:unknown and never generates that clip from the prompt alone.
+// Steps, guidance scale, flow shift, scheduler and decoder belong to the
+// provider's preset for the model (INF-G8) and have no field here. extensions
+// carries openabstractions/claimed-program and the caller's vendor controls
+// with abstraction.inference/image@1 semantics: a provider ignores an unknown
+// key unless required_extensions names it, refuses a required key it does not
+// support as unsupported_feature with reason extension:<key>, and never applies
+// a key that would override its preset.
+export interface VideoRequest {
+  model: string;
+  prompt: string;
+  size: string;
+  durationMs: bigint;
+  fps: bigint;
+  seed: bigint;
+  imageDigest: string;
+  imageMediaType: string;
+  requiredExtensions: string[];
+  extensions: { [key: string]: string };
+  requestId: string;
+}
+
+export declare const VideoService: Readonly<{ wireName: "abstraction.inference/video@1"; Client: typeof VideoClient }>;
+
+export type VideoState = (typeof VideoState)[keyof typeof VideoState];
+export declare const VideoState: Readonly<{ Queued: "queued"; Generating: "generating"; Completed: "completed"; Failed: "failed"; Cancelled: "cancelled"; Unknown: "unknown"; Invalid: "invalid"; Forbidden: "forbidden"; Unavailable: "unavailable" }>;
+
 export declare const claimExtensions: readonly ["openabstractions/claimed-program"];
 
 export declare const credentialConsumers: readonly ["abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/live@1"];
@@ -827,6 +1109,8 @@ export declare const localHostKinds: readonly ["ollama", "lmstudio", "lemonade",
 export declare const localKeyKinds: readonly ["openabstractions/local-key@1"];
 
 export declare function newAdmission(): Admission;
+
+export declare function newAdmissionV2(): AdmissionV2;
 
 export declare function newAudioChunk(): AudioChunk;
 
@@ -868,6 +1152,10 @@ export declare function newImageReply(): ImageReply;
 
 export declare function newImageRequest(): ImageRequest;
 
+export declare function newImageRequestContent(): ImageRequestContent;
+
+export declare function newImageRequestV2(): ImageRequestV2;
+
 export declare function newImageResult(): ImageResult;
 
 export declare function newKeyIssued(): KeyIssued;
@@ -892,15 +1180,31 @@ export declare function newOptions(): Options;
 
 export declare function newPart(): Part;
 
+export declare function newPreloadReply(): PreloadReply;
+
 export declare function newReply(): Reply;
 
 export declare function newRequest(): Request;
+
+export declare function newRequestContent(): RequestContent;
+
+export declare function newRequestV2(): RequestV2;
+
+export declare function newSelectionCandidateV2(): SelectionCandidateV2;
+
+export declare function newSelectionChange(): SelectionChange;
+
+export declare function newSelectionPolicyV2(): SelectionPolicyV2;
+
+export declare function newSelectionReadV2(): SelectionReadV2;
 
 export declare function newSpeechReply(): SpeechReply;
 
 export declare function newSpeechRequest(): SpeechRequest;
 
 export declare function newSpend(): Spend;
+
+export declare function newTarget(): Target;
 
 export declare function newTemperature(): Temperature;
 
@@ -914,6 +1218,12 @@ export declare function newTranscriptionRequest(): TranscriptionRequest;
 
 export declare function newUsage(): Usage;
 
-export declare const resourceActions: readonly ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read"];
+export declare function newVideoAdmission(): VideoAdmission;
+
+export declare function newVideoObservation(): VideoObservation;
+
+export declare function newVideoRequest(): VideoRequest;
+
+export declare const resourceActions: readonly ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read", "abstraction.inference/selection.manage", "abstraction.inference/selection.manage_for"];
 
 export {};

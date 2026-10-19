@@ -126,9 +126,8 @@ func (p *Provider) PreflightLive(ctx context.Context, subject Subject, req wire.
 func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.LiveRequest) wire.Admission {
 	started := p.cfg.Now()
 	via := routeOf(ctx)
-	if via.name == RouteRemote {
-		via.claim = req.Extensions[ClaimExtension]
-	}
+	extensions := separateExtensions(ctx, req.Extensions, nil)
+	via.claim = extensions.claim
 	refuse := func(outcome wire.StartOutcome, reason string, h *router.Host, model string) wire.Admission {
 		r := Record{Route: via.name, Rung: via.rung, Domain: via.domain, Claim: via.claim, Family: familyOf(req.Model), Profile: router.ProfileLive, Account: subject.Account, Program: subject.Program, Model: req.Model, Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds()}
 		if h != nil {
@@ -147,6 +146,7 @@ func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.Live
 	if reason := validateLive(req); reason != "" {
 		return refuse(wire.StartOutcomeInvalid, reason, nil, "")
 	}
+	req.Extensions = extensions.vendor
 	host, model, reason := p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileLive)
 	if host == nil {
 		return refuse(wire.StartOutcomeNoHost, reason, nil, "")
@@ -210,15 +210,25 @@ func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.Live
 		clear(headers)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
+	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileLive, model, &subject)
+	if !ok {
+		clear(headers)
+		if capacityRefusal {
+			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
+		}
+		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+	}
+	defer p.releaseModelActivity(activity)
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
 	op.profile, op.route, op.remote = router.ProfileLive, via, remote
+	p.bindOperation(ctx, op)
 	op.live = &liveSession{ready: make(chan struct{})}
 	runCtx, cancel := context.WithCancel(p.ctx)
 	op.cancel = cancel
-	if outcome := p.admitOperation(op); outcome != wire.StartOutcomeAccepted {
+	if outcome, admitReason := p.admitOperationWithActivity(ctx, op, activity); outcome != wire.StartOutcomeAccepted {
 		cancel()
 		clear(headers)
-		return refuse(outcome, "capacity", host, model)
+		return refuse(outcome, admitReason, host, model)
 	}
 	go p.runLive(runCtx, op, req, headers, commit)
 	a := wire.Admission{Outcome: wire.StartOutcomeAccepted, Operation: id, Host: host.Name, Model: model}
@@ -259,6 +269,15 @@ func (p *Provider) liveInput(ctx context.Context, s Subject, id string, sequence
 		return result(wire.LiveInputOutcomeDuplicate, ls.next)
 	}
 	if op.isEnded() || op.stopped() != "" || ls.backend == nil || ls.committed {
+		return result(wire.LiveInputOutcomeClosed, ls.next)
+	}
+	// Each input is decided again before it reaches the upstream session
+	// (INF-A6): a refused rule ends the session, and a decision that cannot be
+	// obtained sends nothing.
+	if refusal, err := p.standingOf(ctx, op); err != nil {
+		return result(wire.LiveInputOutcomeUnavailable, ls.next)
+	} else if refusal != "" {
+		op.stop(refusal)
 		return result(wire.LiveInputOutcomeClosed, ls.next)
 	}
 	var err error
