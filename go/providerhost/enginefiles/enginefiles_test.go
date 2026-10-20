@@ -1,15 +1,18 @@
 package enginefiles
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -264,7 +267,7 @@ func TestRecordIsBoundToTheTreesPath(t *testing.T) {
 	tree, v, _ := installed(t)
 	moved := tree
 	moved.Root = tree.Root + "-moved"
-	if err := os.Rename(tree.Root, moved.Root); err != nil {
+	if err := moveInstalledFixture(t, tree.Root, moved.Root); err != nil {
 		t.Fatal(err)
 	}
 	acl := newFakeACL()
@@ -440,5 +443,49 @@ func TestTheRecordMustLieOutsideTheTree(t *testing.T) {
 	tree.Record = filepath.Join(tree.Root, "lib", "fixture.record")
 	if _, err := NewVerifier(Options{ACL: newFakeACL()}).Launch(t.Context(), tree); err == nil {
 		t.Fatal("a record inside the tree was accepted")
+	}
+}
+
+// Moving the installed fixture establishes the changed-path scenario; it is
+// not a held-object denial assertion. Windows can briefly refuse this setup
+// move while a descendant is open elsewhere. Keep the original objects and
+// fail if sharing-compatible refusal persists within the small setup budget.
+func moveInstalledFixture(t *testing.T, from, to string) error {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	if end, ok := t.Deadline(); ok && end.Before(deadline) {
+		deadline = end
+	}
+	return moveFixtureBefore(t.Context(), from, to, deadline, os.Rename)
+}
+func moveFixtureBefore(ctx context.Context, from, to string, deadline time.Time, rename func(string, string) error) error {
+	for {
+		err := rename(from, to)
+		if err == nil || runtime.GOOS != "windows" || (!errors.Is(err, syscall.Errno(5)) && !errors.Is(err, syscall.Errno(32))) {
+			return err
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return err
+		}
+		delay := 5 * time.Millisecond
+		if remaining < delay {
+			delay = remaining
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+func TestFixtureSetupMoveReturnsOtherErrorsImmediately(t *testing.T) {
+	sentinel := errors.New("unrelated failure")
+	calls := 0
+	err := moveFixtureBefore(t.Context(), "from", "to", time.Now().Add(time.Second), func(string, string) error { calls++; return sentinel })
+	if !errors.Is(err, sentinel) || calls != 1 {
+		t.Fatalf("unrelated error=%v calls=%d", err, calls)
 	}
 }

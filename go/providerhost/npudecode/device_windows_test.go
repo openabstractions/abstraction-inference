@@ -18,6 +18,9 @@ import (
 	"testing"
 	"time"
 
+	identity "github.com/openabstractions/abstraction-identity"
+	"golang.org/x/sys/windows"
+
 	"github.com/openabstractions/abstraction-identity/go/privatedir"
 	"github.com/openabstractions/abstraction-identity/go/trustedpath"
 	"github.com/openabstractions/abstraction-inference/go/providerhost/modelfiles"
@@ -44,7 +47,7 @@ func trustedBase(t *testing.T) string {
 		probe := filepath.Join(dir, "probe")
 		if err := os.WriteFile(probe, nil, 0o600); err == nil && trustedpath.CheckFile(probe, kitOwners()) == nil {
 			os.Remove(probe)
-			return dir
+			return finalTestFolder(t, dir)
 		}
 	}
 	t.Skip("no folder here whose chain passes ID-D2 for this account")
@@ -262,4 +265,69 @@ func TestNPUFill(t *testing.T) {
 	}
 	runs, busy := dev.Stats()
 	t.Logf("%d NPU runs, %v from start to completion", runs, busy)
+}
+
+// The kit loader deliberately refuses alias spellings. Canonicalize only the
+// fixture root whose private chain was already verified, through its handle.
+func finalTestFolder(t *testing.T, path string) string {
+	t.Helper()
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := windows.CreateFile(name, windows.FILE_READ_ATTRIBUTES, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(h)
+	final, err := finalPath(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return final
+}
+
+func TestShortKitAliasIsRefusedBeforeLoading(t *testing.T) {
+	dir, _ := privateKit(t)
+	name, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]uint16, 32768)
+	n, err := windows.GetShortPathName(name, &buf[0], uint32(len(buf)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	short := windows.UTF16ToString(buf[:n])
+	if identity.SamePathName(short, dir) {
+		t.Skip("volume provides no distinct 8.3 alias")
+	}
+	if _, err := Open(context.Background(), Config{Dir: short}); !errors.Is(err, ErrKit) {
+		t.Fatalf("alias kit reached loader: %v", err)
+	}
+}
+
+// Reproduce the hosted runner's short trusted TEMP spelling while keeping
+// the private chain and loader policy unchanged.
+func TestKitUnderShortTrustedParentReachesTheStandInLoader(t *testing.T) {
+	parent := trustedBase(t)
+	name, err := windows.UTF16PtrFromString(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]uint16, 32768)
+	n, err := windows.GetShortPathName(name, &buf[0], uint32(len(buf)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	short := windows.UTF16ToString(buf[:n])
+	if strings.EqualFold(short, parent) {
+		t.Skip("volume provides no distinct 8.3 alias")
+	}
+	t.Setenv("TEMP", short)
+	t.Setenv("TMP", short)
+	dir, _ := privateKit(t)
+	if _, err := Open(context.Background(), Config{Dir: dir}); err == nil || errors.Is(err, ErrKit) || !strings.Contains(err.Error(), "load") {
+		t.Fatalf("canonical fixture did not reach stand-in loader: %v", err)
+	}
 }

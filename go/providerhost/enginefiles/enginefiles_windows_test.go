@@ -3,10 +3,12 @@
 package enginefiles
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -188,7 +190,7 @@ func TestInstallSetsTheReadOnlyDACLOnEveryFolder(t *testing.T) {
 		"rename": func() error { return os.Rename(file, file+".old") },
 		"delete": func() error { return os.Remove(file) },
 	} {
-		if err := try(); !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		if err := accountAccess(t, try); !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
 			t.Fatalf("%s under the read-only DACL: %v, want access denied", name, err)
 		}
 	}
@@ -260,7 +262,7 @@ func TestAFileCreatedAfterUnlockEndsReadOnlyAfterInstall(t *testing.T) {
 	if err := v.Install(t.Context(), tree); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, []byte("KERNEL"), 0o644); !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+	if err := accountAccess(t, func() error { return os.WriteFile(file, []byte("KERNEL"), 0o644) }); !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
 		t.Fatalf("a file created after Unlock stayed writable after Install: %v", err)
 	}
 }
@@ -326,7 +328,7 @@ func TestUnlockWithinAllowsRemovalOfTheFolderAround(t *testing.T) {
 	if err := setOwnFolderACL(half.Root, sid, FullControl); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(half.Root); !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+	if err := accountAccess(t, func() error { return os.RemoveAll(half.Root) }); !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
 		t.Fatalf("a half-open tree was removable before UnlockWithin: %v", err)
 	}
 	for _, root := range []string{around, half.Root} {
@@ -388,5 +390,221 @@ func TestALockedFileIsUnreadableAndAChangedFileIsAMismatch(t *testing.T) {
 	mismatch(t, err, Changed, "lib/ggml.dll")
 	if errors.Is(err, ErrUnreadable) {
 		t.Fatalf("a changed file is unreadable: %v", err)
+	}
+}
+
+// accountAccess checks the account ACE alone. Hosted runners may also have
+// enabled Administrators rights, which INF-F3 deliberately leaves unrestricted.
+// The restricting SID adds a second access check without changing the DACL.
+func accountAccess(t *testing.T, try func() error) error {
+	t.Helper()
+	var current windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY|windows.TOKEN_DUPLICATE, &current); err != nil {
+		t.Fatal(err)
+	}
+	defer current.Close()
+	user, err := current.GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	restrict := []windows.SIDAndAttributes{{Sid: user.User.Sid}}
+	var limited windows.Token
+	proc := windows.NewLazySystemDLL("advapi32.dll").NewProc("CreateRestrictedToken")
+	r, _, callErr := proc.Call(uintptr(current), 1, 0, 0, 0, 0,
+		1, uintptr(unsafe.Pointer(&restrict[0])), uintptr(unsafe.Pointer(&limited)))
+	if r == 0 {
+		t.Fatalf("CreateRestrictedToken: %v", callErr)
+	}
+	defer limited.Close()
+	var token windows.Token
+	if err := windows.DuplicateTokenEx(limited, windows.TOKEN_QUERY|windows.TOKEN_IMPERSONATE, nil, windows.SecurityImpersonation, windows.TokenImpersonation, &token); err != nil {
+		t.Fatal(err)
+	}
+	defer token.Close()
+	runtime.LockOSThread()
+	defer func() {
+		if err := windows.RevertToSelf(); err != nil {
+			t.Fatalf("RevertToSelf: %v", err)
+		}
+		runtime.UnlockOSThread()
+	}()
+	if err := windows.SetThreadToken(nil, token); err != nil {
+		t.Fatal(err)
+	}
+	return try()
+}
+
+// An additional enabled group can permit a write even when the account ACE
+// is read-only. The denial assertions must exercise the account's rights.
+func TestAccountAccessSeparatesTheAccountFromAdditionalGroupGrants(t *testing.T) {
+	root := t.TempDir()
+	sid, err := AccountSID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sd, err := windows.SecurityDescriptorFromString("D:P(A;OICI;0x1200a9;;;" + sid + ")(A;OICI;FA;;;WD)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.SetNamedSecurityInfo(root, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := SetFolderACL(root, sid, FullControl); err != nil {
+			t.Error(err)
+		}
+	})
+	file := filepath.Join(root, "extra-group.txt")
+	if err := os.WriteFile(file, []byte("readable"), 0600); err != nil {
+		t.Fatalf("unrestricted extra-group control: %v", err)
+	}
+	if err := accountAccess(t, func() error { _, err := os.ReadFile(file); return err }); err != nil {
+		t.Fatalf("restricted read: %v", err)
+	}
+	if err := accountAccess(t, func() error { return os.WriteFile(file, []byte("changed"), 0600) }); !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		t.Fatalf("restricted account write: %v", err)
+	}
+	if data, err := os.ReadFile(file); err != nil || string(data) != "readable" {
+		t.Fatalf("denied write changed bytes: %q %v", data, err)
+	}
+	// The caller's thread has reverted and still exercises the extra grant.
+	if err := os.WriteFile(file, []byte("reverted"), 0600); err != nil {
+		t.Fatalf("after impersonation: %v", err)
+	}
+}
+
+// The first real move is denied by an exact held descendant. Releasing that
+// handle after the refusal permits the setup move without recreating files.
+func TestFixtureSetupMoveWaitsForReleasedDescendant(t *testing.T) {
+	tree, _, _ := installed(t)
+	file := filepath.Join(tree.Root, "engine.exe")
+	held, err := openHeld(file, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	released := false
+	t.Cleanup(func() {
+		if !released {
+			held.close()
+		}
+	})
+	before, err := held.fileMeta()
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := tree.Root + "-setup"
+	calls := 0
+	rename := func(from, to string) error {
+		calls++
+		err := os.Rename(from, to)
+		if calls == 1 {
+			if !errors.Is(err, windows.ERROR_ACCESS_DENIED) && !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
+				t.Fatalf("held move: %v", err)
+			}
+			if closeErr := held.close(); closeErr != nil {
+				t.Fatal(closeErr)
+			}
+			released = true
+		}
+		return err
+	}
+	if err := moveFixtureBefore(t.Context(), tree.Root, moved, time.Now().Add(time.Second), rename); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("move calls=%d, want held refusal then success", calls)
+	}
+	afterHandle, err := openHeld(filepath.Join(moved, "engine.exe"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := afterHandle.fileMeta()
+	afterHandle.close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.id != after.id {
+		t.Fatal("setup move replaced the filesystem object")
+	}
+	if data, err := os.ReadFile(filepath.Join(moved, "engine.exe")); err != nil || string(data) != "engine" {
+		t.Fatalf("moved bytes=%q err=%v", data, err)
+	}
+}
+func TestFixtureSetupMoveRefusesAnUnreleasedDescendant(t *testing.T) {
+	tree, _, _ := installed(t)
+	held, err := openHeld(filepath.Join(tree.Root, "engine.exe"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.close()
+	moved := tree.Root + "-still-held"
+	err = moveFixtureBefore(t.Context(), tree.Root, moved, time.Now().Add(20*time.Millisecond), os.Rename)
+	if !errors.Is(err, windows.ERROR_ACCESS_DENIED) && !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
+		t.Fatalf("permanent hold: %v", err)
+	}
+	if _, err := os.Stat(tree.Root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(moved); !os.IsNotExist(err) {
+		t.Fatalf("denied move created target: %v", err)
+	}
+}
+
+// A busy metadata record is a refusal, not a trusted new record. This tests
+// the production operation directly; Install and writeAtomic gain no retries.
+func TestBusyMetadataRecordRefusesUntilItsExactHolderCloses(t *testing.T) {
+	tree, v, _ := installed(t)
+	before, err := os.ReadFile(tree.Record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := openHeld(tree.Record, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	released := false
+	t.Cleanup(func() {
+		if !released {
+			held.close()
+		}
+	})
+	for _, operation := range []string{"install", "launch"} {
+		var err error
+		if operation == "install" {
+			err = v.Install(t.Context(), tree)
+		} else {
+			var h *Hold
+			h, err = v.Launch(t.Context(), tree)
+			if h != nil {
+				h.Release()
+			}
+		}
+		if !errors.Is(err, windows.ERROR_ACCESS_DENIED) && !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
+			t.Fatalf("busy %s: %v", operation, err)
+		}
+		after, readErr := os.ReadFile(tree.Record)
+		if readErr != nil || !bytes.Equal(before, after) {
+			t.Fatalf("busy record changed: %v", readErr)
+		}
+		v.mu.Lock()
+		_, trusted := v.known[tree.Record]
+		v.mu.Unlock()
+		if trusted {
+			t.Fatalf("busy %s trusted a new record", operation)
+		}
+	}
+	if err := held.close(); err != nil {
+		t.Fatal(err)
+	}
+	released = true
+	if err := v.Install(t.Context(), tree); err != nil {
+		t.Fatal(err)
+	}
+	if h := launch(t, v, tree); h.Full() {
+		t.Fatal("successful install did not establish the record")
 	}
 }

@@ -32,7 +32,7 @@ func junction(t *testing.T, link, target string) {
 // after a release is refused at the next launch, so the engine never reads
 // the other bytes the swap points at.
 func TestPlacedPathCannotBeRedirectedByAJunction(t *testing.T) {
-	root := t.TempDir()
+	root := plainTempDir(t)
 	store := filepath.Join(root, "store")
 	pinned := placedFile(t, filepath.Join(store, "models"), "weights.gguf", "the pinned weights")
 	placedFile(t, filepath.Join(root, "elsewhere", "models"), "weights.gguf", "other weights!!!!!")
@@ -58,6 +58,7 @@ func TestPlacedPathCannotBeRedirectedByAJunction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { hold.Release() })
 	paths := hold.Paths()
 	if len(paths) != 1 || !strings.EqualFold(paths[0], pinned.Path) || strings.HasPrefix(paths[0], `\\?\`) {
 		t.Fatalf("final paths %q for %s", paths, pinned.Path)
@@ -93,7 +94,7 @@ func TestPlacedPathCannotBeRedirectedByAJunction(t *testing.T) {
 // replaced by a junction, because it is already held. Without the hold the
 // rename succeeds here, as no file below the folder is open yet.
 func TestPlacedFolderCannotBeSwappedBetweenCheckAndOpen(t *testing.T) {
-	root := t.TempDir()
+	root := plainTempDir(t)
 	store := filepath.Join(root, "store")
 	pinned := placedFile(t, filepath.Join(store, "models"), "weights.gguf", "the pinned weights")
 	placedFile(t, filepath.Join(root, "elsewhere", "models"), "weights.gguf", "other weights!!!!!")
@@ -109,6 +110,9 @@ func TestPlacedFolderCannotBeSwappedBetweenCheckAndOpen(t *testing.T) {
 	}
 	t.Cleanup(func() { afterFolder = nil })
 	hold, err := NewVerifier(Options{}).LaunchPlaced(context.Background(), "test set", []Placed{pinned}, filepath.Join(root, "state", "placed.files"))
+	if hold != nil {
+		t.Cleanup(func() { hold.Release() })
+	}
 	if renamed == nil {
 		t.Fatal("a held folder was renamed between its check and the next open")
 	}
@@ -121,4 +125,21 @@ func TestPlacedFolderCannotBeSwappedBetweenCheckAndOpen(t *testing.T) {
 	if err := hold.Release(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Use the owner's held-handle resolver for a controlled plain fixture root;
+// TEMP may use an 8.3 account spelling while the kernel returns its long name.
+func plainTempDir(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	held, err := HoldDirectory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+	final, err := held.nodes[len(held.nodes)-1].finalPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return final
 }
