@@ -140,7 +140,11 @@ operator names it explicitly with `inference server add`.
 
 ## Chat with a model
 
-A chat completion needs inference alone. Name the model and call `Complete`:
+A chat completion needs inference alone. Before the first call, you need a
+model server on this machine, such as Ollama, and one grant for your built
+program, as [Set up a model server](#set-up-a-model-server) shows. Build the
+program before granting: the grant names its absolute path. Name the model on
+the command line and call `Complete`:
 
 ```go
 package main
@@ -231,6 +235,102 @@ func main() {
 `route.ModelsContext` names every model this machine's model servers can
 already serve; `alias.Servable` is true for one the router could route a call
 to. The model layer is for acquiring weights that are not on the machine yet.
+
+## Get a model, then chat
+
+An application that ships with no model asks OA's catalogue which model fits
+this computer. When that model is not served yet, the application asks OA's
+setup step, and the person answers in OA. Once the model is served, the
+application chats with it:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	facade "github.com/openabstractions/abstraction-facade/go"
+	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/applications"
+	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	model "github.com/openabstractions/abstraction-model/go/client"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	machine := facade.Discover()
+
+	// 1. Rank the catalogue's coding models against this computer.
+	catalog, err := machine.ResolveModelCatalog(ctx, facade.Requirements{Scope: facade.ScopeLocal})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fit, err := catalog.FitContext(ctx, model.CatalogUseCode)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pick, _ := model.LocalPick(fit)
+	if pick < 0 {
+		log.Fatalf("no catalogue model fits this computer (%s)", fit.Outcome)
+	}
+	entry := fit.Entries[pick]
+
+	// 2. Not served yet: ask OA's setup step. The person answers in OA.
+	if entry.Availability != model.AvailabilityServed {
+		binding, err := machine.ResolveService(ctx, "abstraction.facade/applications@3", facade.Requirements{Scope: facade.ScopeLocal})
+		if err != nil {
+			log.Fatal(err)
+		}
+		apps := applications.NewApplicationsClient(binding.Transport().WithContext(ctx))
+		setup, err := apps.RequestSetup("code")
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("setup %s %s\n", setup.Outcome, setup.Reason)
+		return
+	}
+
+	// 3. Chat with the model this computer serves.
+	chat, err := machine.ResolveInference(ctx, facade.Requirements{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	reply, err := chat.Complete(ctx, wire.Request{
+		Model: entry.Family,
+		Messages: []wire.Message{{Role: wire.RoleUser, Parts: []wire.Part{
+			{Kind: wire.PartKindText, Text: "Say hello in five words."},
+		}}},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	if reply.Outcome != wire.ReplyOutcomeCompleted {
+		log.Fatalf("chat %s: %s", reply.Outcome, reply.Reason)
+	}
+	for _, part := range reply.Message.Parts {
+		fmt.Print(part.Text)
+	}
+	fmt.Println()
+}
+```
+
+Add the modules with `go get github.com/openabstractions/abstraction-facade/go@v0.8.0
+github.com/openabstractions/abstraction-inference/go@v0.8.0
+github.com/openabstractions/abstraction-model/go@v0.8.0`.
+
+- `FitContext` needs the router's `inventory.read` right, which the
+  [inference grant](#set-up-a-model-server) includes.
+- `LocalPick` returns the first entry this computer serves or has room for.
+- `RequestSetup` needs a confirmed registration whose signed manifest
+  declares a `chat` model need, and the Panel must be running. It answers
+  `asked`, `already_set_up` or `cannot_run`. After `asked`, the person sees
+  OA's setup question; run the program again once setup finishes. The
+  [application profile](https://github.com/openabstractions/abstraction-facade/blob/main/APPLICATIONS.md)
+  covers registration.
+- `entry.Family` is the model family name a chat request accepts.
 
 ## Capabilities
 
