@@ -13,6 +13,7 @@
     "url": "https://github.com/openabstractions/abstraction-inference/issues"
   },
   "type": "module",
+  "dependencies": {"@openabstractions/rights": "0.0.0", "@openabstractions/job-acceptance": "0.0.0"},
   "types": "./js/abstraction/inference/api/index.d.mts",
   "exports": {".": {"default": "./index.js"}, "./protocol": {"types": "./js/abstraction/inference/api/index.d.mts", "default": "./js/abstraction/inference/api/index.mjs"}, "./job": {"types": "./js/abstraction/inference/job/index.d.mts", "default": "./js/abstraction/inference/job/index.mjs"}},
   "files": [

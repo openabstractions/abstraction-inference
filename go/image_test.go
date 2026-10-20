@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -607,6 +608,84 @@ func TestComfyWorkflowRunsPromptHistoryAndView(t *testing.T) {
 	defer mu.Unlock()
 	if strings.Join(paths, ",") != "/prompt,/history/p1,/view" {
 		t.Fatalf("paths %v", paths)
+	}
+}
+
+func TestComfyTerminalErrorDoesNotPollOrExposeDetails(t *testing.T) {
+	for _, completed := range []bool{false, true} {
+		t.Run(fmt.Sprint(completed), func(t *testing.T) {
+			var polls, views, deletes int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Retry-After", "0")
+				switch r.URL.Path {
+				case "/prompt":
+					io.WriteString(w, `{"prompt_id":"p1"}`)
+				case "/history/p1":
+					polls++
+					json.NewEncoder(w).Encode(map[string]any{"p1": map[string]any{
+						"status":  map[string]any{"completed": completed, "status_str": "error", "messages": []any{"private path and traceback"}},
+						"outputs": map[string]any{"7": map[string]any{"images": []any{map[string]any{"filename": "out.png"}}}},
+					}})
+				case "/view":
+					views++
+					w.Write(pngOne)
+				case "/queue":
+					deletes++
+					io.WriteString(w, `{}`)
+				}
+			}))
+			defer server.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			reply := runComfyImage(ctx, server.Client(), router.ComfyUI(server.URL), "model.safetensors", wire.ImageRequest{Prompt: "test", Size: "512x512", Count: 1, Extensions: map[string]string{}}, imageTestBounds(), func(int64, string) {})
+			if reply.outcome != wire.ReplyOutcomeUnavailable || reply.reason != "upstream:status" || len(reply.images) != 0 || polls != 1 || views != 0 || deletes != 0 {
+				t.Fatalf("reply=%+v polls=%d views=%d deletes=%d", reply, polls, views, deletes)
+			}
+		})
+	}
+}
+
+func TestComfyPendingHistoryWaitsForSuccessfulOutput(t *testing.T) {
+	var polls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "0")
+		switch r.URL.Path {
+		case "/prompt":
+			io.WriteString(w, `{"prompt_id":"p1"}`)
+		case "/history/p1":
+			polls++
+			if polls == 1 {
+				io.WriteString(w, `{"p1":{"status":{"completed":false},"outputs":{}}}`)
+			} else {
+				io.WriteString(w, `{"p1":{"status":{"completed":true,"status_str":"success"},"outputs":{"7":{"images":[{"filename":"out.png"}]}}}}`)
+			}
+		case "/view":
+			w.Write(pngOne)
+		}
+	}))
+	defer server.Close()
+	reply := runComfyImage(context.Background(), server.Client(), router.ComfyUI(server.URL), "model.safetensors", wire.ImageRequest{Prompt: "test", Size: "512x512", Count: 1, Extensions: map[string]string{}}, imageTestBounds(), func(int64, string) {})
+	if reply.outcome != wire.ReplyOutcomeCompleted || len(reply.images) != 1 || polls != 2 {
+		t.Fatalf("reply=%+v polls=%d", reply, polls)
+	}
+}
+
+func TestComfyMalformedHistoryRefused(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "0")
+		switch r.URL.Path {
+		case "/prompt":
+			io.WriteString(w, `{"prompt_id":"p1"}`)
+		case "/history/p1":
+			io.WriteString(w, `{"p1":{"status":{"completed":"invalid","status_str":"error"}}}`)
+		case "/queue":
+			io.WriteString(w, `{}`)
+		}
+	}))
+	defer server.Close()
+	reply := runComfyImage(context.Background(), server.Client(), router.ComfyUI(server.URL), "model.safetensors", wire.ImageRequest{Prompt: "test", Size: "512x512", Count: 1, Extensions: map[string]string{}}, imageTestBounds(), func(int64, string) {})
+	if reply.outcome != wire.ReplyOutcomeUnavailable || reply.reason != "upstream:response" || len(reply.images) != 0 {
+		t.Fatalf("reply=%+v", reply)
 	}
 }
 

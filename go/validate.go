@@ -5,19 +5,8 @@ import (
 	"strings"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
-
-func canonicalSHA256(digest string) bool {
-	if len(digest) != 71 || !strings.HasPrefix(digest, "sha256:") {
-		return false
-	}
-	for _, c := range digest[7:] {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-			return false
-		}
-	}
-	return true
-}
 
 func imageMediaType(mediaType string) bool {
 	switch mediaType {
@@ -60,7 +49,7 @@ func validate(req wire.Request) string {
 					return "part:text"
 				}
 			case wire.PartKindImage:
-				if m.Role != wire.RoleUser || !canonicalSHA256(part.Digest) || !imageMediaType(part.MediaType) || part.Text != "" || part.CallID != "" || part.Name != "" || part.Arguments != "" {
+				if m.Role != wire.RoleUser || !contentdigest.Valid(part.Digest) || !imageMediaType(part.MediaType) || part.Text != "" || part.CallID != "" || part.Name != "" || part.Arguments != "" {
 					return "part:image"
 				}
 			case wire.PartKindToolCall:

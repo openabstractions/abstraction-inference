@@ -1,4 +1,6 @@
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
 find_dependency(abstraction_ipc CONFIG)
+find_dependency(abstraction_rights CONFIG)
+find_dependency(abstraction_job_acceptance CONFIG)
 include("${CMAKE_CURRENT_LIST_DIR}/abstraction_inference_apiTargets.cmake")

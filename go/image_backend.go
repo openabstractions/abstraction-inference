@@ -19,7 +19,7 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
-	"github.com/openabstractions/abstraction-inference/go/providerhost/sdcpp"
+	"github.com/openabstractions/abstraction-inference/go/mediationcontent"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
@@ -84,10 +84,10 @@ func imageRequest(ctx context.Context, client *http.Client, method, address, con
 	if err != nil {
 		// A provider's client refusing under the sd.cpp policy (INF-SD1,
 		// INF-SD2, INF-SD3) keeps its typed reason.
-		switch reason := sdcpp.Reason(err); reason {
-		case sdcpp.ReasonEngineDirective, sdcpp.ReasonRequestForm:
+		switch reason := mediationcontent.Reason(err); reason {
+		case mediationcontent.ReasonEngineDirective, mediationcontent.ReasonRequestForm:
 			return nil, imageBackendFailure(wire.ReplyOutcomeInvalid, reason)
-		case sdcpp.ReasonImageSize:
+		case mediationcontent.ReasonImageSize:
 			return nil, imageBackendFailure(wire.ReplyOutcomeUnsupportedFeature, reason)
 		}
 		return nil, imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:unreachable")
@@ -582,11 +582,15 @@ func comfyWorkflow(model string, req wire.ImageRequest) map[string]any {
 }
 
 func runComfyImage(ctx context.Context, client *http.Client, host *router.Host, model string, req wire.ImageRequest, bounds imageOutputBounds, progress func(int64, string)) imageBackendReply {
+	return runComfyGraph(ctx, client, host, req, comfyWorkflow(model, req), "7", bounds, progress)
+}
+
+func runComfyGraph(ctx context.Context, client *http.Client, host *router.Host, req wire.ImageRequest, graph map[string]any, outputNode string, bounds imageOutputBounds, progress func(int64, string)) imageBackendReply {
 	clientID, err := operationID()
 	if err != nil {
 		return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:client-id")
 	}
-	resp, failed := jsonImageRequest(ctx, client, http.MethodPost, strings.TrimRight(host.Base, "/")+"/prompt", map[string]any{"prompt": comfyWorkflow(model, req), "client_id": clientID}, nil)
+	resp, failed := jsonImageRequest(ctx, client, http.MethodPost, strings.TrimRight(host.Base, "/")+"/prompt", map[string]any{"prompt": graph, "client_id": clientID}, nil)
 	if resp == nil {
 		return failed
 	}
@@ -652,20 +656,19 @@ func runComfyImage(ctx context.Context, client *http.Client, host *router.Host, 
 		//unchecked: closing a response body already fully read; a Close error here carries nothing actionable beyond what decoding already determined
 		history.Body.Close()
 		record, ok := records[accepted.PromptID]
+		// The upstream records unsuccessful executions as completed=false, status=error
+		// after removing them from its running queue. Keep upstream details private.
+		if ok && record.Status.Status == "error" {
+			terminal = true
+			return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:status")
+		}
 		if !ok || !record.Status.Completed {
 			progress(0, "processing")
 			continue
 		}
 		terminal = true
 		var refs []struct{ Filename, Subfolder, Type string }
-		keys := make([]string, 0, len(record.Outputs))
-		for key := range record.Outputs {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			refs = append(refs, record.Outputs[key].Images...)
-		}
+		refs = append(refs, record.Outputs[outputNode].Images...)
 		if int64(len(refs)) != req.Count {
 			return imageBackendFailure(wire.ReplyOutcomeUnavailable, "upstream:count")
 		}

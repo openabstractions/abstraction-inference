@@ -7,6 +7,7 @@ import (
 	"github.com/openabstractions/abstraction-identity/listen"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	"github.com/openabstractions/abstraction-inference/go/mediationcontent"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 // runNativeImage relays one image operation to the exact selected native
@@ -77,7 +78,7 @@ func (p *Provider) runNativeImage(ctx context.Context, op *operation, req wire.I
 				op.emit(wire.Delta{Kind: wire.DeltaKindImageProgress, ImageProgress: &progress}, p.cfg.Now())
 			case wire.DeltaKindImageResult:
 				result := *delta.ImageResult
-				if int64(len(results)) >= req.Count || result.Index != int64(len(results)) || !canonicalSHA256(result.Delivery.Digest) || !generatedInputMedia(result.Delivery.MediaType) || result.Delivery.Size < 1 || result.Delivery.Size > p.cfg.MaxGeneratedImageBytes || result.Delivery.Location != "local" {
+				if int64(len(results)) >= req.Count || result.Index != int64(len(results)) || !contentdigest.Valid(result.Delivery.Digest) || !generatedInputMedia(result.Delivery.MediaType) || result.Delivery.Size < 1 || result.Delivery.Size > p.cfg.MaxGeneratedImageBytes || result.Delivery.Location != "local" {
 					cancelNative()
 					return imageFailure(wire.ReplyOutcomeUnavailable, "native:delivery")
 				}
@@ -95,21 +96,12 @@ func (p *Provider) runNativeImage(ctx context.Context, op *operation, req wire.I
 				if end.Outcome != wire.ReplyOutcomeCompleted {
 					return end
 				}
-				outputs := make([]generatedImage, 0, len(end.Deliveries))
-				var total int64
-				for _, delivery := range end.Deliveries {
-					if delivery.Size > p.cfg.MaxImageOutputBytes-total {
-						return imageFailure(wire.ReplyOutcomeUnavailable, "native:delivery")
-					}
-					data, err := mediationcontent.Download(ctx, transport, delivery.Digest, delivery.MediaType, delivery.Size, p.cfg.MaxGeneratedImageBytes)
-					if err != nil {
-						if ctx.Err() != nil {
-							return imageFailure(wire.ReplyOutcomeCancelled, "caller")
-						}
-						return imageFailure(wire.ReplyOutcomeUnavailable, "native:content")
-					}
-					outputs = append(outputs, generatedImage{data: data, mediaType: delivery.MediaType})
-					total += delivery.Size
+				outputs, reason := downloadNativeImages(ctx, transport, end.Deliveries, p.cfg.MaxGeneratedImageBytes, p.cfg.MaxImageOutputBytes)
+				if reason == "native:content" && ctx.Err() != nil {
+					return imageFailure(wire.ReplyOutcomeCancelled, "caller")
+				}
+				if reason != "" {
+					return imageFailure(wire.ReplyOutcomeUnavailable, reason)
 				}
 				if ctx.Err() != nil {
 					return imageFailure(wire.ReplyOutcomeCancelled, "caller")

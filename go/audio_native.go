@@ -3,12 +3,12 @@ package inference
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"time"
 
 	"github.com/openabstractions/abstraction-identity/listen"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	"github.com/openabstractions/abstraction-inference/go/mediationcontent"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 // runNativeTranscription relays one transcription to the exact selected
@@ -155,7 +155,7 @@ func (p *Provider) runNativeSpeech(ctx context.Context, op *operation, req wire.
 				if end.Outcome != wire.ReplyOutcomeCompleted {
 					return speechFailed(end.Outcome, end.Reason)
 				}
-				digest := "sha256:" + hex.EncodeToString(relayed.Sum(nil))
+				digest := contentdigest.Hex(relayed.Sum(nil))
 				if size == 0 || end.Delivery.Digest != digest || end.Delivery.Size != size || end.Delivery.MediaType != media || end.Delivery.Location != "local" {
 					return speechFailed(wire.ReplyOutcomeUnavailable, "native:delivery")
 				}

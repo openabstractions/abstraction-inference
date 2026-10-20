@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +16,7 @@ import (
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 const SpeechContract = "abstraction.inference/speech@1"
@@ -97,7 +97,7 @@ func (p *Provider) StartSpeech(ctx context.Context, subject Subject, req wire.Sp
 		r := Record{Profile: router.ProfileSpeech, Route: via.name, Rung: via.rung, Account: subject.Account, Program: subject.Program, Model: req.Model,
 			Family: familyOf(req.Model), Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
 		if host != nil {
-			r.Host, r.Model = host.Name, model
+			r.Host, r.Model, r.Placement = host.Name, model, servedPlace(host)
 			if host.Wire == router.WireRemote {
 				r.Domain = host.Domain
 			}
@@ -169,8 +169,8 @@ func (p *Provider) StartSpeech(ctx context.Context, subject Subject, req wire.Sp
 		credential = host.Credential
 	}
 	if credential != "" && p.cfg.Ceilings != nil && !remote {
-		if unit, over := p.cfg.Ceilings.Exceeded(credential); over {
-			return refuse(wire.StartOutcomeBudgetExceeded, "ceiling:"+unit+":"+credential, host, model)
+		if reason := p.cfg.Ceilings.budgetRefusal(credential, subject, host); reason != "" {
+			return refuse(budgetStartOutcome(reason), reason, host, model)
 		}
 	}
 	// Avoid credential work for an operation that is already known to exceed
@@ -195,13 +195,10 @@ func (p *Provider) StartSpeech(ctx context.Context, subject Subject, req wire.Sp
 		clear(headers)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
-	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileSpeech, model, &subject)
-	if !ok {
+	activity, admissionOutcome, admitReason := p.admitModel(ctx, host, router.ProfileSpeech, model, &subject, subject, credential)
+	if admissionOutcome != wire.StartOutcomeAccepted {
 		clear(headers)
-		if capacityRefusal {
-			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
-		}
-		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+		return refuse(admissionOutcome, admitReason, host, model)
 	}
 	defer p.releaseModelActivity(activity)
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
@@ -249,9 +246,10 @@ func (p *Provider) runSpeech(ctx context.Context, op *operation, kind string, re
 		end = runSpeechHTTP(ctx, p.cfg.HTTP, op.host, op.model, kind, req, headers, p.cfg.MaxSpeechBytes, commit, op.beginCompletion, emit)
 	}
 	clear(headers)
-	if reason := op.stopped(); reason != "" {
+	uncertain := remoteExecutionUncertain(op, end.Outcome, end.Reason)
+	if reason := op.stopped(); reason != "" && !uncertain {
 		end.Outcome, end.Reason = wire.ReplyOutcomeCancelled, reason
-	} else if p.ctx.Err() != nil || ctx.Err() != nil && end.Outcome == wire.ReplyOutcomeUnavailable {
+	} else if !uncertain && (p.ctx.Err() != nil || ctx.Err() != nil && end.Outcome == wire.ReplyOutcomeUnavailable) {
 		end.Outcome, end.Reason = wire.ReplyOutcomeCancelled, "caller"
 	}
 	end.Host, end.Model, end.Characters = op.host.Name, op.model, characters
@@ -260,14 +258,14 @@ func (p *Provider) runSpeech(ctx context.Context, op *operation, kind string, re
 		if end.Cost != nil {
 			cost = end.Cost.Micros
 		}
-		if err := p.cfg.Ceilings.AddUnits(op.credential, end.Usage.Input+end.Usage.Output, cost, 0, characters); err != nil {
+		if err := p.cfg.Ceilings.addModalitiesForSubject(op.credential, op.subject, addObservedCount(end.Usage.Input, end.Usage.Output), cost, 0, 0, characters, end.Cost != nil); err != nil {
 			p.report(err)
 		}
 	}
 	now := p.cfg.Now()
 	op.emit(wire.Delta{Kind: wire.DeltaKindEnd, SpeechEnd: &end}, now)
 	r := Record{Operation: op.id, Profile: router.ProfileSpeech, Route: op.route.name, Rung: op.route.rung, Account: op.subject.Account, Program: op.subject.Program,
-		Host: op.host.Name, Model: op.model, Family: familyOf(op.model), Credential: op.credential, Outcome: end.Outcome.String(), Reason: end.Reason, Characters: characters,
+		Host: op.host.Name, Model: op.model, Placement: op.placement, Family: familyOf(op.model), Credential: op.credential, Outcome: end.Outcome.String(), Reason: end.Reason, Characters: characters,
 		WallMS: now.Sub(op.started).Milliseconds(), Domain: op.route.domain, Claim: op.route.claim}
 	if op.remote {
 		r.Domain = op.host.Domain
@@ -370,7 +368,7 @@ func runSpeechHTTP(ctx context.Context, client *http.Client, host *router.Host, 
 // authorization and returns the completed reply with its local delivery.
 func publishSpeech(ctx context.Context, audio []byte, media string, commit ContentCommitter, beginCompletion func() bool) wire.SpeechReply {
 	sum := sha256.Sum256(audio)
-	digest := "sha256:" + hex.EncodeToString(sum[:])
+	digest := contentdigest.Hex(sum[:])
 	if !beginCompletion() {
 		return speechFailed(wire.ReplyOutcomeCancelled, "cancel")
 	}
@@ -410,7 +408,7 @@ func (p *Provider) runRemoteSpeech(ctx context.Context, op *operation, req wire.
 	client := wire.NewSpeechClient(transport.WithContext(ctx))
 	admission, err := client.Start(forwarded)
 	if err != nil {
-		return speechFailed(wire.ReplyOutcomeUnavailable, "remote:unreachable")
+		return speechFailed(wire.ReplyOutcomeUnavailable, remoteRequestReason(err))
 	}
 	if admission.Outcome != wire.StartOutcomeAccepted {
 		outcome := replyFromStart(admission.Outcome)
@@ -455,7 +453,7 @@ func (p *Provider) runRemoteSpeech(ctx context.Context, op *operation, req wire.
 			if d.Kind == wire.DeltaKindEnd && d.SpeechEnd != nil {
 				end := *d.SpeechEnd
 				if end.Outcome == wire.ReplyOutcomeCompleted {
-					wantDigest := "sha256:" + hex.EncodeToString(remoteAudio.Sum(nil))
+					wantDigest := contentdigest.Hex(remoteAudio.Sum(nil))
 					if remoteSize == 0 || end.Delivery.Size != remoteSize || end.Delivery.Digest != wantDigest || end.Delivery.MediaType != speechMediaType(req.Format) {
 						cancelRemote()
 						return speechFailed(wire.ReplyOutcomeUnavailable, "remote:delivery")

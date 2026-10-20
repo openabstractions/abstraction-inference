@@ -10,14 +10,19 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 	"net/http"
+	"slices"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	identity "github.com/openabstractions/abstraction-identity"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
+	watch "github.com/openabstractions/abstraction-watch/go"
 )
 
 // Contract names and vocabulary this provider serves.
@@ -198,10 +203,33 @@ func routeOf(ctx context.Context) route {
 	return route{name: RouteNative}
 }
 
+func servedPlace(host *router.Host) wire.ServedPlace {
+	if host == nil {
+		return ""
+	}
+	if host.Domain != "" {
+		return wire.ServedPlaceRemote
+	}
+	if host.Hosted {
+		return wire.ServedPlaceHosted
+	}
+	return wire.ServedPlaceLocal
+}
+
 // Record is one log record: an ended operation or an admission refusal. It
 // carries names and counts, never header values or message content.
 type Record struct {
+	// Placement records the selected host's execution placement; empty is absent.
+	Placement wire.ServedPlace
 	Operation string
+	// ChatVersion identifies the receiving chat contract; zero preserves legacy logs.
+	ChatVersion int
+	// ChatUsage keeps chat@3 observation presence, including reported zero.
+	ChatUsage    *wire.ChatUsage
+	FinishReason string
+	Timing       *RequestTiming
+	// DelegatedTiming is the serving runtime's claim, never a local phase fact.
+	DelegatedTiming *DelegatedTiming
 	// Profile is the host profile of the call: embed for embed@1, "" for chat.
 	Profile      string
 	Route        string
@@ -228,13 +256,38 @@ type Record struct {
 	// Domain on a remote runtime, and to Program, the designated runtime, on a
 	// leaf provider. A claim from any other caller is never recorded.
 	Claim string
+	// Preferred, PreferredHost and Selection record a named selection
+	// policy's choice (INF-R1). Preferred is the policy's first model.
+	// PreferredHost is the host that served it, or after a fallback the hosts
+	// known unavailable for it, comma-separated. Selection is the selection
+	// reason word. Host and Model always name the route that ran. All three
+	// are empty for an explicit model request.
+	Preferred     string
+	PreferredHost string
+	Selection     string
+}
+
+// selectionNote is a named policy's choice, carried from selection into the
+// records of the request it admitted or refused.
+type selectionNote struct {
+	preferred, preferredHost string
+	// reason is zero when nothing was selected.
+	reason wire.SelectionReason
+}
+
+func (n selectionNote) apply(r *Record) {
+	r.Preferred, r.PreferredHost, r.Selection = n.preferred, n.preferredHost, n.reason.String()
 }
 
 // Config composes a provider. Router, Decide and Apply are required.
 type Config struct {
-	Router *router.Router
-	Decide Decider
-	Apply  Applier
+	// ChatLogicalOwner is the restart-stable identity supplied by trusted
+	// composition: the runtime's Job owner, or a designated leaf's declared
+	// provider name. Blank leaves chat@3 unavailable until bound.
+	ChatLogicalOwner string
+	Router           *router.Router
+	Decide           Decider
+	Apply            Applier
 	// Standing decides again, asking nobody, whether the subject of a
 	// running operation or durable job may still complete on its server and
 	// use its credential (INF-A6). Nil decides complete through Decide and no
@@ -253,6 +306,19 @@ type Config struct {
 	// ImageEngineHost is the exact router declaration served by ImageEngine.
 	// A local callback must never execute a different selected engine host.
 	ImageEngineHost *router.Host
+	// ComfyRecipes contains immutable provider-private graphs attached to current
+	// local declarations. ValidateComfyBinding must recheck registration identity
+	// and base before readiness and before submission; it never grants authority.
+	ComfyRecipes         []ComfyRecipeBinding
+	ValidateComfyBinding func(context.Context, string, string) bool
+	// ValidateHostBinding rechecks binding ID, engine kind and base. Legacy
+	// protocol-specific validation must also pass when explicitly supplied.
+	ValidateHostBinding func(context.Context, string, string, string) bool
+	// Waiting names why a model no host here serves for a profile is on its
+	// way, such as approval:pending for a declaration waiting for the
+	// person's Keep; "" when nothing names it. A refusal then carries this
+	// word in place of the router's not-here or no-host verdict.
+	Waiting func(ctx context.Context, model, profile string) string
 	// ImageFields maps the vendor extensions ImageFieldsHost declares for
 	// the image profile (router.Host.SupportedExtensions) to fields of the
 	// OpenAI-compatible image request sent to that host: a string or int64
@@ -285,6 +351,13 @@ type Config struct {
 	// hook's reason, or `not_permitted` when the reason is exactly that word
 	// (INF-A5).
 	Admit Admitter
+	// FreeCapacity declares that Admit enforces chat@3's free-capacity
+	// restriction. Admit remains the sole admission hook. False, or nil Admit,
+	// refuses the guarantee on a direct host.
+	FreeCapacity bool
+	// WaitExecution prepares an accepted chat operation using its own lifetime.
+	// Admission authority remains in Admit. Nil starts the adapter immediately.
+	WaitExecution func(context.Context, *router.Host, string) ExecutionPreparation
 	// ResolveContent reads image digests after host authorization and before
 	// credentials or an upstream request. It is required by requests that use
 	// vision@1 and receives the original bound caller.
@@ -337,6 +410,15 @@ type Config struct {
 	Retention time.Duration
 	// Idle cancels an operation nobody observes; default ten seconds.
 	Idle time.Duration
+	// ResumeIdle is Idle, and the least retention, for an operation whose
+	// caller's last Observe returned its page before the end: a caller such
+	// as an agent tool that answers "working" with a handle and resumes after
+	// its own turn. Default five minutes; never shorter than Idle.
+	ResumeIdle time.Duration
+	// JobIdle is Idle for an image operation a durable job owns
+	// (JobExtension), which also stays observable for at least JobIdle after
+	// it ends; default ten minutes (INF-G5).
+	JobIdle time.Duration
 	// RetainedDeltas bounds the readable deltas per operation; default 4096.
 	RetainedDeltas int
 	// MaxOperations bounds a subject's unended operations; default 8.
@@ -349,9 +431,12 @@ type Config struct {
 
 // Provider serves chat@1 for bound subjects.
 type Provider struct {
+	chat3History    *chat3History
+	comfyRecipes    atomic.Pointer[comfyRecipeSet]
 	cfg             Config
 	mu              sync.Mutex
 	ops             map[string]*operation
+	observe         *watch.Gate
 	pendingModels   map[string]int
 	pendingSubjects map[Subject]int
 	surveyed        time.Time
@@ -374,6 +459,12 @@ func New(cfg Config) (*Provider, error) {
 	}
 	if cfg.HTTP == nil {
 		cfg.HTTP = &http.Client{}
+	}
+	if err := validateComfyRecipes(&cfg); err != nil {
+		return nil, err
+	}
+	if err := validateEngineHosts(&cfg); err != nil {
+		return nil, err
 	}
 	if cfg.MaxImageBytes <= 0 {
 		cfg.MaxImageBytes = DefaultMaxImageBytes
@@ -399,6 +490,13 @@ func New(cfg Config) (*Provider, error) {
 	if cfg.Idle <= 0 {
 		cfg.Idle = 10 * time.Second
 	}
+	if cfg.JobIdle <= 0 {
+		cfg.JobIdle = DefaultJobIdle
+	}
+	if cfg.ResumeIdle <= 0 {
+		cfg.ResumeIdle = DefaultResumeIdle
+	}
+	cfg.ResumeIdle = max(cfg.ResumeIdle, cfg.Idle)
 	if cfg.RetainedDeltas <= 0 {
 		cfg.RetainedDeltas = 4096
 	}
@@ -413,8 +511,49 @@ func New(cfg Config) (*Provider, error) {
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	p := &Provider{cfg: cfg, ops: map[string]*operation{}, pendingModels: map[string]int{}, pendingSubjects: map[Subject]int{}, ctx: ctx, stop: stop, done: make(chan struct{})}
+	var err error
+	p.chat3History, err = newChat3History(cfg.Retention, cfg.MaxOperations, cfg.RetainedDeltas)
+	if err != nil {
+		stop()
+		return nil, err
+	}
+	if cfg.ChatLogicalOwner != "" {
+		if err := p.chat3History.bindOwner(cfg.ChatLogicalOwner); err != nil {
+			stop()
+			return nil, err
+		}
+	}
 	go p.watch()
 	return p, nil
+}
+
+// validateEngineHosts refuses an image, transcription or speech engine set
+// without the router declaration it serves, a declaration set without its
+// engine, and a declaration the router does not hold. Dispatch matches the
+// routed host to the engine's declaration by pointer, so each of these would
+// refuse every request of that profile: a router without the declaration
+// answers no_host "router:not-here", which is what pytorchd's image service
+// answered from 2026-10-02 until 2026-11-09.
+func validateEngineHosts(cfg *Config) error {
+	hosts := cfg.Router.Hosts()
+	check := func(profile string, engine bool, host *router.Host) error {
+		switch {
+		case !engine && host == nil:
+			return nil
+		case host == nil:
+			return fmt.Errorf("inference: the %s engine needs the router host it serves", profile)
+		case !engine:
+			return fmt.Errorf("inference: the %s engine host %q has no engine", profile, host.Name)
+		case !slices.Contains(hosts, host):
+			return fmt.Errorf("inference: the %s engine host %q is not a host of the provider's router", profile, host.Name)
+		}
+		return nil
+	}
+	return errors.Join(
+		check("image", cfg.ImageEngine != nil, cfg.ImageEngineHost),
+		check("transcription", cfg.TranscriptionEngine != nil, cfg.TranscriptionEngineHost),
+		check("speech", cfg.SpeechEngine != nil, cfg.SpeechEngineHost),
+	)
 }
 
 // Close cancels every unended operation, waits for their upstream requests to
@@ -445,6 +584,50 @@ func (p *Provider) bounds(a *wire.Admission) {
 	a.RetentionMs = p.cfg.Retention.Milliseconds()
 	a.IdleMs = p.cfg.Idle.Milliseconds()
 	a.RetainedDeltas = int64(p.cfg.RetainedDeltas)
+}
+
+// DefaultJobIdle is Config.JobIdle when none is configured: it outlasts a
+// runtime restart and bounds the engine time an abandoned job holds.
+const DefaultJobIdle = 10 * time.Minute
+
+// DefaultResumeIdle is Config.ResumeIdle when none is configured: it covers
+// an agent's turn between a "working" answer and its resume call, and bounds
+// the engine time an abandoned handle holds.
+const DefaultResumeIdle = 5 * time.Minute
+
+// limits are op's idle and retention times. An operation a durable job owns
+// waits JobIdle for its runtime's next Observe and stays observable at least
+// as long after it ends, so a runtime restart shorter than JobIdle finds it
+// running or ended (INF-G5). An operation whose caller's last Observe
+// returned its page before the end waits ResumeIdle for the caller's next
+// Observe and stays observable as long after it ends (INF-Q3). An operation
+// whose caller left in the middle of an Observe, and a live session, waits
+// Idle.
+func (p *Provider) limits(op *operation) (idle, retention time.Duration) {
+	switch {
+	case op.job != "":
+		return p.cfg.JobIdle, max(p.cfg.Retention, p.cfg.JobIdle)
+	case op.profile != router.ProfileLive && op.isResumable():
+		return p.cfg.ResumeIdle, max(p.cfg.Retention, p.cfg.ResumeIdle)
+	}
+	return p.cfg.Idle, p.cfg.Retention
+}
+
+// jobOperation is subject's unended operation for profile that job owns, or
+// nil. A runtime that lost a Start reply sends the same Start again; the
+// provider answers with this operation and runs the work once (INF-G5).
+func (p *Provider) jobOperation(subject Subject, profile, job string) *operation {
+	if job == "" {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, op := range p.ops {
+		if op.job == job && op.subject == subject && op.profile == profile && !op.isEnded() {
+			return op
+		}
+	}
+	return nil
 }
 
 // admitStartOutcome is the Start outcome for a false Admit answer: the
@@ -480,6 +663,15 @@ type selectedRoute struct {
 	host      *router.Host
 	model     string
 	bindingID string
+	note      selectionNote
+}
+
+// noteOf is the selection a route carries; an explicit request carries none.
+func noteOf(selected *selectedRoute) selectionNote {
+	if selected == nil {
+		return selectionNote{}
+	}
+	return selected.note
 }
 
 func (p *Provider) start(ctx context.Context, subject Subject, req wire.Request, selected *selectedRoute) wire.Admission {
@@ -490,8 +682,12 @@ func (p *Provider) start(ctx context.Context, subject Subject, req wire.Request,
 	refuse := func(outcome wire.StartOutcome, reason string, host *router.Host, model string) wire.Admission {
 		r := Record{Route: via.name, Rung: via.rung, Account: subject.Account, Program: subject.Program, Model: req.Model, Family: familyOf(req.Model),
 			Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
+		if state, _ := ctx.Value(chat3RunKey{}).(*chat3Run); state != nil {
+			r.ChatVersion = 3
+		}
+		noteOf(selected).apply(&r)
 		if host != nil {
-			r.Host, r.Model = host.Name, model
+			r.Host, r.Model, r.Placement = host.Name, model, servedPlace(host)
 			if host.Wire == router.WireRemote {
 				r.Domain = host.Domain
 			}
@@ -511,6 +707,20 @@ func (p *Provider) start(ctx context.Context, subject Subject, req wire.Request,
 	if extensions.required != "" {
 		return refuse(wire.StartOutcomeUnsupportedFeature, "extension:"+extensions.required, nil, "")
 	}
+	chat3, _ := ctx.Value(chat3RunKey{}).(*chat3Run)
+	conversation, noRetention := "", false
+	if chat3 != nil {
+		conversation = chat3.request.Conversation
+		noRetention = chat3NoRetention(chat3.request.Content.Guarantees)
+	}
+	cacheBinding, cacheReason := receivedChatCacheBinding(ctx, subject, req.Extensions, conversation, noRetention)
+	if cacheReason != "" {
+		return refuse(wire.StartOutcomeInvalid, cacheReason, nil, "")
+	}
+	if chat3 == nil {
+		// Published legacy calls gain no new persisted-cache permission.
+		cacheBinding.persist = false
+	}
 	req.Extensions = extensions.vendor
 	var host *router.Host
 	var model, reason string
@@ -525,6 +735,11 @@ func (p *Provider) start(ctx context.Context, subject Subject, req wire.Request,
 	if host == nil {
 		return refuse(wire.StartOutcomeNoHost, reason, nil, "")
 	}
+	// A call admitted under the host's declared credential is recorded and
+	// limited under that name (INF-W5).
+	if req.Credential == "" && host.Hosted && declaredCredential(ctx) {
+		req.Credential = host.Credential
+	}
 	adapter := adapterFor(host.Wire)
 	if host.Wire == "" {
 		adapter = adapterFor(router.WireOpenAICompatible)
@@ -532,11 +747,25 @@ func (p *Provider) start(ctx context.Context, subject Subject, req wire.Request,
 	if adapter == nil {
 		return refuse(wire.StartOutcomeUnsupportedFeature, "wire:"+host.Wire, host, model)
 	}
-	if reason := adapter.unsupported(req); reason != "" {
+	if chat3 != nil {
+		if reason := chat3Supported(host, chat3.request); reason != "" {
+			return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
+		}
+		if FreeCapacityAdmission(ctx) && host.Wire != router.WireNative && host.Wire != router.WireRemote && !p.supportsFreeCapacity() {
+			return refuse(wire.StartOutcomeUnsupportedFeature, "guarantee:free-capacity", host, model)
+		}
+	}
+	// An extension the model itself states it takes is supported whatever
+	// the wire's or the registration's own inventory names (ruling, native
+	// pass-through (a)); any other required key is judged by those.
+	caps := p.modelCapabilities(host, model)
+	modelRequired := req
+	modelRequired.RequiredExtensions = requiredBeyondModel(caps, req.RequiredExtensions)
+	if reason := adapter.unsupported(modelRequired); reason != "" {
 		return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
 	}
 	if host.Wire == router.WireNative || host.Wire == router.WireRemote {
-		if reason := unsupportedSelectedExtensions(host, router.ProfileChat, req.RequiredExtensions); reason != "" {
+		if reason := unsupportedSelectedExtensions(host, router.ProfileChat, modelRequired.RequiredExtensions); reason != "" {
 			return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
 		}
 	}
@@ -545,15 +774,20 @@ func (p *Provider) start(ctx context.Context, subject Subject, req wire.Request,
 		p.report(err)
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
 	}
-	switch word {
-	case "permitted":
-	case "denied", "not_granted", "unknown_action":
-		if word == "not_granted" && len(imagePartDigests(req)) > 0 {
+	outcome, _ := rightsclient.ParseDecisionOutcome(word)
+	switch {
+	case outcome == rightsclient.DecisionOutcomePermitted:
+	case rightsclient.Evaluated(outcome):
+		if outcome == rightsclient.DecisionOutcomeNotGranted && len(imagePartDigests(req)) > 0 {
 			p.askInput(ctx, subject, InputImage)
 		}
 		return refuse(wire.StartOutcomeNotPermitted, "rights:"+word, host, model)
 	default:
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
+	}
+	// Report selected-model capability only after the caller can use its host.
+	if chat3 != nil && !host.Hosted && caps != nil && slices.Equal(caps.Input, []string{"text"}) && len(imagePartDigests(req)) > 0 {
+		return refuse(wire.StartOutcomeUnsupportedFeature, "feature:"+FeatureVision, host, model)
 	}
 	images := map[string][]byte(nil)
 	if host.Wire != router.WireRemote {
@@ -571,8 +805,8 @@ func (p *Provider) start(ctx context.Context, subject Subject, req wire.Request,
 	// A remote runtime holds, applies and limits its own credential.
 	remote := host.Wire == router.WireRemote
 	if credential != "" && p.cfg.Ceilings != nil && !remote {
-		if unit, over := p.cfg.Ceilings.Exceeded(credential); over {
-			return refuse(wire.StartOutcomeBudgetExceeded, "ceiling:"+unit+":"+credential, host, model)
+		if reason := p.cfg.Ceilings.budgetRefusal(credential, subject, host); reason != "" {
+			return refuse(budgetStartOutcome(reason), reason, host, model)
 		}
 	}
 	if p.active(subject) >= p.cfg.MaxOperations {
@@ -596,17 +830,20 @@ func (p *Provider) start(ctx context.Context, subject Subject, req wire.Request,
 		p.report(err)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
-	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileChat, model, &subject)
-	if !ok {
+	activity, admissionOutcome, admitReason := p.admitModel(ctx, host, router.ProfileChat, model, &subject, subject, credential)
+	if admissionOutcome != wire.StartOutcomeAccepted {
 		clear(headers)
-		if capacityRefusal {
-			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
-		}
-		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+		return refuse(admissionOutcome, admitReason, host, model)
 	}
 	defer p.releaseModelActivity(activity)
+	if chat3 != nil && !p.commitChat3(ctx, subject, chat3) {
+		clear(headers)
+		return wire.Admission{Outcome: wire.StartOutcomeUnavailable, Reason: "history:resolved"}
+	}
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
-	op.route, op.remote = via, remote
+	op.chat3 = chat3
+	op.cache = cacheBinding
+	op.route, op.remote, op.selection = via, remote, noteOf(selected)
 	op.inputs = imagePartDigests(req)
 	p.bindOperation(ctx, op)
 	runCtx, cancel := context.WithCancel(p.ctx)
@@ -681,8 +918,35 @@ func (p *Provider) ActiveForModel(model string) bool {
 	return false
 }
 
+// InFlightForModel counts model's admissions in progress and its operations
+// whose run has not returned. An operation whose run returned and which is
+// kept only for observation is not counted: its reply no longer needs the
+// engine. A provider's yield waits for this count to reach its next request
+// boundary (resource CONTRACT.md RES-L3), while ActiveForModel keeps the
+// idle clock.
+func (p *Provider) InFlightForModel(model string) int {
+	if model == "" {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n := p.pendingModels[model]
+	for _, op := range p.ops {
+		if op.model != model {
+			continue
+		}
+		select {
+		case <-op.finished:
+		default:
+			n++
+		}
+	}
+	return n
+}
+
 // pick selects a host serving profile through the router within the request's
-// guarantees and credential.
+// guarantees and credential. The router ranks competing hosted servers by the
+// standing of the caller ctx carries (router.RouteFor).
 func (p *Provider) pick(ctx context.Context, model string, guarantees []string, credential, profile string) (*router.Host, string, string) {
 	hosted := false
 	localOnly := false
@@ -695,6 +959,7 @@ func (p *Provider) pick(ctx context.Context, model string, guarantees []string, 
 		}
 	}
 	placement := executionPlacementOf(ctx)
+	declared := declaredCredential(ctx)
 	binding, pinned := ctx.Value(executionBindingKey{}).(ExecutionBinding)
 	if placement == ExecutionRemote && localOnly {
 		return nil, "", "placement:remote"
@@ -715,7 +980,7 @@ func (p *Provider) pick(ctx context.Context, model string, guarantees []string, 
 		if leaf, _ := ctx.Value(leafExecutionKey{}).(bool); leaf && (h.Wire == router.WireNative || h.Wire == router.WireRemote) {
 			continue
 		}
-		if !h.Hosted || hosted && h.Credential == credential {
+		if !h.Hosted || hosted && (h.Credential == credential || credential == "" && declared) {
 			allowed = append(allowed, h.Name)
 			byName[h.Name] = h
 		}
@@ -725,7 +990,8 @@ func (p *Provider) pick(ctx context.Context, model string, guarantees []string, 
 	if now := p.cfg.Now(); now.Sub(p.surveyed) >= p.cfg.SurveyAge {
 		fresh, p.surveyed = true, now
 	}
-	d, _ := p.cfg.Router.Route(router.Request{Model: model, Fresh: fresh, Hosts: &allowed, Profile: profile})
+	d, observedAt := p.cfg.Router.RouteFor(ctx, router.Request{Model: model, Fresh: fresh, Hosts: &allowed, Profile: profile})
+	states, _, _, _, statesAt := p.cfg.Router.Residency(false)
 	p.survey.Unlock()
 	switch d.Verdict {
 	case router.Resident, router.WouldLoad, router.Hosted:
@@ -736,7 +1002,63 @@ func (p *Provider) pick(ctx context.Context, model string, guarantees []string, 
 			return h, d.Model, ""
 		}
 	}
+	if statesAt.Equal(observedAt) {
+		if reason := unverifiedEngineReason(d, states, byName, profile); reason != "" {
+			return nil, "", reason
+		}
+	}
+	if reason := unavailableHostReason(d, byName); reason != "" {
+		return nil, "", reason
+	}
+	if (d.Verdict == router.NotOnDisk || d.Verdict == router.NoHost) && p.cfg.Waiting != nil {
+		if reason := p.cfg.Waiting(ctx, model, profile); reason != "" {
+			return nil, "", reason
+		}
+	}
 	return nil, "", "router:" + d.Verdict
+}
+
+// unavailableHostReason is the reason word of a permitted host that has the
+// model and cannot serve now (router Host.Unavailable), such as a provider
+// stopped after failed starts, when no other host took the request; "" when
+// none. The first such host in name order answers.
+func unavailableHostReason(decision *router.Decision, eligible map[string]*router.Host) string {
+	if decision.Verdict != router.NoHost && decision.Verdict != router.NotOnDisk && decision.Verdict != router.Unservable {
+		return ""
+	}
+	names := slices.Clone(decision.InstalledOn)
+	sort.Strings(names)
+	for _, name := range names {
+		if host := eligible[name]; host != nil {
+			if reason := host.UnavailableReason(); reason != "" {
+				return reason
+			}
+		}
+	}
+	return ""
+}
+
+// The receiving router snapshot owns this cause. Only the same request's
+// permitted, placement-filtered and pinned local hosts can name its refusal.
+func unverifiedEngineReason(decision *router.Decision, states []router.HostState, eligible map[string]*router.Host, profile string) string {
+	if decision.Authorised == nil || decision.Verdict != router.NoHost && decision.Verdict != router.NotOnDisk {
+		return ""
+	}
+	var names []string
+	for _, state := range states {
+		host := eligible[state.Host]
+		if host == nil || host.Name == "" || len(host.Name) > 64 || host.Hosted || host.Wire == router.WireNative || host.Wire == router.WireRemote || state.Up ||
+			!slices.Contains(*decision.Authorised, host.Name) || !slices.Contains(host.HostProfiles(), profile) ||
+			state.AvailabilityCause != router.AvailabilityConfiguration || state.Why != "engine:unverified:"+host.Name {
+			continue
+		}
+		names = append(names, host.Name)
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	sort.Strings(names)
+	return "engine:unverified:" + names[0]
 }
 
 // Observe reads a bounded page of subject's operation from cursor, waiting up
@@ -745,7 +1067,7 @@ func (p *Provider) Observe(ctx context.Context, subject Subject, id string, curs
 	return p.observeProfile(ctx, subject, id, router.ProfileChat, cursor, maxDeltas, maxBytes, waitMS)
 }
 
-func (p *Provider) observeProfile(ctx context.Context, subject Subject, id, profile string, cursor, maxDeltas, maxBytes, waitMS int64) wire.DeltaPage {
+func (p *Provider) observeProfile(ctx context.Context, subject Subject, id, profile string, cursor, maxDeltas, maxBytes, waitMS int64) (page wire.DeltaPage) {
 	refused := func(outcome wire.PageOutcome) wire.DeltaPage {
 		return wire.DeltaPage{Outcome: outcome, Deltas: []wire.Delta{}, Next: cursor}
 	}
@@ -756,16 +1078,26 @@ func (p *Provider) observeProfile(ctx context.Context, subject Subject, id, prof
 		return refused(wire.PageOutcomeInvalid)
 	}
 	op := p.visibleProfile(subject, id, profile)
-	if op == nil {
+	if op == nil || op.chat3 != nil {
 		return refused(wire.PageOutcomeUnknown)
 	}
 	op.observeBegin()
-	defer func() { op.observeEnd(p.cfg.Now()) }()
-	return op.page(ctx, cursor, maxDeltas, maxBytes, time.Duration(waitMS)*time.Millisecond)
+	// A caller still connected when its page returns holds the handle and
+	// may resume after its own pause; one that left mid-wait has gone.
+	defer func() { op.observeEnd(p.cfg.Now(), ctx.Err() == nil && !page.AtEnd) }()
+	return op.pageChecked(ctx, cursor, maxDeltas, maxBytes, time.Duration(waitMS)*time.Millisecond, func() error {
+		if p.visibleProfile(subject, id, profile) != op {
+			return errors.New("operation no longer visible")
+		}
+		return nil
+	})
 }
 
 // Cancel stops subject's operation and closes its upstream request.
 func (p *Provider) Cancel(subject Subject, id string) wire.Cancellation {
+	if op := p.visible(subject, id); op != nil && op.chat3 != nil {
+		return wire.Cancellation{Outcome: wire.CancelOutcomeUnknown}
+	}
 	return p.cancelProfile(subject, id, router.ProfileChat)
 }
 
@@ -829,7 +1161,7 @@ func (p *Provider) watch() {
 		}
 		now := p.cfg.Now()
 		p.mu.Lock()
-		var idle []*operation
+		var idle, stalled []*operation
 		ids := make([]string, 0, len(p.ops))
 		for id := range p.ops {
 			ids = append(ids, id)
@@ -837,17 +1169,24 @@ func (p *Provider) watch() {
 		sort.Strings(ids)
 		for _, id := range ids {
 			op := p.ops[id]
+			idleLimit, retention := p.limits(op)
 			if ended, at := op.endedAt(); ended {
-				if now.Sub(at) >= p.cfg.Retention {
+				if now.Sub(at) >= retention {
 					delete(p.ops, id)
 				}
-			} else if op.idleSince(now) >= p.cfg.Idle {
+			} else if op.idleSince(now) >= idleLimit {
 				idle = append(idle, op)
+			} else if op.generationExpired(now) {
+				stalled = append(stalled, op)
 			}
 		}
 		p.mu.Unlock()
 		for _, op := range idle {
-			op.stopIdle(now, p.cfg.Idle)
+			idleLimit, _ := p.limits(op)
+			op.stopIdle(now, idleLimit)
+		}
+		for _, op := range stalled {
+			op.stopStalled(now)
 		}
 	}
 }

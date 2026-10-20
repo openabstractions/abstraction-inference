@@ -221,7 +221,8 @@ func TestImageV2ProviderSwitchUsesExactPinForBothAdopterCallers(t *testing.T) {
 			}
 		}
 	}
-	if len(decisions) != 4 {
-		t.Fatalf("got %d host authorization checks for four requests", len(decisions))
+	// Each request checks admission, then standing before and after Admit.
+	if len(decisions) != 12 {
+		t.Fatalf("got %d host authorization checks for four requests with standing rechecks", len(decisions))
 	}
 }

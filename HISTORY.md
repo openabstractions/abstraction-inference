@@ -659,6 +659,8 @@ silently against the new rule instead of failing the tags gate. The
 follow-up sweep needs to repoint each one at its real target, `INF-A1` or
 `INF-A2` for the admission sense, not merely confirm it still resolves.
 
+Current routing (2026-10-24): the remaining-site census and proposed closure are recorded in the private citation-maintenance task stale-inf-s1-inf-s2-citations-in-other-modules-inference-p1-6; the preceding paragraph preserves the original follow-up context.
+
 ## Measured
 
 `serve/runtime_live_voice_measurement_test.go` measures one gateway
@@ -701,3 +703,20 @@ decision to carry the submitter's peer.
 | id | before | now |
 | --- | --- | --- |
 | INF-A6 | none: rights and credential decided once, at `Start` or a job's plan | decided again on each live input, job poll, committed rights change and five-second clock; a refusal ends the work |
+
+## 0.8.0 contract truth pass (W0-04), 2026-10-21
+
+Each changed or reviewed statement with its class: an outdated rule is text the code has passed, a code defect is code or IDL that breaks a rule and becomes a TODO row, an accepted divergence is recorded under Divergences.
+
+| statement | class | action |
+| --- | --- | --- |
+| INF-A2 step 8 named chat@1 as the only consumer | outdated rule | names the call's contract, image@1 included |
+| `credential_consumers` (`inference.thrift`) lacks image@1 | code defect | fixed 2026-10-21: `credential_consumers` carries image@1; `go/credential_consumers_test.go` holds every applied consumer declared, with no exemption |
+| `host_profiles` lacks `video` | code defect | TODO row; stated under Not built |
+| Remote runtimes: Describe answers chat@1 and router@1 | outdated rule | lists the six inference services and router@1 (`go/service/remote.go`) |
+| The gateway: three routes | outdated rule | lists the nine routes (`adapters/go/gateway/window.go`) |
+| Not built: gateway image uploads | outdated rule | narrowed to image parts in chat requests; `/v1/images/edits` takes uploads |
+| Prose-wire table points at `chat@2` | outdated rule | `chat@2` went to selection targets; the rename rides `chat@3` (P-J5b with W2-06, Train F) |
+| INF-V1 `forbidden` against D86 `not_permitted` | accepted divergence | Divergences entry (RENAME-PLAN step 17) until `chat@3` (P-J5b with W2-06, Train F) |
+| INF-Q5 against ARCHITECTURE.md's stable request identity | accepted divergence | Divergences entry until `chat@3` (P-J5b with W2-06, Train F) |
+| TODO rows: selection v1 retirement, serial job sweep | outdated record | marked done |

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +43,53 @@ type journalLine struct {
 	Domain       string `json:"domain,omitempty"`
 	Claim        string `json:"claim,omitempty"`
 	Profile      string `json:"profile,omitempty"`
+	// Request metadata wraps the unchanged published AuditEntry.
+	Preferred     string `json:"preferred_model,omitempty"`
+	PreferredHost string `json:"preferred_host,omitempty"`
+	Selection     string `json:"selection,omitempty"`
+	Placement     string `json:"placement,omitempty"`
+}
+
+func (l journalLine) request() wire.RequestEntry {
+	e := wire.RequestEntry{Entry: l.entry(), PreferredModel: l.Preferred, Selection: l.Selection}
+	if l.PreferredHost != "" && l.Selection == wire.SelectionReasonPreferredRouteUnavailable.String() {
+		e.UnavailableHosts = strings.Split(l.PreferredHost, ",")
+	}
+	if host, ok := strings.CutPrefix(l.Reason, "engine:unverified:"); ok && l.Outcome == "no_host" && host != "" && !slices.Contains(e.UnavailableHosts, host) {
+		e.UnavailableHosts = append(e.UnavailableHosts, host)
+	}
+	if l.Placement != "" {
+		place := wire.ServedPlace(l.Placement)
+		e.Placement = &place
+	}
+	base := wire.RequestEntry{Entry: e.Entry}
+	if _, err := wire.ToJSON(&base); err != nil {
+		// Invalid audit content still fails the complete page below.
+		return e
+	}
+	// Validate each optional retained fact independently through its generated
+	// contract. An invalid fact is absent; other facts and page bounds survive.
+	preferred := base
+	preferred.PreferredModel = e.PreferredModel
+	if _, err := wire.ToJSON(&preferred); err != nil {
+		e.PreferredModel = ""
+	}
+	hosts := base
+	hosts.UnavailableHosts = e.UnavailableHosts
+	if _, err := wire.ToJSON(&hosts); err != nil {
+		e.UnavailableHosts = nil
+	}
+	selection := base
+	selection.Selection = e.Selection
+	if _, err := wire.ToJSON(&selection); err != nil {
+		e.Selection = ""
+	}
+	placement := base
+	placement.Placement = e.Placement
+	if _, err := wire.ToJSON(&placement); err != nil {
+		e.Placement = nil
+	}
+	return e
 }
 
 func (l journalLine) entry() wire.AuditEntry {
@@ -118,7 +167,11 @@ func (j *Journal) Append(r Record) error {
 	}
 	line := journalLine{Sequence: j.next, UnixMS: j.now().UnixMilli(), Route: routeWord, Rung: r.Rung, Program: r.Program, Operation: r.Operation,
 		Host: r.Host, Model: r.Model, Credential: r.Credential, Outcome: r.Outcome, Reason: r.Reason, TokensIn: r.TokensIn,
-		TokensOut: r.TokensOut, AudioSeconds: r.AudioSeconds, Characters: r.Characters, Images: r.Images, WallMS: r.WallMS, Ceiling: r.Ceiling, Domain: r.Domain, Claim: r.Claim, Profile: r.Profile}
+		TokensOut: r.TokensOut, AudioSeconds: r.AudioSeconds, Characters: r.Characters, Images: r.Images, WallMS: r.WallMS, Ceiling: r.Ceiling, Domain: r.Domain, Claim: r.Claim, Profile: r.Profile,
+		Preferred: r.Preferred, PreferredHost: r.PreferredHost, Selection: r.Selection}
+	if r.Placement != "" {
+		line.Placement = string(r.Placement)
+	}
 	raw, err := json.Marshal(line)
 	if err != nil {
 		return err
@@ -184,9 +237,42 @@ func (j *Journal) Page(cursor, maxEntries int64) wire.AuditPage {
 	}
 	page := wire.AuditPage{Outcome: wire.AuditOutcomePage, Entries: []wire.AuditEntry{}, Next: cursor}
 	for i := cursor - oldest; i < int64(len(j.lines)) && int64(len(page.Entries)) < maxEntries; i++ {
-		page.Entries = append(page.Entries, j.lines[i].entry())
+		entry := j.lines[i].entry()
+		if _, err := wire.ToJSON(&entry); err != nil {
+			return wire.AuditPage{Outcome: wire.AuditOutcomeUnavailable, Entries: []wire.AuditEntry{}, Next: cursor}
+		}
+		page.Entries = append(page.Entries, entry)
 		page.Next = j.lines[i].Sequence + 1
 	}
 	page.AtEnd = page.Next == j.next
+	return page
+}
+
+// Requests reads the same retained decisions with their recorded request metadata.
+func (j *Journal) Requests(cursor, maxEntries int64) wire.RequestPage {
+	refuse := func(outcome wire.AuditOutcome, next int64) wire.RequestPage {
+		return wire.RequestPage{Outcome: outcome, Entries: []wire.RequestEntry{}, Next: next}
+	}
+	if cursor < 0 || maxEntries < 1 || maxEntries > 256 {
+		return refuse(wire.AuditOutcomeInvalid, cursor)
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	oldest := j.next - int64(len(j.lines))
+	if cursor < oldest {
+		return refuse(wire.AuditOutcomeGap, oldest)
+	}
+	if cursor > j.next {
+		return refuse(wire.AuditOutcomeInvalid, cursor)
+	}
+	page := refuse(wire.AuditOutcomePage, cursor)
+	for i := cursor - oldest; i < int64(len(j.lines)) && int64(len(page.Entries)) < maxEntries; i++ {
+		page.Entries = append(page.Entries, j.lines[i].request())
+		page.Next = j.lines[i].Sequence + 1
+	}
+	page.AtEnd = page.Next == j.next
+	if _, err := wire.ToJSON(&page); err != nil {
+		return refuse(wire.AuditOutcomeUnavailable, cursor)
+	}
 	return page
 }

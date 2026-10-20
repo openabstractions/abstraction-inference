@@ -3,6 +3,7 @@ package inference
 import (
 	"context"
 	"errors"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 	"time"
 )
 
@@ -40,10 +41,11 @@ func (p *Provider) standing(ctx context.Context, subject Subject, host, credenti
 		p.report(err)
 		return "", errStandingUnavailable
 	}
-	switch word {
-	case "permitted":
+	outcome, _ := rightsclient.ParseDecisionOutcome(word)
+	switch {
+	case outcome == rightsclient.DecisionOutcomePermitted:
 		return "", nil
-	case "denied", "not_granted", "unknown_action":
+	case rightsclient.Evaluated(outcome):
 		return "rights:" + word, nil
 	}
 	return "", errStandingUnavailable
@@ -57,7 +59,7 @@ func (p *Provider) standingOf(ctx context.Context, op *operation) (string, error
 	if op.remote {
 		credential = ""
 	}
-	return p.standing(ctx, op.subject, op.host.Name, credential)
+	return p.standing(op.standingContext(ctx), op.subject, op.host.Name, credential)
 }
 
 // Recheck decides every running operation again and stops each one whose
@@ -69,6 +71,13 @@ func (p *Provider) standingOf(ctx context.Context, op *operation) (string, error
 // also calls it on each committed rights change (abstraction-rights
 // RIGHTS-R23), so a revoke ends what it admitted before the edit replies.
 func (p *Provider) Recheck(ctx context.Context) {
+	_ = p.RecheckChecked(ctx)
+}
+
+// RecheckChecked preserves unavailable work and reports every decision it
+// could not obtain. A rights editor can distinguish saved policy from complete
+// settlement; periodic Recheck keeps its existing uncertainty behavior.
+func (p *Provider) RecheckChecked(ctx context.Context) error {
 	p.mu.Lock()
 	running := make([]*operation, 0, len(p.ops))
 	for _, op := range p.ops {
@@ -78,9 +87,14 @@ func (p *Provider) Recheck(ctx context.Context) {
 	type holding struct {
 		subject          Subject
 		host, credential string
+		remoteOperation  *operation
 	}
 	decided := map[holding]string{}
+	var failure error
 	for _, op := range running {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(failure, err)
+		}
 		if op.isEnded() || op.host == nil {
 			continue
 		}
@@ -89,11 +103,15 @@ func (p *Provider) Recheck(ctx context.Context) {
 			credential = ""
 		}
 		key := holding{subject: op.subject, host: op.host.Name, credential: credential}
+		if op.remoteValues != nil {
+			key.remoteOperation = op
+		}
 		refusal, ok := decided[key]
 		if !ok {
 			var err error
-			refusal, err = p.standing(ctx, op.subject, op.host.Name, credential)
+			refusal, err = p.standingOf(ctx, op)
 			if err != nil {
+				failure = errors.Join(failure, err)
 				refusal = ""
 			}
 			decided[key] = refusal
@@ -102,4 +120,5 @@ func (p *Provider) Recheck(ctx context.Context) {
 			op.stop(refusal)
 		}
 	}
+	return errors.Join(failure, ctx.Err())
 }

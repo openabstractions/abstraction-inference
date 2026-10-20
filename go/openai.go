@@ -101,11 +101,16 @@ func openAIBody(model string, req wire.Request, images map[string][]byte) map[st
 }
 
 type openAIChunk struct {
+	Timings json.RawMessage `json:"timings"`
 	Error   json.RawMessage `json:"error"`
 	Choices []struct {
 		Delta struct {
-			Content   *string `json:"content"`
-			ToolCalls []struct {
+			Content *string `json:"content"`
+			// ReasoningContent (DeepSeek, llama-server) and Reasoning
+			// (OpenRouter, vLLM) carry the trace, never answer text.
+			ReasoningContent *string `json:"reasoning_content"`
+			Reasoning        *string `json:"reasoning"`
+			ToolCalls        []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
 				Function struct {
@@ -141,7 +146,9 @@ func openAIStop(reason string) wire.StopReason {
 }
 
 func (openAI) run(ctx context.Context, client *http.Client, host *router.Host, model string, req wire.Request, images map[string][]byte, headers map[string]string, s *stream) wire.Reply {
-	resp, refused := post(ctx, client, host.ChatURL(), openAIBody(model, req, images), headers)
+	body := openAIBody(model, req, images)
+	echoReasoning(body, s.caller(), host.Name, model)
+	resp, refused := post(ctx, client, host.ChatURL(), body, headers)
 	if refused != nil {
 		return *refused
 	}
@@ -153,6 +160,8 @@ func (openAI) run(ctx context.Context, client *http.Client, host *router.Host, m
 	done, malformed := false, false
 	var upstreamError, overflow bool
 	var window, input int64
+	var reasoning reasoningText
+	var callIDs []string
 	err := events(resp.Body, func(_, data string) bool {
 		if data == "[DONE]" {
 			done = true
@@ -165,12 +174,17 @@ func (openAI) run(ctx context.Context, client *http.Client, host *router.Host, m
 			malformed = true
 			return false
 		}
+		s.engine(parseEngineTimings(chunk.Timings))
 		if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
 			upstreamError = true
 			window, input, overflow = contextOverflow([]byte(data))
 			return false
 		}
 		for _, choice := range chunk.Choices {
+			reasoning.addChunk(choice.Delta.ReasoningContent, choice.Delta.Reasoning)
+			if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" || choice.Delta.Reasoning != nil && *choice.Delta.Reasoning != "" {
+				s.token()
+			}
 			if c := choice.Delta.Content; c != nil && *c != "" {
 				if textIndex < 0 {
 					textIndex, next = next, next+1
@@ -184,6 +198,7 @@ func (openAI) run(ctx context.Context, client *http.Client, host *router.Host, m
 					index, next = next, next+1
 					calls[call.Index] = index
 					part.CallID, part.Name = call.ID, call.Function.Name
+					callIDs = append(callIDs, call.ID)
 				}
 				s.part(index, part)
 			}
@@ -220,6 +235,21 @@ func (openAI) run(ctx context.Context, client *http.Client, host *router.Host, m
 	}
 	if reply.StopReason == wire.StopReasonNoStop {
 		reply.StopReason = wire.StopReasonEnd
+	}
+	if len(calls) > 0 {
+		echoes.remember(s.caller(), host.Name, model, callIDs, reasoning.whole())
+	}
+	if reasoning.seen && textIndex < 0 && len(calls) == 0 {
+		only := failed(wire.ReplyOutcomeRefused, ReasonReasoningOnly)
+		only.StopReason, only.Usage, only.Cost = reply.StopReason, reply.Usage, reply.Cost
+		// Nothing reached the caller yet: the trace is never a part. The
+		// second attempt's reply, failed or not, is the reply.
+		if again, ok := withoutReasoning(host, req); ok {
+			answer := openAI{}.run(ctx, client, host, model, again, images, headers, s)
+			answer.Usage, answer.Cost = addUsage(reply.Usage, answer.Usage), addCost(reply.Cost, answer.Cost)
+			return answer
+		}
+		return only
 	}
 	return reply
 }

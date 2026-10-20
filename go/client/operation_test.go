@@ -5,6 +5,8 @@ import (
 	"errors"
 	"github.com/openabstractions/abstraction-identity/listen"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	"github.com/openabstractions/abstraction-inference/go/internal/personfolders"
+	"os"
 	"testing"
 	"time"
 )
@@ -52,3 +54,6 @@ func TestInvalidObservationMakesNoCall(t *testing.T) {
 		}
 	}
 }
+
+// TestMain confines per-user folders to the canonical owned test fixture.
+func TestMain(m *testing.M) { os.Exit(personfolders.Main(m)) }

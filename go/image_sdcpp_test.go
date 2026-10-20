@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
-	"github.com/openabstractions/abstraction-inference/go/providerhost/sdcpp"
+	"github.com/openabstractions/abstraction-inference/go/mediationcontent"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
@@ -43,10 +43,10 @@ func TestImageEngineDirectiveRefusedBeforeUpstream(t *testing.T) {
 		req := imageRequestFixture(wire.ImageModeGenerate, 1)
 		change(&req)
 		a := f.provider.StartImage(context.Background(), caller, req)
-		if a.Outcome != wire.StartOutcomeInvalid || a.Reason != sdcpp.ReasonEngineDirective {
+		if a.Outcome != wire.StartOutcomeInvalid || a.Reason != mediationcontent.ReasonEngineDirective {
 			t.Fatalf("case %d: admission %+v", i, a)
 		}
-		if reason := validateImageRequest(req); reason != sdcpp.ReasonEngineDirective {
+		if reason := validateImageRequest(req); reason != mediationcontent.ReasonEngineDirective {
 			t.Fatalf("case %d: validation %q", i, reason)
 		}
 	}
@@ -159,8 +159,8 @@ func TestImageEditInputSizeBoundBeforeUpstream(t *testing.T) {
 		outcome wire.StartOutcome
 		reason  string
 	}{
-		{pngHeader(16384, 16384), wire.StartOutcomeUnsupportedFeature, sdcpp.ReasonImageSize},
-		{pngHeader(4096, 4096), wire.StartOutcomeUnsupportedFeature, sdcpp.ReasonImageSize},
+		{pngHeader(16384, 16384), wire.StartOutcomeUnsupportedFeature, mediationcontent.ReasonImageSize},
+		{pngHeader(4096, 4096), wire.StartOutcomeUnsupportedFeature, mediationcontent.ReasonImageSize},
 		{pngOne, wire.StartOutcomeInvalid, "content:media-type"},
 	} {
 		a := p.StartImage(context.Background(), caller, edit(tc.data))
@@ -198,9 +198,9 @@ func TestImageClientEngineRefusalIsTyped(t *testing.T) {
 		outcome wire.ReplyOutcome
 		reason  string
 	}{
-		{fmt.Errorf("lemonade: image route refused: %w: prompt", sdcpp.ErrEngineDirective), wire.ReplyOutcomeInvalid, sdcpp.ReasonEngineDirective},
-		{fmt.Errorf("lemonade: image route refused: %w: 4096x4096", sdcpp.ErrImageSize), wire.ReplyOutcomeUnsupportedFeature, sdcpp.ReasonImageSize},
-		{fmt.Errorf("lemonade: image route refused: %w: part named twice", sdcpp.ErrRequestForm), wire.ReplyOutcomeInvalid, sdcpp.ReasonRequestForm},
+		{fmt.Errorf("lemonade: image route refused: %w: prompt", mediationcontent.ErrEngineDirective), wire.ReplyOutcomeInvalid, mediationcontent.ReasonEngineDirective},
+		{fmt.Errorf("lemonade: image route refused: %w: 4096x4096", mediationcontent.ErrImageSize), wire.ReplyOutcomeUnsupportedFeature, mediationcontent.ReasonImageSize},
+		{fmt.Errorf("lemonade: image route refused: %w: part named twice", mediationcontent.ErrRequestForm), wire.ReplyOutcomeInvalid, mediationcontent.ReasonRequestForm},
 	} {
 		p, _ := localLemonadeFixture(t, &http.Client{Transport: refusingTransport{err: tc.err}})
 		a := p.StartImage(context.Background(), caller, wire.ImageRequest{Model: "sd-turbo", Mode: wire.ImageModeGenerate, Prompt: "a lighthouse", Size: "512x512", Count: 1})

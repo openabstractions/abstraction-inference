@@ -2,10 +2,11 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	digestfmt "github.com/openabstractions/abstraction-storage/go/digest"
 	"io"
 	"net/http"
 	"strings"
@@ -125,13 +126,27 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 		return
 	}
 	sum := sha256.Sum256(audio)
-	digest := "sha256:" + hex.EncodeToString(sum[:])
-	switch outcome := w.cfg.StoreContent(r.Context(), b.Subject(), digest, audio); outcome {
+	digest := digestfmt.Hex(sum[:])
+	req := wire.TranscriptionRequest{Model: model, AudioDigest: digest, MediaType: mediaType, Language: first(fields["language"]), Timestamps: mode}
+	if grant.Credential != "" {
+		req.Guarantees, req.Credential = []wire.RequestGuarantee{wire.RequestGuaranteeHostedAllowed}, grant.Credential
+	} else {
+		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
+	}
+	transcriber := w.cfg.Chat.(Transcriber)
+	// The upload is stored inside the start's hold: a store refused for want
+	// of input:audio holds for its question like a refused start (INF-W10).
+	a, stored := w.startStored(r, routed(r.Context(), b), b, model, "transcription", func(ctx context.Context) inference.ContentOutcome {
+		return w.cfg.StoreContent(ctx, b.Subject(), digest, audio)
+	}, func(ctx context.Context) wire.Admission {
+		return transcriber.StartTranscription(ctx, b.Subject(), req)
+	})
+	switch stored {
 	case inference.ContentResolved:
 	case inference.ContentForbidden:
 		s := b.Subject()
-		w.record(inference.Record{Profile: "transcription", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "forbidden", Reason: "content:write:forbidden"})
-		writeError(rw, http.StatusForbidden, "forbidden", "content write is not permitted")
+		w.record(inference.Record{Profile: "transcription", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "forbidden", Reason: storeRefusedReason})
+		refusalOf("forbidden", a.Reason).write(rw)
 		return
 	case inference.ContentTooLarge:
 		s := b.Subject()
@@ -144,15 +159,6 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 		writeError(rw, http.StatusServiceUnavailable, "unavailable", "content store is unavailable")
 		return
 	}
-	req := wire.TranscriptionRequest{Model: model, AudioDigest: digest, MediaType: mediaType, Language: first(fields["language"]), Timestamps: mode}
-	if grant.Credential != "" {
-		req.Guarantees, req.Credential = []wire.RequestGuarantee{wire.RequestGuaranteeHostedAllowed}, grant.Credential
-	} else {
-		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
-	}
-	transcriber := w.cfg.Chat.(Transcriber)
-	ctx := routed(r.Context(), b)
-	a := transcriber.StartTranscription(ctx, b.Subject(), req)
 	if a.Outcome != wire.StartOutcomeAccepted {
 		refusalOf(a.Outcome.String(), a.Reason).write(rw)
 		return

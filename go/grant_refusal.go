@@ -2,6 +2,7 @@ package inference
 
 import (
 	"context"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 	"slices"
 	"strings"
 
@@ -61,15 +62,16 @@ func (p *Provider) decideComplete(ctx context.Context, subject Subject, host *ro
 		p.report(err)
 		return false
 	}
-	switch word {
-	case "permitted":
-	case "not_granted":
+	outcome, _ := rightsclient.ParseDecisionOutcome(word)
+	switch {
+	case outcome == rightsclient.DecisionOutcomePermitted:
+	case outcome == rightsclient.DecisionOutcomeNotGranted:
 		if input != "" {
 			p.askInput(ctx, subject, input)
 		}
 		g.complete = true
 		g.add("rights:" + word)
-	case "denied", "unknown_action":
+	case rightsclient.Evaluated(outcome):
 		g.complete, g.final = true, true
 		g.add("rights:" + word)
 	default:

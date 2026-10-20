@@ -1,9 +1,11 @@
 package inference
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,26 +34,30 @@ func (c Ceiling) Negative() bool {
 }
 
 type dayCount struct {
-	Day          string `json:"day"`
-	Tokens       int64  `json:"tokens"`
-	Micros       int64  `json:"micros"`
-	Requests     int64  `json:"requests,omitempty"`
-	AudioSeconds int64  `json:"audio_seconds,omitempty"`
-	Characters   int64  `json:"characters,omitempty"`
-	Images       int64  `json:"images,omitempty"`
+	CostUnreported bool   `json:"cost_unreported,omitempty"`
+	Day            string `json:"day"`
+	Tokens         int64  `json:"tokens"`
+	Micros         int64  `json:"micros"`
+	Requests       int64  `json:"requests,omitempty"`
+	AudioSeconds   int64  `json:"audio_seconds,omitempty"`
+	Characters     int64  `json:"characters,omitempty"`
+	Images         int64  `json:"images,omitempty"`
 }
 
-// Ceilings holds per-credential limits and the counts provider replies
-// reported, kept in an explicit state file across restarts.
+// Ceilings holds credential and native-program limits and observed counts.
+// Program choices and counts share its explicit state file across restarts.
 type Ceilings struct {
-	mu     sync.Mutex
-	path   string
-	limits map[string]Ceiling
-	counts map[string]dayCount
-	now    func() time.Time
+	mu             sync.Mutex
+	path           string
+	limits         map[string]Ceiling
+	programLimits  map[string]Ceiling
+	programs       map[string]programBudgetRecord
+	budgetRevision uint64
+	counts         map[string]dayCount
+	now            func() time.Time
 }
 
-// OpenCeilings reads the counts at path, an absolute file the provider owns.
+// OpenCeilings reads budgets and counts at path, an absolute provider-owned file.
 // An absent file starts at zero. now may be nil.
 func OpenCeilings(path string, limits map[string]Ceiling, now func() time.Time) (*Ceilings, error) {
 	if !filepath.IsAbs(path) {
@@ -60,7 +66,7 @@ func OpenCeilings(path string, limits map[string]Ceiling, now func() time.Time) 
 	if now == nil {
 		now = time.Now
 	}
-	c := &Ceilings{path: path, limits: map[string]Ceiling{}, counts: map[string]dayCount{}, now: now}
+	c := &Ceilings{path: path, limits: map[string]Ceiling{}, counts: map[string]dayCount{}, programLimits: map[string]Ceiling{}, programs: map[string]programBudgetRecord{}, now: now}
 	for name, limit := range limits {
 		if limit.Negative() {
 			return nil, fmt.Errorf("inference: negative ceiling for %s", name)
@@ -73,7 +79,7 @@ func OpenCeilings(path string, limits map[string]Ceiling, now func() time.Time) 
 	case err != nil:
 		return nil, err
 	default:
-		if err := json.Unmarshal(raw, &c.counts); err != nil {
+		if err := c.readState(raw); err != nil {
 			return nil, fmt.Errorf("inference: unreadable ceiling state: %w", err)
 		}
 	}
@@ -95,6 +101,10 @@ func (c *Ceilings) Exceeded(name string) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	limit, n := c.limits[name], c.count(name)
+	return exceeded(limit, n)
+}
+
+func exceeded(limit Ceiling, n dayCount) (string, bool) {
 	switch {
 	case limit.TokensPerDay > 0 && n.Tokens >= limit.TokensPerDay:
 		return "tokens", true
@@ -110,6 +120,62 @@ func (c *Ceilings) Exceeded(name string) (string, bool) {
 		return "characters", true
 	}
 	return "", false
+}
+
+// programBudgetKey stays in this owner's existing count map. It names an
+// authenticated subject and a credential, never a relayed program claim.
+func programBudgetKey(name string, subject Subject) string {
+	//unchecked: string tuples always encode
+	raw, _ := json.Marshal([]string{name, subject.Account, subject.Program})
+	return fmt.Sprintf("\x00program/%x", sha256.Sum256(raw))
+}
+
+// SetProgramLimit applies native configuration through the durable budget owner.
+// Its legacy zero value removes the configured choice.
+func (c *Ceilings) SetProgramLimit(name string, subject Subject, limit Ceiling) error {
+	if name == "" || subject.Account == "" || subject.Program == "" || limit.Negative() {
+		return errors.New("inference: credential, proven subject and nonnegative program budget required")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var budget *Ceiling
+	if limit != (Ceiling{}) {
+		budget = &limit
+	}
+	return c.changeProgramBudget(name, subject, budget)
+}
+
+func (c *Ceilings) ExceededProgram(name string, subject Subject) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	key := programBudgetKey(name, subject)
+	return exceeded(c.programLimits[key], c.count(key))
+}
+
+func addObservedCount(a, b int64) int64 {
+	if b > math.MaxInt64-a {
+		return math.MaxInt64
+	}
+	return a + b
+}
+
+// AddForSubject counts one origin response once in both the credential
+// total and its proven-program subtotal, in one persisted CAS value. Tokens
+// are observed input plus total output; reasoning is already inside output.
+func (c *Ceilings) AddForSubject(name string, subject Subject, input, output, micros int64) error {
+	if name == "" || subject.Account == "" || subject.Program == "" || input < 0 || output < 0 || micros < 0 {
+		return errors.New("inference: invalid program accounting observation")
+	}
+	return c.addModalitiesForSubject(name, subject, addObservedCount(input, output), micros, 0, 0, 0)
+}
+
+// ProgramSpend reports the same UTC-day observed counters, not an estimate of
+// tokens or money the provider did not report. Limits are configured separately.
+func (c *Ceilings) ProgramSpend(name string, subject Subject) (day string, tokens, micros, requests int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := c.count(programBudgetKey(name, subject))
+	return n.Day, n.Tokens, n.Micros, n.Requests
 }
 
 // Add counts one reply, which is one request, and persists the counts.
@@ -154,6 +220,10 @@ func (c *Ceilings) AddDurableImages(operation, name string, images int64) error 
 }
 
 func (c *Ceilings) addDurableOnce(stage, operation, name string, requests, images int64) error {
+	return c.addDurableForSubject(stage, operation, name, nil, requests, images)
+}
+
+func (c *Ceilings) addDurableForSubject(stage, operation, name string, subject *Subject, requests, images int64) error {
 	if operation == "" {
 		return errors.New("inference: durable operation required")
 	}
@@ -163,15 +233,46 @@ func (c *Ceilings) addDurableOnce(stage, operation, name string, requests, image
 	if _, counted := c.counts[marker]; counted {
 		return nil
 	}
-	before, hadBefore := c.counts[name]
-	c.addModalities(name, 0, 0, requests, images, 0, 0)
+	keys := []string{name}
+	programKey := ""
+	var previousProgram programBudgetRecord
+	hadProgram := false
+	if subject != nil {
+		programKey = programBudgetKey(name, *subject)
+		keys = append(keys, programKey)
+		previousProgram, hadProgram = c.programs[programKey]
+		if !hadProgram {
+			c.programs[programKey] = programBudgetRecord{Credential: name, Subject: *subject}
+		}
+	}
+	before := map[string]dayCount{}
+	for _, key := range keys {
+		if count, ok := c.counts[key]; ok {
+			before[key] = count
+		}
+		c.addModalities(key, 0, 0, requests, images, 0, 0)
+	}
+	// Durable image/video adapters currently carry no cost observation. Record
+	// this only at terminal accounting, preserving accepted/uncertain work.
+	if stage == "images" {
+		c.markCostUnreported(programKey)
+	}
 	c.counts[marker] = dayCount{Day: c.today()}
 	if err := c.persist(); err != nil {
 		delete(c.counts, marker)
-		if hadBefore {
-			c.counts[name] = before
-		} else {
-			delete(c.counts, name)
+		for _, key := range keys {
+			if count, ok := before[key]; ok {
+				c.counts[key] = count
+			} else {
+				delete(c.counts, key)
+			}
+		}
+		if subject != nil {
+			if hadProgram {
+				c.programs[programKey] = previousProgram
+			} else {
+				delete(c.programs, programKey)
+			}
 		}
 		return err
 	}
@@ -202,21 +303,28 @@ func (c *Ceilings) PruneDurable(active map[string]bool) error {
 
 func (c *Ceilings) addModalities(name string, tokens, micros, requests, images, audioSeconds, characters int64) {
 	n := c.count(name)
-	n.Tokens += tokens
-	n.Micros += micros
-	n.Requests += requests
-	n.AudioSeconds += audioSeconds
-	n.Characters += characters
-	n.Images += images
+	n.Tokens = addObservedCount(n.Tokens, tokens)
+	n.Micros = addObservedCount(n.Micros, micros)
+	n.Requests = addObservedCount(n.Requests, requests)
+	n.AudioSeconds = addObservedCount(n.AudioSeconds, audioSeconds)
+	n.Characters = addObservedCount(n.Characters, characters)
+	n.Images = addObservedCount(n.Images, images)
 	c.counts[name] = n
 }
 
-func (c *Ceilings) persist() error {
+func (c *Ceilings) persist(admit ...func() error) error {
 	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
 		return err
 	}
 	return cas.Change(c.path, func([]byte) ([]byte, error) {
-		raw, err := json.MarshalIndent(c.counts, "", "  ")
+		for _, check := range admit {
+			if check != nil {
+				if err := check(); err != nil {
+					return nil, err
+				}
+			}
+		}
+		raw, err := json.MarshalIndent(ceilingState{Version: 1, Counts: c.counts, Programs: c.programs, BudgetRevision: c.budgetRevision}, "", "  ")
 		if err != nil {
 			return nil, err
 		}

@@ -1,12 +1,22 @@
 package service
 
+import "context"
+
 import wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 
 type liveReceiver struct{ *receiver }
 
 func (r *liveReceiver) Start(q wire.LiveRequest) (wire.Admission, error) {
 	s, rung, peer := r.bound()
-	return r.host.provider.StartLive(r.admittingContext(s, rung, peer), s, q), nil
+	var result wire.Admission
+	err := r.awaitAdmission(s, rung, peer, func(ctx context.Context) (string, *string) {
+		result = r.host.provider.StartLive(ctx, s, q)
+		return result.Outcome.String(), &result.Reason
+	})
+	if err != nil {
+		return wire.Admission{Outcome: wire.StartOutcomeUnavailable, Reason: "admission:unavailable"}, nil
+	}
+	return result, nil
 }
 func (r *liveReceiver) Append(id string, seq int64, data []byte) (wire.LiveInputResult, error) {
 	return r.host.provider.AppendLive(r.ctx, r.caller(), id, seq, data), nil

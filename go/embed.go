@@ -6,8 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 	"io"
-	"maps"
 	"math"
 	"net/http"
 	"sort"
@@ -72,7 +72,7 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 			Model: req.Model, Family: familyOf(req.Model), Credential: req.Credential, Outcome: e.Outcome.String(), Reason: e.Reason,
 			TokensIn: e.Usage.Input, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
 		if host != nil {
-			r.Host, r.Model = host.Name, model
+			r.Host, r.Model, r.Placement = host.Name, model, servedPlace(host)
 			if host.Wire == router.WireRemote {
 				r.Domain = host.Domain
 			}
@@ -114,9 +114,10 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 		p.report(err)
 		return refuse(wire.EmbedOutcomeUnavailable, "rights:unavailable")
 	}
-	switch word {
-	case "permitted":
-	case "denied", "not_granted", "unknown_action":
+	outcome, _ := rightsclient.ParseDecisionOutcome(word)
+	switch {
+	case outcome == rightsclient.DecisionOutcomePermitted:
+	case rightsclient.Evaluated(outcome):
 		return refuse(wire.EmbedOutcomeNotPermitted, "rights:"+word)
 	default:
 		return refuse(wire.EmbedOutcomeUnavailable, "rights:unavailable")
@@ -125,8 +126,8 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 		credential = host.Credential
 	}
 	if credential != "" && p.cfg.Ceilings != nil && !remote {
-		if unit, over := p.cfg.Ceilings.Exceeded(credential); over {
-			return refuse(wire.EmbedOutcomeBudgetExceeded, "ceiling:"+unit+":"+credential)
+		if reason := p.cfg.Ceilings.budgetRefusal(credential, subject, host); reason != "" {
+			return refuse(wire.EmbedOutcomeBudgetExceeded, reason)
 		}
 	}
 	var headers map[string]string
@@ -141,10 +142,14 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 			return refuse(wire.EmbedOutcomeNotPermitted, "credential:"+outcome+":"+credential)
 		}
 	}
-	activity, admitReason, ok, _ := p.admitModel(ctx, host, router.ProfileEmbed, model, nil)
-	if !ok {
+	activity, admissionOutcome, admitReason := p.admitModel(ctx, host, router.ProfileEmbed, model, nil, subject, credential)
+	if admissionOutcome != wire.StartOutcomeAccepted {
 		clear(headers)
-		return refuse(admitEmbedOutcome(admitReason), admitReason)
+		outcome := wire.EmbedOutcomeUnavailable
+		if admissionOutcome == wire.StartOutcomeNotPermitted {
+			outcome = wire.EmbedOutcomeNotPermitted
+		}
+		return refuse(outcome, admitReason)
 	}
 	defer p.releaseModelActivity(activity)
 	var result wire.Embeddings
@@ -162,7 +167,7 @@ func (p *Provider) Embed(ctx context.Context, subject Subject, req wire.EmbedReq
 		if result.Cost != nil {
 			micros = result.Cost.Micros
 		}
-		if err := p.cfg.Ceilings.Add(credential, result.Usage.Input, micros); err != nil {
+		if err := p.cfg.Ceilings.addModalitiesForSubject(credential, subject, result.Usage.Input, micros, 0, 0, 0, result.Cost != nil); err != nil {
 			p.report(err)
 		}
 	}
@@ -284,14 +289,10 @@ func embedRemote(ctx context.Context, host *router.Host, model string, req wire.
 	}
 	forwarded := req
 	forwarded.Model = model
-	forwarded.Extensions = maps.Clone(req.Extensions)
-	if forwarded.Extensions == nil {
-		forwarded.Extensions = map[string]string{}
-	}
-	forwarded.Extensions[ClaimExtension] = subject.Program
+	forwarded.Extensions, _ = forwardedRemoteExtensions(req.Extensions, nil, subject.Program)
 	result, err := wire.NewEmbedderClient(transport.WithContext(ctx)).Embed(forwarded)
 	if err != nil {
-		return embedFailed(wire.EmbedOutcomeUnavailable, "remote:unreachable")
+		return embedFailed(wire.EmbedOutcomeUnavailable, remoteRequestReason(err))
 	}
 	if result.Outcome != wire.EmbedOutcomeCompleted {
 		outcome := result.Outcome

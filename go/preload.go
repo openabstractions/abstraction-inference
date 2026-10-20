@@ -3,6 +3,7 @@ package inference
 import (
 	"context"
 	"encoding/json"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
@@ -61,11 +62,15 @@ func validatePreload(req wire.Request) string {
 // that serves preload@1, takes one; every other host answers
 // unsupported_feature.
 func (p *Provider) Preload(ctx context.Context, subject Subject, req wire.Request) wire.PreloadReply {
+	// Speculative authorization is a quiet read, including the decision
+	// before admission. It must never admit a first-use question.
+	ctx = context.WithValue(ctx, preloadAdmissionKey{}, true)
 	started := p.cfg.Now()
 	via := routeOf(ctx)
 	extensions := separateExtensions(ctx, req.Extensions, req.RequiredExtensions)
 	via.claim = extensions.claim
 	var host *router.Host
+	var placement wire.ServedPlace
 	model := ""
 	finish := func(reply wire.PreloadReply) wire.PreloadReply {
 		served := reply.Outcome == wire.PreloadOutcomeEvaluated || reply.Outcome == wire.PreloadOutcomeLoaded ||
@@ -80,7 +85,7 @@ func (p *Provider) Preload(ctx context.Context, subject Subject, req wire.Reques
 			Model: req.Model, Family: familyOf(req.Model), Credential: req.Credential, Outcome: reply.Outcome.String(), Reason: reply.Reason,
 			TokensIn: reply.Tokens, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
 		if host != nil {
-			r.Host, r.Model = host.Name, model
+			r.Host, r.Model, r.Placement = host.Name, model, placement
 		}
 		p.record(r)
 		return reply
@@ -100,6 +105,7 @@ func (p *Provider) Preload(ctx context.Context, subject Subject, req wire.Reques
 	req.Extensions = extensions.vendor
 	var reason string
 	host, model, reason = p.pick(ctx, req.Model, requestGuaranteeWords(req.Guarantees), req.Credential, router.ProfileChat)
+	placement = servedPlace(host)
 	if host == nil {
 		return refuse(wire.PreloadOutcomeNoHost, reason)
 	}
@@ -128,9 +134,10 @@ func (p *Provider) Preload(ctx context.Context, subject Subject, req wire.Reques
 		p.report(err)
 		return refuse(wire.PreloadOutcomeUnavailable, "rights:unavailable")
 	}
-	switch word {
-	case "permitted":
-	case "denied", "not_granted", "unknown_action":
+	outcome, _ := rightsclient.ParseDecisionOutcome(word)
+	switch {
+	case outcome == rightsclient.DecisionOutcomePermitted:
+	case rightsclient.Evaluated(outcome):
 		return refuse(wire.PreloadOutcomeNotPermitted, "rights:"+word)
 	default:
 		return refuse(wire.PreloadOutcomeUnavailable, "rights:unavailable")
@@ -156,6 +163,16 @@ func (p *Provider) Preload(ctx context.Context, subject Subject, req wire.Reques
 	}
 	if ctx.Err() != nil {
 		return refuse(wire.PreloadOutcomeUnavailable, "caller")
+	}
+	if p.ctx.Err() != nil {
+		return refuse(wire.PreloadOutcomeUnavailable, "provider:closed")
+	}
+	// The readiness hook may wait without any operation or model reservation
+	// for Recheck to observe. Re-read complete before evaluating the prefix.
+	if refusal, err := p.standing(ctx, subject, host.Name, ""); err != nil {
+		return refuse(wire.PreloadOutcomeUnavailable, "rights:unavailable")
+	} else if refusal != "" {
+		return refuse(wire.PreloadOutcomeNotPermitted, refusal)
 	}
 	var reply wire.PreloadReply
 	if native {

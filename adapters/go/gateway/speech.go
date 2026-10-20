@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"net/http"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
@@ -42,8 +43,9 @@ func (w *Window) openAISpeech(rw http.ResponseWriter, r *http.Request, b Bound, 
 		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
 	}
 	provider := w.cfg.Chat.(SpeechSynthesizer)
-	ctx := routed(r.Context(), b)
-	a := provider.StartSpeech(ctx, b.Subject(), req)
+	a := w.startHeld(r, routed(r.Context(), b), b, req.Model, "speech", func(ctx context.Context) wire.Admission {
+		return provider.StartSpeech(ctx, b.Subject(), req)
+	})
 	if a.Outcome != wire.StartOutcomeAccepted {
 		refusalOf(a.Outcome.String(), a.Reason).write(rw)
 		return

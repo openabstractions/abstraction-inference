@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -63,6 +64,10 @@ func remoteLiveTLS(t *testing.T) (*tls.Config, *tls.Config) {
 
 type imageRemoteInventory struct{}
 
+func (imageRemoteInventory) Modalities(string, int64) (routerwire.ModalityPage, error) {
+	return routerwire.ModalityPage{}, errors.New("unexpected profile catalogue call")
+}
+
 func (imageRemoteInventory) Models(bool) (routerwire.ModelsSnapshot, error) {
 	return routerwire.ModelsSnapshot{Models: []routerwire.Family{{Family: "gpt-image-1", Names: []routerwire.Alias{{Name: "gpt-image-1", Servable: true, Hosted: true}}}}}, nil
 }
@@ -74,6 +79,9 @@ func (imageRemoteInventory) Pick(routerwire.PickRequest) (routerwire.PickResult,
 }
 func (imageRemoteInventory) Offer(routerwire.OfferRequest) (routerwire.OfferSnapshot, error) {
 	return routerwire.OfferSnapshot{}, nil
+}
+func (imageRemoteInventory) ObserveOffer(routerwire.OfferRequest, string, int64) (routerwire.OfferObservation, error) {
+	return routerwire.OfferObservation{}, nil
 }
 
 type countingRemoteImage struct{ starts atomic.Int64 }
@@ -102,7 +110,7 @@ func TestImageLocalDeliveryRequirementRefusesRemoteBeforeStart(t *testing.T) {
 	serveCtx, stop := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- (identityremote.Server{TLS: serverTLS, Handler: handler, Timeout: 5 * time.Second, MaxFrame: 8 << 20}).Serve(serveCtx, listener)
+		done <- (identityremote.Server{TLS: serverTLS, Admit: remoteTestPin(t, clientTLS), Handler: handler, Timeout: 5 * time.Second, MaxFrame: 8 << 20}).Serve(serveCtx, listener)
 	}()
 	t.Cleanup(func() {
 		stop()
@@ -111,7 +119,7 @@ func TestImageLocalDeliveryRequirementRefusesRemoteBeforeStart(t *testing.T) {
 		}
 	})
 
-	host, err := router.NewRemote("lab", listener.Addr().String(), clientTLS, "remote-key")
+	host, err := router.NewRemote("lab", listener.Addr().String(), clientTLS, "remote-key", remoteTestPin(t, serverTLS))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +178,7 @@ func TestRemoteRelayForwardsTheContractMaskByDigest(t *testing.T) {
 	serveCtx, stop := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- (identityremote.Server{TLS: serverTLS, Handler: handler, Timeout: 5 * time.Second, MaxFrame: 8 << 20}).Serve(serveCtx, listener)
+		done <- (identityremote.Server{TLS: serverTLS, Admit: remoteTestPin(t, clientTLS), Handler: handler, Timeout: 5 * time.Second, MaxFrame: 8 << 20}).Serve(serveCtx, listener)
 	}()
 	t.Cleanup(func() {
 		stop()
@@ -178,7 +186,7 @@ func TestRemoteRelayForwardsTheContractMaskByDigest(t *testing.T) {
 			t.Errorf("remote server: %v", err)
 		}
 	})
-	host, err := router.NewRemote("lab", listener.Addr().String(), clientTLS, "remote-key")
+	host, err := router.NewRemote("lab", listener.Addr().String(), clientTLS, "remote-key", remoteTestPin(t, serverTLS))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,5 +224,21 @@ func TestRemoteRelayForwardsTheContractMaskByDigest(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the remote runtime received no Start")
+	}
+}
+
+// remoteTestPin admits exactly the isolated fixture certificate's leaf key.
+func remoteTestPin(t *testing.T, config *tls.Config) func(identityremote.Peer) error {
+	t.Helper()
+	cert, err := x509.ParseCertificate(config.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return func(peer identityremote.Peer) error {
+		if peer.Key != key {
+			return identityremote.ErrTrust
+		}
+		return nil
 	}
 }

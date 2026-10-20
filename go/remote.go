@@ -2,8 +2,12 @@ package inference
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"path/filepath"
 	"time"
+
+	"github.com/openabstractions/abstraction-identity/listen"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
@@ -15,6 +19,31 @@ import (
 // remote binds this runtime's certificate, applies the named credential from
 // its own holder, and its deltas are relayed. No header or key crosses.
 type remoteChat struct{}
+
+// remoteRequestReason never treats an unclassified error as proof that no
+// request reached the remote. Decoding can fail after execution and a reply.
+// Neither word authorizes a retry or fallback after dispatch.
+func remoteRequestReason(err error) string {
+	if errors.Is(err, listen.ErrCallerProofUnmet) ||
+		(errors.Is(err, listen.ErrRequestNotSent) && !errors.Is(err, listen.ErrRequestUncertain)) {
+		return "remote:unreachable"
+	}
+	return "remote:uncertain"
+}
+
+// A local stop cannot establish that an unanswered remote submission stopped.
+func remoteExecutionUncertain(op *operation, outcome wire.ReplyOutcome, reason string) bool {
+	return op.remote && outcome == wire.ReplyOutcomeUnavailable && reason == "remote:uncertain"
+}
+
+// forwardedRemoteExtensions carries a display claim for the bound local
+// caller. Remote authority comes from the receiving runtime's pinned peer.
+func forwardedRemoteExtensions(values map[string]string, required []string, program string) (map[string]string, []string) {
+	out, needed := forwardedNativeExtensions(values, required, filepath.Base(program))
+	delete(out, CacheScopeExtension)
+	delete(out, CachePartitionExtension)
+	return out, needed
+}
 
 // unsupported leaves non-extension feature checks to the remote. The selected
 // registration's required extension inventory is checked before authority.
@@ -30,10 +59,10 @@ func (remoteChat) run(ctx context.Context, _ *http.Client, host *router.Host, mo
 	}
 	forwarded := req
 	forwarded.Model = model
-	forwarded.Extensions, forwarded.RequiredExtensions = forwardedNativeExtensions(req.Extensions, req.RequiredExtensions, s.op.subject.Program)
+	forwarded.Extensions, forwarded.RequiredExtensions = forwardedRemoteExtensions(req.Extensions, req.RequiredExtensions, s.op.subject.Program)
 	admission, err := wire.NewChatClient(transport.WithContext(ctx)).Start(forwarded)
 	if err != nil {
-		return streamBroken(ctx, err)
+		return failed(wire.ReplyOutcomeUnavailable, remoteRequestReason(err))
 	}
 	if admission.Outcome != wire.StartOutcomeAccepted {
 		outcome := replyFromStart(admission.Outcome)

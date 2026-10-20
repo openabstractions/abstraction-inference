@@ -5,6 +5,9 @@ from __future__ import annotations
 import dataclasses
 import enum
 
+from abstraction.rights.api import _codec as _dependency_rights
+from abstraction.job.acceptance import _codec as _dependency_acceptance
+
 _HEX = b"0123456789abcdef"
 _WS = (0x20, 0x09, 0x0A, 0x0D)
 _SHORT = {0x22: b'\\"', 0x5C: b"\\\\", 0x08: b"\\b", 0x0C: b"\\f",
@@ -45,53 +48,9 @@ def _strs(out, v, depth):
 
 
 def _raw(out, s, depth):
-    b = s.encode("utf-8") if isinstance(s, str) else s
-    i, n = 0, len(b)
-    while i < n:
-        c = b[i]
-        if c in _WS:
-            i += 1
-        elif c == 0x22:
-            j = i + 1
-            while j < n:
-                if b[j] == 0x5C:
-                    j += 2
-                    continue
-                if b[j] == 0x22:
-                    j += 1
-                    break
-                j += 1
-            out += b[i:j]
-            i = j
-        elif c in (0x7B, 0x5B):
-            out.append(c)
-            i += 1
-            j = i
-            while j < n and b[j] in _WS:
-                j += 1
-            if j < n and b[j] in (0x7D, 0x5D):
-                out.append(b[j])
-                i = j + 1
-            else:
-                depth += 1
-                out += b"\n"
-                _pad(out, depth)
-        elif c in (0x7D, 0x5D):
-            depth -= 1
-            out += b"\n"
-            _pad(out, depth)
-            out.append(c)
-            i += 1
-        elif c == 0x2C:
-            out += b",\n"
-            _pad(out, depth)
-            i += 1
-        elif c == 0x3A:
-            out += b": "
-            i += 1
-        else:
-            out.append(c)
-            i += 1
+    # An opaque value's bytes as they are ([DEF-A3]).
+    # Whitespace around the value is not part of it.
+    out += (s.encode("utf-8") if isinstance(s, str) else bytes(s)).strip(bytes(_WS))
 
 
 def _rawmap(out, m, depth):
@@ -149,6 +108,12 @@ def _write_list(out, v, depth, enc):
         out += b"\n"
     _pad(out, depth)
     out += b"]"
+
+_Imported0 = _dependency_acceptance.RequestIdentity
+
+_Imported1 = _dependency_rights.RefusalDetail
+
+_Imported2 = _dependency_acceptance.HistoryWindow
 
 
 try:
@@ -262,6 +227,122 @@ class CancelOutcome(_StrEnum):
     UNKNOWN = "unknown"
     INVALID = "invalid"
     FORBIDDEN = "forbidden"
+    UNAVAILABLE = "unavailable"
+
+
+class ChatProgressPhase(_StrEnum):
+    QUEUED = "queued"
+    LOADING = "loading"
+    WARMING = "warming"
+
+
+class ChatPartKind(_StrEnum):
+    TEXT = "text"
+    REASONING = "reasoning"
+    REASONING_SUMMARY = "reasoning_summary"
+    TOOL_CALL = "tool_call"
+    MODEL_REFUSAL = "model_refusal"
+
+
+class FinishReason(_StrEnum):
+    STOP = "stop"
+    LENGTH = "length"
+    TOOL_CALLS = "tool_calls"
+    CONTENT_FILTER = "content_filter"
+    MODEL_REFUSAL = "model_refusal"
+    CONTEXT_WINDOW = "context_window"
+    MALFORMED_TOOL_CALL = "malformed_tool_call"
+    PAUSED = "paused"
+    OTHER = "other"
+
+
+class ChatToolChoiceKind(_StrEnum):
+    AUTO = "auto"
+    NONE = "none"
+    REQUIRED = "required"
+    NAMED = "named"
+
+
+class ChatReasoningEffort(_StrEnum):
+    NONE = "none"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class SealOmission(_StrEnum):
+    ENCODED_SIZE = "encoded_size"
+    INCOMPATIBLE_ORIGIN = "incompatible_origin"
+
+
+class ServedPlace(_StrEnum):
+    LOCAL = "local"
+    HOSTED = "hosted"
+    REMOTE = "remote"
+
+
+class ChatEventKind(_StrEnum):
+    PROGRESS = "progress"
+    PART = "part"
+    BLOCK_END = "block_end"
+    USAGE = "usage"
+    END = "end"
+
+
+class ChatGuarantee(_StrEnum):
+    LOCAL_ONLY = "abstraction.inference/local-only@1"
+    HOSTED_ALLOWED = "abstraction.inference/hosted-allowed@1"
+    NO_RETENTION = "abstraction.inference/no-retention@1"
+    FREE_CAPACITY = "abstraction.inference/free-capacity@1"
+
+
+class ChatUse(_StrEnum):
+    TITLE = "title"
+
+
+class ChatResultOutcome(_StrEnum):
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ChatLoad(_StrEnum):
+    COLD = "cold"
+    WARM = "warm"
+    LOADED = "loaded"
+
+
+class ChatLoadSource(_StrEnum):
+    DISK = "disk"
+    ADOPTED = "adopted"
+    LENT = "lent"
+
+
+class ChatReasoningSupport(_StrEnum):
+    APPLIED = "applied"
+    APPROXIMATED = "approximated"
+    NOT_SUPPORTED = "not_supported"
+    OVERRIDDEN = "overridden"
+
+
+class ChatStartOutcome(_StrEnum):
+    ACCEPTED = "accepted"
+    NOT_PERMITTED = "not_permitted"
+    BUDGET_EXCEEDED = "budget_exceeded"
+    UNSUPPORTED = "unsupported"
+    NO_HOST = "no_host"
+    UNAVAILABLE = "unavailable"
+    INVALID = "invalid"
+    FORBIDDEN = "forbidden"
+    EXHAUSTED = "exhausted"
+    CONFLICT = "conflict"
+    UNKNOWN = "unknown"
+
+
+class ChatHistoryOutcome(_StrEnum):
+    AVAILABLE = "available"
+    FORBIDDEN = "forbidden"
+    INVALID = "invalid"
     UNAVAILABLE = "unavailable"
 
 
@@ -381,6 +462,23 @@ class AuditOutcome(_StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class ProgramBudgetReadOutcome(_StrEnum):
+    PAGE = "page"
+    INVALID = "invalid"
+    FORBIDDEN = "forbidden"
+    UNAVAILABLE = "unavailable"
+    UNSUPPORTED = "unsupported"
+
+
+class ProgramBudgetEditOutcome(_StrEnum):
+    APPLIED = "applied"
+    CONFLICT = "conflict"
+    INVALID = "invalid"
+    FORBIDDEN = "forbidden"
+    UNAVAILABLE = "unavailable"
+    UNSUPPORTED = "unsupported"
+
+
 class CandidatePlacement(_StrEnum):
     LOCAL = "local"
     HOSTED = "hosted"
@@ -415,13 +513,13 @@ LOCAL_KEY_KINDS = ["openabstractions/local-key@1"]
 LOCAL_HOST_KINDS = ["ollama", "lmstudio", "lemonade", "whispercpp", "piper", "comfyui", "swarmui", "docker-model-runner", "foundry-local"]
 
 
-HOST_PROFILES = ["chat", "embed", "transcription", "speech", "image", "live"]
+HOST_PROFILES = ["chat", "embed", "transcription", "speech", "image", "live", "video"]
 
 
 HOST_DECLARERS = ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "installation", "default"]
 
 
-CREDENTIAL_CONSUMERS = ["abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/live@1"]
+CREDENTIAL_CONSUMERS = ["abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/live@1", "abstraction.inference/image@1"]
 
 
 CLAIM_EXTENSIONS = ["openabstractions/claimed-program"]
@@ -561,9 +659,9 @@ class Usage:
 
 @dataclasses.dataclass(kw_only=True)
 class Cost:
-    """Spend the host reported for this reply, in millionths of currency, an ISO
-    4217 code or the host's own credit unit. Absent when the host reports no
-    cost."""
+    """Spend the host reported for this reply, counted in millionths of currency,
+    rounded up per reported cost, an ISO 4217 code or the host's own credit
+    unit. Absent when the host reports no cost."""
 
     micros: int = 0
     currency: str = ""
@@ -598,7 +696,8 @@ class Reply:
 
 @dataclasses.dataclass(kw_only=True)
 class Delta:
-    """sequence numbers an operation's deltas from 0 without gaps. chat operations
+    """[Delta](https://openabstractions.github.io/reference.html#concept-inference.operation-delta):
+    sequence numbers an operation's deltas from 0 without gaps. chat operations
     use part, usage and end; transcription uses segment and transcription_end;
     speech uses audio chunks and speech_end; live uses transcript, audio and
     live_end; image uses image_progress, image_result and image_end. Text and
@@ -623,7 +722,8 @@ class Delta:
 
 @dataclasses.dataclass(kw_only=True)
 class Admission:
-    """accepted carries an operation id of 1..128 bytes, the chosen host and model,
+    """[Admission](https://openabstractions.github.io/reference.html#concept-inference.operation-admission):
+    accepted carries an operation id of 1..128 bytes, the chosen host and model,
     and the provider's bounds: an ended operation stays observable for
     retention_ms; an operation with no Observe in flight or received for idle_ms
     is cancelled with reason idle, and its upstream request closed; the newest
@@ -667,7 +767,8 @@ class AdmissionV2:
 
 @dataclasses.dataclass(kw_only=True)
 class DeltaPage:
-    """page carries 0..max_deltas deltas from sequence cursor in order, within
+    """[DeltaPage](https://openabstractions.github.io/reference.html#concept-inference.operation-delta-page):
+    page carries 0..max_deltas deltas from sequence cursor in order, within
     max_bytes of their compact JSON encoding except that a first delta larger
     than max_bytes is returned alone. next is the sequence after the last delta
     returned. at_end is true when the page holds the end delta or cursor is
@@ -693,6 +794,390 @@ class Cancellation:
 
     outcome: CancelOutcome | None = None
     reply_outcome: ReplyOutcome | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatProgress:
+    """Provider-reported progress for one accepted chat request. done and total are
+    absent when unreported; reported zero stays zero. unit is the provider's
+    display label and is present with numeric progress. Its byte ceiling derives
+    from IPC-F1's one control frame; the whole encoded record must fit that
+    frame. Numbers and heartbeats are never synthesized."""
+
+    phase: ChatProgressPhase | str = ""
+    done: int | None = None
+    total: int | None = None
+    unit: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatUsage:
+    """Token counts reported by the provider. Absent means unreported and zero
+    means reported zero. input includes cached input. output is total generated
+    output including reasoning where the provider counts it; reasoning is its
+    reported breakdown, never added again to output."""
+
+    input: int | None = None
+    output: int | None = None
+    cache_read: int | None = None
+    cache_write: int | None = None
+    reasoning: int | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatToolChoice:
+    """name is present only for named and must identify one declared tool. The
+    service checks required tool-choice support before any upstream byte; an
+    unsupported requirement is never approximated."""
+
+    kind: ChatToolChoiceKind | None = None
+    name: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatTool:
+    """A function the model may request. name uses A-Z a-z 0-9 _ - under the
+    existing tool grammar. parameters is a JSON Schema object as JSON text.
+    Description/schema byte ceilings derive from the one-frame request governor;
+    the encoded record also fits IPC-F1. A true strict requirement is admitted
+    only when the chosen server declares the supported schema subset. OA
+    executes no tool."""
+
+    name: str = ""
+    description: str = ""
+    parameters: str = ""
+    strict: bool | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatReasoning:
+    """The caller's reasoning choice. budget is a token cap on reasoning: where the
+    model takes a budget it wins over effort, and elsewhere it is ignored and
+    reported in ChatResult reasoning_applied. An unsupported choice never
+    refuses the call; the answer proceeds and reasoning_applied says what
+    happened."""
+
+    effort: ChatReasoningEffort | None = None
+    budget: int | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatOptions:
+    """chat@3 controls. max_output is the total generated-output token cap,
+    including reasoning where the provider counts it; zero keeps the provider
+    default. reasoning is the caller's reasoning effort and optional reasoning
+    budget; absent keeps the model's catalogue default, which is always bounded
+    on a model served on this machine, and a hosted provider's own default with
+    no parameter sent. stop retains the existing eight-sequence bound. JSON
+    Schema and stop payload ceilings derive from IPC-F1; the whole request must
+    fit one frame. Required tool/schema semantics are checked against
+    router-owned capabilities before upstream bytes. No option promises an
+    answer or increases a declared cost/resource/operation bound."""
+
+    max_output: int = 0
+    temperature: Temperature | None = None
+    stop: list[str] = dataclasses.field(default_factory=list)
+    json_schema: str = ""
+    tool_choice: ChatToolChoice | None = None
+    parallel_tools: bool | None = None
+    reasoning: ChatReasoning | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatPart:
+    """One append to a uint32-indexed output block. text belongs to text,
+    reasoning, reasoning_summary or model_refusal; arguments belongs to
+    tool_call. call_id/name are set on that tool block's first event. The event
+    owner splits text/arguments into valid UTF-8 appends that each fit IPC-F1,
+    never truncates them. The block_end event closes a block. Reasoning is never
+    appended to answer text. Scalar byte ceilings derive from the physical
+    frame, with the whole encoded record checked independently."""
+
+    block: int = 0
+    kind: ChatPartKind | None = None
+    text: str = ""
+    call_id: str = ""
+    name: str = ""
+    arguments: str = ""
+    seal: ReasoningSeal | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatBlockEnd:
+    block: int = 0
+    seal_omitted: SealOmission | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ReasoningSeal:
+    """Byte-preserved replay material for its originating wire family, never
+    display text. The 512 KiB raw byte bound is the largest power of two whose
+    base64 leaves at least one quarter of IPC-F1's 1 MiB frame for
+    envelope/block fields (Architect Codex 260). Whole events also enforce their
+    encoded ceiling. Oversized or incompatible material is omitted whole,
+    audited and named by SealOmission; the answer still completes. OA never
+    truncates or reconstructs a seal."""
+
+    origin: str = ""
+    bytes: bytes = b""
+
+
+@dataclasses.dataclass(kw_only=True)
+class ServedBy:
+    """Actual serving observation derived once from the admission's Router Decision
+    and decided HostState. Nonempty domain is remote and becomes machine;
+    otherwise hosted true is hosted, otherwise local. server is the decided
+    model server name. Scalar ceilings derive from IPC-F1 and the whole
+    observation must fit one frame. This display observation is distinct from
+    Placement's local/hosted/any request filter and from content trust-domain
+    location. A relayed remote terminal passes through unchanged."""
+
+    place: ServedPlace | str = ""
+    server: str = ""
+    machine: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatInputPart:
+    """Input content under the existing text/image/tool_call/tool_result grammar,
+    distinct from output reasoning blocks. Images carry a CONV-T3
+    sha256:lowercase-hex or sha512:lowercase-hex reference, never image bytes,
+    and one of image/png, image/jpeg, image/gif or image/webp. Tool name retains
+    its 64-byte grammar; text, call id and argument ceilings derive from IPC-F1.
+    The service checks kind-specific fields before any lookup or spend. Old Part
+    is unchanged."""
+
+    kind: PartKind | None = None
+    text: str = ""
+    digest: str = ""
+    media_type: str = ""
+    call_id: str = ""
+    name: str = ""
+    arguments: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatReplay:
+    """Opaque reasoning-block replay for a previous assistant turn. Origin is
+    checked against the selected wire; incompatible material is omitted whole
+    and audited, never rendered or reconstructed. Public displayed reasoning is
+    not a request-history part."""
+
+    block: int = 0
+    seal: ReasoningSeal = dataclasses.field(default_factory=ReasoningSeal)
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatMessage:
+    """One conversation message. The existing 64-part governor includes any replay
+    blocks; reasoning replay is allowed only on an assistant turn and is
+    separate from visible content. Provider-public display reasoning never
+    becomes answer or ordinary request history."""
+
+    role: Role | None = None
+    parts: list[ChatInputPart] = dataclasses.field(default_factory=list)
+    reasoning: list[ChatReplay] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatTarget:
+    """Exactly one explicit model or caller-scoped service-owned policy. Reuses the
+    current no-fallback-after-admission rule and carries no binding, host
+    choice, credential authority or permission."""
+
+    model: str = ""
+    selection_policy: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatContent:
+    """Chat content with existing message/tool/name governors and new supported
+    controls. Extensions retain <owner>/<name> keys up to 128 bytes; their value
+    and entry-count ceilings derive from the one-frame input governor,
+    independently enforced over the whole request. Guarantees are distinct and
+    required extensions must name present keys. For selection_policy, credential
+    stays empty and guarantees contains only distinct local_only and
+    free_capacity caller restrictions; duplicate, hosted_allowed or any other
+    inline policy guarantee is invalid. Free_capacity is retained through native
+    and remote relays and a model server without enforcement refuses before
+    effects. This restriction intersects the stored candidate and the endpoint
+    placement through the existing caller-guarantee owner. A hosted candidate
+    refuses before survey, credential or admission and never falls back to
+    another candidate. Facade service scope alone never protects model
+    placement. Stored candidates retain authority, subject to live rights and
+    budget checks."""
+
+    messages: list[ChatMessage] = dataclasses.field(default_factory=list)
+    tools: list[ChatTool] = dataclasses.field(default_factory=list)
+    options: ChatOptions | None = None
+    extensions: dict[str, str] = dataclasses.field(default_factory=dict)
+    required_extensions: list[str] = dataclasses.field(default_factory=list)
+    guarantees: list[ChatGuarantee | str] = dataclasses.field(default_factory=list)
+    credential: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class RequestV3:
+    """One chat@3 request. Persist the Job-owned identity and canonical body before
+    first send; key is scoped to the attested caller and this contract. Identity
+    carries the owner-issued history epoch and explicit attempt under
+    JOB-A2..A5. Body equality is this record's canonical compact encoding
+    excluding identity. model_ref is an optional CONV-T3 digest; until
+    descriptor resolution exists, setting it refuses unsupported before upstream
+    bytes. conversation is a caller-local label granting no authority. The
+    service derives cache scope as a CONV-T3 digest of the attested account,
+    attested program and label; an absent label retains the account/program
+    partition without chat affinity. Selection is service-owned and never
+    retried after acceptance or a possible send. Every request fits IPC-F1."""
+
+    identity: _dependency_acceptance.RequestIdentity = dataclasses.field(default_factory=_Imported0)
+    target: ChatTarget = dataclasses.field(default_factory=ChatTarget)
+    content: ChatContent = dataclasses.field(default_factory=ChatContent)
+    model_ref: str = ""
+    conversation: str = ""
+    use: ChatUse | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatTiming:
+    """Timing is measured by the runtime named in served_by and copied from its
+    inference operation record. At a relaying runtime these values are delegated
+    claims, passed through unchanged. Milliseconds use the serving runtime's
+    clock; engine duration claims are separate. An absent field was not
+    observed; reported zero stays zero. Prefill/reused token counts are provider
+    observations. Load classification and source are display data supplied only
+    by their owner, never inferred from elapsed time."""
+
+    queue_ms: int | None = None
+    load_ms: int | None = None
+    restore_ms: int | None = None
+    prefill_ms: int | None = None
+    decode_ms: int | None = None
+    prefill_tokens: int | None = None
+    reused_tokens: int | None = None
+    load: ChatLoad | None = None
+    load_source: ChatLoadSource | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatReasoningApplied:
+    """The reasoning a chat@3 answer ran with. effort and budget are what the model
+    was given, or the model's bounded default when the caller named none;
+    support says what became of the effort, and budget_support of a budget the
+    caller named. A display fact; it grants nothing."""
+
+    effort: ChatReasoningEffort | None = None
+    budget: int | None = None
+    support: ChatReasoningSupport | str = ""
+    budget_support: ChatReasoningSupport | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatResult:
+    """The one terminal result of chat@3 accepted work. reasoning_applied is the
+    reasoning the answer ran with. dropped_extensions names request extensions
+    the chosen model does not support and the request did not require; they were
+    not sent. Completed carries finish_reason; a model_refusal is a completed
+    provider response. Failed/cancelled carries one cause and no finish_reason.
+    An unknown finish reason completes as other with no action. A stalled source
+    is failed with cause stalled. OA authority refusals use the common
+    RefusalDetail; cause is display data, never parsed for permission. Payloads
+    derive their ceilings from IPC-F1; no partial terminal is returned on an
+    aggregate bound failure."""
+
+    outcome: ChatResultOutcome | None = None
+    cause: str = ""
+    finish_reason: FinishReason | None = None
+    stop_sequence: str = ""
+    usage: ChatUsage = dataclasses.field(default_factory=ChatUsage)
+    served_by: ServedBy | None = None
+    cost: Cost | None = None
+    refusal: _dependency_rights.RefusalDetail | None = None
+    retry_after_ms: int | None = None
+    timing: ChatTiming | None = None
+    reasoning_applied: ChatReasoningApplied | None = None
+    dropped_extensions: list[str] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatEvent:
+    """A chat@3 tagged event union: exactly the payload named by kind is present.
+    Operation sequence starts at zero without gaps and reuses the operation
+    cursor. Progress is separate from content blocks. Every event fits IPC-F1;
+    text/argument appends split at valid UTF-8 boundaries and opaque material is
+    never truncated. Old chat Delta/DeltaKind are unchanged."""
+
+    sequence: int = 0
+    kind: ChatEventKind | None = None
+    progress: ChatProgress | None = None
+    part: ChatPart | None = None
+    block_end: ChatBlockEnd | None = None
+    usage: ChatUsage | None = None
+    end: ChatResult | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatAdmission:
+    """Admission of one caller-bound chat request. Accepted carries
+    request/server/model and observation bounds. Refusals carry no request or
+    route, zero bounds and no selection metadata. Equal caller/epoch/key/body
+    replays this admission; another body is conflict; expired or closed-epoch
+    evidence is unknown. A lost Start never authorizes automatic retry.
+    Reason/server byte ceilings are physical IPC-F1 ceilings, independently
+    checked for the whole record. Budget causes use budget:<unit>:<credential or
+    program>; an evaluated content-rights refusal is not_permitted, while
+    unverifiable peer boundaries stay forbidden."""
+
+    outcome: ChatStartOutcome | None = None
+    reason: str = ""
+    request: str = ""
+    server: str = ""
+    model: str = ""
+    retention_ms: int = 0
+    idle_ms: int = 0
+    retained_deltas: int = 0
+    preferred_model: str = ""
+    selection_reason: SelectionReason | None = None
+    refusal: _dependency_rights.RefusalDetail | None = None
+    retry_after_ms: int | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatPage:
+    """A bounded page of chat@3 events. Reuses existing caller-bound
+    cursor/retention/gap rules. Whole reply fits IPC-F1; a large first event may
+    exceed max_bytes only within that physical reply governor. A failed
+    whole-reply bound returns unavailable, never a partial page. An Observe wait
+    ending preserves accepted work inside the existing 10-second unobserved
+    lifetime; explicit Cancel stops it."""
+
+    outcome: PageOutcome | None = None
+    events: list[ChatEvent] = dataclasses.field(default_factory=list)
+    next: int = 0
+    at_end: bool = False
+    refusal: _dependency_rights.RefusalDetail | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatCancellation:
+    """Explicitly stop the caller's chat@3 request, or report its existing terminal
+    outcome. IDs confer no authority. Cancellation acknowledgement timeout never
+    proves upstream closure."""
+
+    outcome: CancelOutcome | None = None
+    result_outcome: ChatResultOutcome | None = None
+    refusal: _dependency_rights.RefusalDetail | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class ChatHistoryRead:
+    """Read result for the unchanged Job-owned HistoryWindow. A successful result
+    carries the window; every refusal omits it. The common refusal names an
+    authority refusal. No new durability or recovery promise is implied."""
+
+    outcome: ChatHistoryOutcome | None = None
+    window: _dependency_acceptance.HistoryWindow | None = None
+    refusal: _dependency_rights.RefusalDetail | None = None
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -1092,10 +1577,10 @@ class VideoObservation:
 @dataclasses.dataclass(kw_only=True)
 class CeilingLimit:
     """A credential's daily limits per UTC day: tokens (input plus output), spend
-    in currency millionths, requests, images, audio seconds and characters. Zero
-    or absent means no limit in that unit. The provider enforces every
-    configured unit at admission and records the applicable units when each
-    profile ends."""
+    counted in currency millionths, rounded up per reported cost, requests,
+    images, audio seconds and characters. Zero or absent means no limit in that
+    unit. The provider enforces every configured unit at admission and records
+    the applicable units when each profile ends."""
 
     tokens_per_day: int = 0
     micros_per_day: int = 0
@@ -1136,8 +1621,8 @@ class HostEntry:
 @dataclasses.dataclass(kw_only=True)
 class Spend:
     """What a credential has spent on UTC day (YYYY-MM-DD), counted from provider
-    replies: tokens, currency millionths, requests, generated images, whole
-    audio seconds and characters."""
+    replies: tokens, currency millionths rounded up per reported cost, requests,
+    generated images, whole audio seconds and characters."""
 
     day: str = ""
     tokens: int = 0
@@ -1288,6 +1773,34 @@ class AuditPage:
 
 
 @dataclasses.dataclass(kw_only=True)
+class RequestEntry:
+    """One retained inference decision with its recorded selection and execution
+    placement. entry is the unchanged audit decision. unavailable_hosts names
+    the preferred hosts unavailable when fallback was selected. Absent placement
+    means it was not recorded; it is never inferred from the caller or host
+    name."""
+
+    entry: AuditEntry = dataclasses.field(default_factory=AuditEntry)
+    preferred_model: str = ""
+    unavailable_hosts: list[str] = dataclasses.field(default_factory=list)
+    selection: str = ""
+    placement: ServedPlace | None = None
+
+
+@dataclasses.dataclass(kw_only=True)
+class RequestPage:
+    """The same journal, sequence, retention and cursor outcomes as AuditPage, with
+    recorded request selection and placement. A page that cannot fit the encoded
+    page bound reads unavailable with no entries, next equal to cursor and
+    at_end false; it never returns a partial page."""
+
+    outcome: AuditOutcome | None = None
+    entries: list[RequestEntry] = dataclasses.field(default_factory=list)
+    next: int = 0
+    at_end: bool = False
+
+
+@dataclasses.dataclass(kw_only=True)
 class GatewayState:
     """page carries the gateway window setting kept in the runtime state at
     revision, and the window in this runtime now. open and address are the
@@ -1319,6 +1832,81 @@ class GatewayChange:
     outcome: EditOutcome | None = None
     revision: str = ""
     reason: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class ProgramBudget:
+    """One program's budget for a credential per UTC day: observed input plus
+    output tokens, currency millionths rounded up per reported cost, requests,
+    generated images, whole audio seconds and characters. Every value is
+    nonnegative; zero means no limit in that unit. A present all-zero budget
+    records an explicit No limit choice. This budget grants no credential use or
+    inference authority."""
+
+    tokens_per_day: int = 0
+    micros_per_day: int = 0
+    requests_per_day: int = 0
+    images_per_day: int = 0
+    audio_seconds_per_day: int = 0
+    characters_per_day: int = 0
+
+
+@dataclasses.dataclass(kw_only=True)
+class ProgramBudgetEntry:
+    """One native program's configured budget and observed spend for the requested
+    credential. An absent budget means no configured choice, with usage
+    preserved; a present all-zero budget is an explicit No limit choice. Program
+    is the normalized native identity, never an upstream model or forwarded
+    claim. cost_unreported is true when a missing cost observation in the
+    current UTC day blocks this program and credential's configured money
+    budget. Usage and this flag can change without changing the configuration
+    revision; refresh ProgramBudgets to read them."""
+
+    program: str = ""
+    budget: ProgramBudget | None = None
+    spend: Spend = dataclasses.field(default_factory=Spend)
+    cost_unreported: bool = False
+
+
+@dataclasses.dataclass(kw_only=True)
+class ProgramBudgetPage:
+    """page carries the credential's program budget configuration revision, at most
+    256 entries in program order, and the implemented charged host profiles
+    covered by this owner's admission and accounting. Usage changes do not
+    change the configuration revision. Refusals carry an empty revision and no
+    entries or profiles. unsupported is the native client projection of an older
+    operator's unknown_method; it confirms no budget."""
+
+    outcome: ProgramBudgetReadOutcome | None = None
+    revision: str = ""
+    entries: list[ProgramBudgetEntry] = dataclasses.field(default_factory=list)
+    profiles: list[str] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass(kw_only=True)
+class ProgramBudgetResult:
+    """applied confirms durable budget configuration, preserving observed usage.
+    conflict carries the current configuration revision; invalid names the
+    invalid field in reason. Other refusals carry an empty revision. unsupported
+    is the native client projection of an older operator's unknown_method and
+    confirms no write."""
+
+    outcome: ProgramBudgetEditOutcome | None = None
+    revision: str = ""
+    reason: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class ProgramBudgetChange:
+    """One conditional budget choice for a receiving-account native program. Absent
+    budget removes the configured choice without erasing usage; a present
+    all-zero budget records explicit No limit. The native presenter supplies the
+    program from the stored question's proven target."""
+
+    expected_revision: str = ""
+    credential: str = ""
+    program: str = ""
+    budget: ProgramBudget | None = None
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -1386,6 +1974,12 @@ class _ChatCancelArguments:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _ChatV2StartWithGuaranteesArguments:
+    request: RequestV2 = dataclasses.field(default_factory=RequestV2)
+    guarantees: list[RequestGuarantee | str] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass(kw_only=True)
 class _ChatV2StartArguments:
     request: RequestV2 = dataclasses.field(default_factory=RequestV2)
 
@@ -1402,6 +1996,30 @@ class _ChatV2ObserveArguments:
 @dataclasses.dataclass(kw_only=True)
 class _ChatV2CancelArguments:
     operation: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV3GetHistoryWindowArguments:
+    pass
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV3StartArguments:
+    request: RequestV3 = dataclasses.field(default_factory=RequestV3)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV3ObserveArguments:
+    request: str = ""
+    cursor: int = 0
+    max_deltas: int = 0
+    max_bytes: int = 0
+    wait_ms: int = 0
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV3CancelArguments:
+    request: str = ""
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -1503,6 +2121,12 @@ class _ImageCancelArguments:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _ImageV2StartWithGuaranteesArguments:
+    request: ImageRequestV2 = dataclasses.field(default_factory=ImageRequestV2)
+    guarantees: list[RequestGuarantee | str] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass(kw_only=True)
 class _ImageV2StartArguments:
     request: ImageRequestV2 = dataclasses.field(default_factory=ImageRequestV2)
 
@@ -1576,6 +2200,12 @@ class _OperatorAuditArguments:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _OperatorRequestsArguments:
+    cursor: int = 0
+    max_entries: int = 0
+
+
+@dataclasses.dataclass(kw_only=True)
 class _OperatorGatewayArguments:
     pass
 
@@ -1585,6 +2215,21 @@ class _OperatorSetGatewayArguments:
     expected_revision: str = ""
     open: bool = False
     address: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _OperatorProgramBudgetsArguments:
+    credential: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _OperatorSetProgramBudgetArguments:
+    request: ProgramBudgetChange = dataclasses.field(default_factory=ProgramBudgetChange)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2ReadEffectiveArguments:
+    name: str = ""
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -1603,6 +2248,23 @@ class _SelectionOperatorV2PutArguments:
 @dataclasses.dataclass(kw_only=True)
 class _SelectionOperatorV2DeletePolicyArguments:
     target_program: str = ""
+    expected_revision: str = ""
+    name: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2ReadAccountDefaultArguments:
+    name: str = ""
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2PutAccountDefaultArguments:
+    expected_revision: str = ""
+    policy: SelectionPolicyV2 = dataclasses.field(default_factory=SelectionPolicyV2)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2DeleteAccountDefaultArguments:
     expected_revision: str = ""
     name: str = ""
 
@@ -1646,6 +2308,11 @@ class _ChatCancelResult:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _ChatV2StartWithGuaranteesResult:
+    value: AdmissionV2 = dataclasses.field(default_factory=AdmissionV2)
+
+
+@dataclasses.dataclass(kw_only=True)
 class _ChatV2StartResult:
     value: AdmissionV2 = dataclasses.field(default_factory=AdmissionV2)
 
@@ -1658,6 +2325,26 @@ class _ChatV2ObserveResult:
 @dataclasses.dataclass(kw_only=True)
 class _ChatV2CancelResult:
     value: Cancellation = dataclasses.field(default_factory=Cancellation)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV3GetHistoryWindowResult:
+    value: ChatHistoryRead = dataclasses.field(default_factory=ChatHistoryRead)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV3StartResult:
+    value: ChatAdmission = dataclasses.field(default_factory=ChatAdmission)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV3ObserveResult:
+    value: ChatPage = dataclasses.field(default_factory=ChatPage)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _ChatV3CancelResult:
+    value: ChatCancellation = dataclasses.field(default_factory=ChatCancellation)
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -1741,6 +2428,11 @@ class _ImageCancelResult:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _ImageV2StartWithGuaranteesResult:
+    value: AdmissionV2 = dataclasses.field(default_factory=AdmissionV2)
+
+
+@dataclasses.dataclass(kw_only=True)
 class _ImageV2StartResult:
     value: AdmissionV2 = dataclasses.field(default_factory=AdmissionV2)
 
@@ -1806,6 +2498,11 @@ class _OperatorAuditResult:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _OperatorRequestsResult:
+    value: RequestPage = dataclasses.field(default_factory=RequestPage)
+
+
+@dataclasses.dataclass(kw_only=True)
 class _OperatorGatewayResult:
     value: GatewayState = dataclasses.field(default_factory=GatewayState)
 
@@ -1813,6 +2510,21 @@ class _OperatorGatewayResult:
 @dataclasses.dataclass(kw_only=True)
 class _OperatorSetGatewayResult:
     value: GatewayChange = dataclasses.field(default_factory=GatewayChange)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _OperatorProgramBudgetsResult:
+    value: ProgramBudgetPage = dataclasses.field(default_factory=ProgramBudgetPage)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _OperatorSetProgramBudgetResult:
+    value: ProgramBudgetResult = dataclasses.field(default_factory=ProgramBudgetResult)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2ReadEffectiveResult:
+    value: SelectionReadV2 = dataclasses.field(default_factory=SelectionReadV2)
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -1827,6 +2539,21 @@ class _SelectionOperatorV2PutResult:
 
 @dataclasses.dataclass(kw_only=True)
 class _SelectionOperatorV2DeletePolicyResult:
+    value: SelectionChange = dataclasses.field(default_factory=SelectionChange)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2ReadAccountDefaultResult:
+    value: SelectionReadV2 = dataclasses.field(default_factory=SelectionReadV2)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2PutAccountDefaultResult:
+    value: SelectionChange = dataclasses.field(default_factory=SelectionChange)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _SelectionOperatorV2DeleteAccountDefaultResult:
     value: SelectionChange = dataclasses.field(default_factory=SelectionChange)
 
 
@@ -2530,6 +3257,1442 @@ def _write_cancellation(out, v, depth):
     out += b"\n"
     _pad(out, depth)
     out += b"}"
+
+
+def _write_chat_progress(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if v.done is not None and type(v.done) is not int: raise Refusal("wrong_type", 0)
+    if v.done is not None and not (-9223372036854775808 <= v.done <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.total is not None and type(v.total) is not int: raise Refusal("wrong_type", 0)
+    if v.total is not None and not (-9223372036854775808 <= v.total <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.done is not None:
+        if type(v.done) is not int: raise Refusal("wrong_type", 0)
+        if v.done < 0 or v.done > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.total is not None:
+        if type(v.total) is not int: raise Refusal("wrong_type", 0)
+        if v.total < 0 or v.total > 9223372036854775807: raise Refusal("bad_value", 0)
+    if isinstance(v.unit, str):
+        _size = len(v.unit.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 1048576): raise Refusal("bad_value", 0)
+    if isinstance(v.unit, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.unit): raise Refusal("bad_value", 0)
+    if not isinstance(v.phase, str):
+        raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "phase")
+    out += b": "
+    _esc(out, v.phase)
+    encoded_counter.check(out, 1048576)
+    if v.done is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "done")
+        out += b": "
+        _num(out, v.done)
+    encoded_counter.check(out, 1048576)
+    if v.total is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "total")
+        out += b": "
+        _num(out, v.total)
+    encoded_counter.check(out, 1048576)
+    if v.unit:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "unit")
+        out += b": "
+        _esc(out, v.unit)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_usage(out, v, depth):
+    if v.input is not None and type(v.input) is not int: raise Refusal("wrong_type", 0)
+    if v.input is not None and not (-9223372036854775808 <= v.input <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.output is not None and type(v.output) is not int: raise Refusal("wrong_type", 0)
+    if v.output is not None and not (-9223372036854775808 <= v.output <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.cache_read is not None and type(v.cache_read) is not int: raise Refusal("wrong_type", 0)
+    if v.cache_read is not None and not (-9223372036854775808 <= v.cache_read <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.cache_write is not None and type(v.cache_write) is not int: raise Refusal("wrong_type", 0)
+    if v.cache_write is not None and not (-9223372036854775808 <= v.cache_write <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.reasoning is not None and type(v.reasoning) is not int: raise Refusal("wrong_type", 0)
+    if v.reasoning is not None and not (-9223372036854775808 <= v.reasoning <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.input is not None:
+        if type(v.input) is not int: raise Refusal("wrong_type", 0)
+        if v.input < 0 or v.input > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.output is not None:
+        if type(v.output) is not int: raise Refusal("wrong_type", 0)
+        if v.output < 0 or v.output > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.cache_read is not None:
+        if type(v.cache_read) is not int: raise Refusal("wrong_type", 0)
+        if v.cache_read < 0 or v.cache_read > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.cache_write is not None:
+        if type(v.cache_write) is not int: raise Refusal("wrong_type", 0)
+        if v.cache_write < 0 or v.cache_write > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.reasoning is not None:
+        if type(v.reasoning) is not int: raise Refusal("wrong_type", 0)
+        if v.reasoning < 0 or v.reasoning > 9223372036854775807: raise Refusal("bad_value", 0)
+    out += b"{"
+    first = True
+    if v.input is not None:
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "input")
+        out += b": "
+        _num(out, v.input)
+    if v.output is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "output")
+        out += b": "
+        _num(out, v.output)
+    if v.cache_read is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "cache_read")
+        out += b": "
+        _num(out, v.cache_read)
+    if v.cache_write is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "cache_write")
+        out += b": "
+        _num(out, v.cache_write)
+    if v.reasoning is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "reasoning")
+        out += b": "
+        _num(out, v.reasoning)
+    if not first:
+        out += b"\n"
+        _pad(out, depth)
+    out += b"}"
+
+
+def _write_chat_tool_choice(out, v, depth):
+    if isinstance(v.name, str):
+        _size = len(v.name.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 64): raise Refusal("bad_value", 0)
+    if isinstance(v.name, str) and not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.name): raise Refusal("bad_value", 0)
+    _closed_enum(ChatToolChoiceKind, v.kind)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "kind")
+    out += b": "
+    _esc(out, v.kind)
+    if v.name:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "name")
+        out += b": "
+        _esc(out, v.name)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_chat_tool(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if v.strict is not None and type(v.strict) is not bool: raise Refusal("wrong_type", 0)
+    if isinstance(v.name, str):
+        _size = len(v.name.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 64: raise Refusal("bad_value", 0)
+    if isinstance(v.name, str) and not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.name): raise Refusal("bad_value", 0)
+    if isinstance(v.description, str):
+        _size = len(v.description.encode("utf-8", "surrogatepass"))
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.parameters, str):
+        _size = len(v.parameters.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 1048576: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "name")
+    out += b": "
+    _esc(out, v.name)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "description")
+    out += b": "
+    _esc(out, v.description)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "parameters")
+    out += b": "
+    _esc(out, v.parameters)
+    encoded_counter.check(out, 1048576)
+    if v.strict is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "strict")
+        out += b": "
+        out += b"true" if v.strict else b"false"
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_reasoning(out, v, depth):
+    if v.budget is not None and type(v.budget) is not int: raise Refusal("wrong_type", 0)
+    if v.budget is not None and not (-9223372036854775808 <= v.budget <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.budget is not None:
+        if type(v.budget) is not int: raise Refusal("wrong_type", 0)
+        if v.budget < 1 or v.budget > 1048576: raise Refusal("bad_value", 0)
+    _closed_enum(ChatReasoningEffort, v.effort)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "effort")
+    out += b": "
+    _esc(out, v.effort)
+    if v.budget is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "budget")
+        out += b": "
+        _num(out, v.budget)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_chat_options(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if v.parallel_tools is not None and type(v.parallel_tools) is not bool: raise Refusal("wrong_type", 0)
+    if type(v.max_output) is not int: raise Refusal("wrong_type", 0)
+    if v.max_output < 0 or v.max_output > 9223372036854775807: raise Refusal("bad_value", 0)
+    if isinstance(v.stop, list):
+        _size = len(v.stop)
+        if _size > 8: raise Refusal("bad_value", 0)
+    if isinstance(v.stop, list):
+        for oa_element in v.stop:
+            if isinstance(oa_element, str):
+                _size = len(oa_element.encode("utf-8", "surrogatepass"))
+                if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.json_schema, str):
+        _size = len(v.json_schema.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 1048576): raise Refusal("bad_value", 0)
+    out += b"{"
+    first = True
+    if v.max_output != 0:
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "max_output")
+        out += b": "
+        _num(out, v.max_output)
+    encoded_counter.check(out, 1048576)
+    if v.temperature is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "temperature")
+        out += b": "
+        _write_temperature(out, v.temperature, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.stop:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "stop")
+        out += b": "
+        _strs(out, v.stop, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.json_schema:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "json_schema")
+        out += b": "
+        _esc(out, v.json_schema)
+    encoded_counter.check(out, 1048576)
+    if v.tool_choice is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "tool_choice")
+        out += b": "
+        _write_chat_tool_choice(out, v.tool_choice, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.parallel_tools is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "parallel_tools")
+        out += b": "
+        out += b"true" if v.parallel_tools else b"false"
+    encoded_counter.check(out, 1048576)
+    if v.reasoning is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "reasoning")
+        out += b": "
+        _write_chat_reasoning(out, v.reasoning, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if not first:
+        out += b"\n"
+        _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_part(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if type(v.block) is not int: raise Refusal("wrong_type", 0)
+    if v.block < 0 or v.block > 4294967295: raise Refusal("bad_value", 0)
+    if isinstance(v.text, str):
+        _size = len(v.text.encode("utf-8", "surrogatepass"))
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.call_id, str):
+        _size = len(v.call_id.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 1048576): raise Refusal("bad_value", 0)
+    if isinstance(v.name, str):
+        _size = len(v.name.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 64): raise Refusal("bad_value", 0)
+    if isinstance(v.name, str) and not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.name): raise Refusal("bad_value", 0)
+    if isinstance(v.arguments, str):
+        _size = len(v.arguments.encode("utf-8", "surrogatepass"))
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    _closed_enum(ChatPartKind, v.kind)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "block")
+    out += b": "
+    _num(out, v.block)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "kind")
+    out += b": "
+    _esc(out, v.kind)
+    encoded_counter.check(out, 1048576)
+    if v.text:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "text")
+        out += b": "
+        _esc(out, v.text)
+    encoded_counter.check(out, 1048576)
+    if v.call_id:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "call_id")
+        out += b": "
+        _esc(out, v.call_id)
+    encoded_counter.check(out, 1048576)
+    if v.name:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "name")
+        out += b": "
+        _esc(out, v.name)
+    encoded_counter.check(out, 1048576)
+    if v.arguments:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "arguments")
+        out += b": "
+        _esc(out, v.arguments)
+    encoded_counter.check(out, 1048576)
+    if v.seal is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "seal")
+        out += b": "
+        _write_reasoning_seal(out, v.seal, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_block_end(out, v, depth):
+    if type(v.block) is not int: raise Refusal("wrong_type", 0)
+    if v.block < 0 or v.block > 4294967295: raise Refusal("bad_value", 0)
+    if v.seal_omitted is not None:
+        if not isinstance(v.seal_omitted, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "block")
+    out += b": "
+    _num(out, v.block)
+    if v.seal_omitted is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "seal_omitted")
+        out += b": "
+        _esc(out, v.seal_omitted)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_reasoning_seal(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if isinstance(v.origin, str):
+        _size = len(v.origin.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 256: raise Refusal("bad_value", 0)
+    if isinstance(v.origin, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.origin): raise Refusal("bad_value", 0)
+    if isinstance(v.bytes, (bytes, bytearray)):
+        _size = len(v.bytes)
+        if _size > 524288: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "origin")
+    out += b": "
+    _esc(out, v.origin)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "bytes")
+    out += b": "
+    _esc(out, _encode_binary(v.bytes))
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_served_by(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if isinstance(v.server, str):
+        _size = len(v.server.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.server, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.server): raise Refusal("bad_value", 0)
+    if isinstance(v.machine, str):
+        _size = len(v.machine.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 1048576): raise Refusal("bad_value", 0)
+    if isinstance(v.machine, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.machine): raise Refusal("bad_value", 0)
+    if not isinstance(v.place, str):
+        raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "place")
+    out += b": "
+    _esc(out, v.place)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "server")
+    out += b": "
+    _esc(out, v.server)
+    encoded_counter.check(out, 1048576)
+    if v.machine:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "machine")
+        out += b": "
+        _esc(out, v.machine)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_input_part(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if isinstance(v.text, str):
+        _size = len(v.text.encode("utf-8", "surrogatepass"))
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.digest, str):
+        _size = len(v.digest.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 71 or _size > 135): raise Refusal("bad_value", 0)
+    if isinstance(v.media_type, str):
+        _size = len(v.media_type.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 10): raise Refusal("bad_value", 0)
+    if isinstance(v.call_id, str):
+        _size = len(v.call_id.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 1048576): raise Refusal("bad_value", 0)
+    if isinstance(v.name, str):
+        _size = len(v.name.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 64): raise Refusal("bad_value", 0)
+    if isinstance(v.name, str) and not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.name): raise Refusal("bad_value", 0)
+    if isinstance(v.arguments, str):
+        _size = len(v.arguments.encode("utf-8", "surrogatepass"))
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    _closed_enum(PartKind, v.kind)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "kind")
+    out += b": "
+    _esc(out, v.kind)
+    encoded_counter.check(out, 1048576)
+    if v.text:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "text")
+        out += b": "
+        _esc(out, v.text)
+    encoded_counter.check(out, 1048576)
+    if v.digest:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "digest")
+        out += b": "
+        _esc(out, v.digest)
+    encoded_counter.check(out, 1048576)
+    if v.media_type:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "media_type")
+        out += b": "
+        _esc(out, v.media_type)
+    encoded_counter.check(out, 1048576)
+    if v.call_id:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "call_id")
+        out += b": "
+        _esc(out, v.call_id)
+    encoded_counter.check(out, 1048576)
+    if v.name:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "name")
+        out += b": "
+        _esc(out, v.name)
+    encoded_counter.check(out, 1048576)
+    if v.arguments:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "arguments")
+        out += b": "
+        _esc(out, v.arguments)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_replay(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if type(v.block) is not int: raise Refusal("wrong_type", 0)
+    if v.block < 0 or v.block > 4294967295: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "block")
+    out += b": "
+    _num(out, v.block)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "seal")
+    out += b": "
+    _write_reasoning_seal(out, v.seal, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_message(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if isinstance(v.parts, list):
+        _size = len(v.parts)
+        if _size < 1 or _size > 64: raise Refusal("bad_value", 0)
+    if isinstance(v.reasoning, list):
+        _size = len(v.reasoning)
+        if _size > 64: raise Refusal("bad_value", 0)
+    _closed_enum(Role, v.role)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "role")
+    out += b": "
+    _esc(out, v.role)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "parts")
+    out += b": "
+    _write_list(out, v.parts, depth + 1, _write_chat_input_part)
+    encoded_counter.check(out, 1048576)
+    if v.reasoning:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "reasoning")
+        out += b": "
+        _write_list(out, v.reasoning, depth + 1, _write_chat_replay)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_target(out, v, depth):
+    if isinstance(v.model, str):
+        _size = len(v.model.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 256): raise Refusal("bad_value", 0)
+    if isinstance(v.selection_policy, str):
+        _size = len(v.selection_policy.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 64): raise Refusal("bad_value", 0)
+    if isinstance(v.selection_policy, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.selection_policy): raise Refusal("bad_value", 0)
+    out += b"{"
+    first = True
+    if v.model:
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "model")
+        out += b": "
+        _esc(out, v.model)
+    if v.selection_policy:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "selection_policy")
+        out += b": "
+        _esc(out, v.selection_policy)
+    if not first:
+        out += b"\n"
+        _pad(out, depth)
+    out += b"}"
+
+
+def _write_chat_content(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if isinstance(v.messages, list):
+        _size = len(v.messages)
+        if _size < 1 or _size > 512: raise Refusal("bad_value", 0)
+    if isinstance(v.tools, list):
+        _size = len(v.tools)
+        if _size > 128: raise Refusal("bad_value", 0)
+    if isinstance(v.extensions, dict):
+        _size = len(v.extensions)
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.extensions, dict):
+        for oa_element in v.extensions:
+            if isinstance(oa_element, str):
+                _size = len(oa_element.encode("utf-8", "surrogatepass"))
+                if _size < 1 or _size > 128: raise Refusal("bad_value", 0)
+    if isinstance(v.extensions, dict):
+        for oa_element in v.extensions.values():
+            if isinstance(oa_element, str):
+                _size = len(oa_element.encode("utf-8", "surrogatepass"))
+                if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.required_extensions, list):
+        _size = len(v.required_extensions)
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.required_extensions, list):
+        for oa_element in v.required_extensions:
+            if isinstance(oa_element, str):
+                _size = len(oa_element.encode("utf-8", "surrogatepass"))
+                if _size < 1 or _size > 128: raise Refusal("bad_value", 0)
+    if isinstance(v.guarantees, list):
+        _size = len(v.guarantees)
+        if _size > 4: raise Refusal("bad_value", 0)
+    if isinstance(v.credential, str):
+        _size = len(v.credential.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 64): raise Refusal("bad_value", 0)
+    if isinstance(v.credential, str) and not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.credential): raise Refusal("bad_value", 0)
+    for item in v.guarantees:
+        if not isinstance(item, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "messages")
+    out += b": "
+    _write_list(out, v.messages, depth + 1, _write_chat_message)
+    encoded_counter.check(out, 1048576)
+    if v.tools:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "tools")
+        out += b": "
+        _write_list(out, v.tools, depth + 1, _write_chat_tool)
+    encoded_counter.check(out, 1048576)
+    if v.options is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "options")
+        out += b": "
+        _write_chat_options(out, v.options, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.extensions:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "extensions")
+        out += b": "
+        _strmap(out, v.extensions, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.required_extensions:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "required_extensions")
+        out += b": "
+        _strs(out, v.required_extensions, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "guarantees")
+    out += b": "
+    _strs(out, v.guarantees, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.credential:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "credential")
+        out += b": "
+        _esc(out, v.credential)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_request_v3(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if isinstance(v.model_ref, str):
+        _size = len(v.model_ref.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 71 or _size > 135): raise Refusal("bad_value", 0)
+    if isinstance(v.conversation, str):
+        _size = len(v.conversation.encode("utf-8", "surrogatepass"))
+        if _size != 0 and (_size < 1 or _size > 128): raise Refusal("bad_value", 0)
+    if isinstance(v.conversation, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.conversation): raise Refusal("bad_value", 0)
+    if v.use is not None:
+        _closed_enum(ChatUse, v.use)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "identity")
+    out += b": "
+    _write_oa_imported0(out, v.identity, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "target")
+    out += b": "
+    _write_chat_target(out, v.target, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "content")
+    out += b": "
+    _write_chat_content(out, v.content, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.model_ref:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "model_ref")
+        out += b": "
+        _esc(out, v.model_ref)
+    encoded_counter.check(out, 1048576)
+    if v.conversation:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "conversation")
+        out += b": "
+        _esc(out, v.conversation)
+    encoded_counter.check(out, 1048576)
+    if v.use is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "use")
+        out += b": "
+        _esc(out, v.use)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_timing(out, v, depth):
+    if v.queue_ms is not None and type(v.queue_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.queue_ms is not None and not (-9223372036854775808 <= v.queue_ms <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.load_ms is not None and type(v.load_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.load_ms is not None and not (-9223372036854775808 <= v.load_ms <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.restore_ms is not None and type(v.restore_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.restore_ms is not None and not (-9223372036854775808 <= v.restore_ms <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.prefill_ms is not None and type(v.prefill_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.prefill_ms is not None and not (-9223372036854775808 <= v.prefill_ms <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.decode_ms is not None and type(v.decode_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.decode_ms is not None and not (-9223372036854775808 <= v.decode_ms <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.prefill_tokens is not None and type(v.prefill_tokens) is not int: raise Refusal("wrong_type", 0)
+    if v.prefill_tokens is not None and not (-9223372036854775808 <= v.prefill_tokens <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.reused_tokens is not None and type(v.reused_tokens) is not int: raise Refusal("wrong_type", 0)
+    if v.reused_tokens is not None and not (-9223372036854775808 <= v.reused_tokens <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.queue_ms is not None:
+        if type(v.queue_ms) is not int: raise Refusal("wrong_type", 0)
+        if v.queue_ms < 0 or v.queue_ms > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.load_ms is not None:
+        if type(v.load_ms) is not int: raise Refusal("wrong_type", 0)
+        if v.load_ms < 0 or v.load_ms > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.restore_ms is not None:
+        if type(v.restore_ms) is not int: raise Refusal("wrong_type", 0)
+        if v.restore_ms < 0 or v.restore_ms > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.prefill_ms is not None:
+        if type(v.prefill_ms) is not int: raise Refusal("wrong_type", 0)
+        if v.prefill_ms < 0 or v.prefill_ms > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.decode_ms is not None:
+        if type(v.decode_ms) is not int: raise Refusal("wrong_type", 0)
+        if v.decode_ms < 0 or v.decode_ms > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.prefill_tokens is not None:
+        if type(v.prefill_tokens) is not int: raise Refusal("wrong_type", 0)
+        if v.prefill_tokens < 0 or v.prefill_tokens > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.reused_tokens is not None:
+        if type(v.reused_tokens) is not int: raise Refusal("wrong_type", 0)
+        if v.reused_tokens < 0 or v.reused_tokens > 9223372036854775807: raise Refusal("bad_value", 0)
+    if v.load is not None:
+        if not isinstance(v.load, str):
+            raise Refusal("wrong_type", 0)
+    if v.load_source is not None:
+        if not isinstance(v.load_source, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    first = True
+    if v.queue_ms is not None:
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "queue_ms")
+        out += b": "
+        _num(out, v.queue_ms)
+    if v.load_ms is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "load_ms")
+        out += b": "
+        _num(out, v.load_ms)
+    if v.restore_ms is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "restore_ms")
+        out += b": "
+        _num(out, v.restore_ms)
+    if v.prefill_ms is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "prefill_ms")
+        out += b": "
+        _num(out, v.prefill_ms)
+    if v.decode_ms is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "decode_ms")
+        out += b": "
+        _num(out, v.decode_ms)
+    if v.prefill_tokens is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "prefill_tokens")
+        out += b": "
+        _num(out, v.prefill_tokens)
+    if v.reused_tokens is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "reused_tokens")
+        out += b": "
+        _num(out, v.reused_tokens)
+    if v.load is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "load")
+        out += b": "
+        _esc(out, v.load)
+    if v.load_source is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "load_source")
+        out += b": "
+        _esc(out, v.load_source)
+    if not first:
+        out += b"\n"
+        _pad(out, depth)
+    out += b"}"
+
+
+def _write_chat_reasoning_applied(out, v, depth):
+    if v.budget is not None and type(v.budget) is not int: raise Refusal("wrong_type", 0)
+    if v.budget is not None and not (-9223372036854775808 <= v.budget <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if v.budget is not None:
+        if type(v.budget) is not int: raise Refusal("wrong_type", 0)
+        if v.budget < 1 or v.budget > 1048576: raise Refusal("bad_value", 0)
+    if v.effort is not None:
+        _closed_enum(ChatReasoningEffort, v.effort)
+    if not isinstance(v.support, str):
+        raise Refusal("wrong_type", 0)
+    if v.budget_support is not None:
+        if not isinstance(v.budget_support, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    first = True
+    if v.effort is not None:
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "effort")
+        out += b": "
+        _esc(out, v.effort)
+    if v.budget is not None:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "budget")
+        out += b": "
+        _num(out, v.budget)
+    if not first:
+        out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "support")
+    out += b": "
+    _esc(out, v.support)
+    if v.budget_support is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "budget_support")
+        out += b": "
+        _esc(out, v.budget_support)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_chat_result(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if v.retry_after_ms is not None and type(v.retry_after_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.retry_after_ms is not None and not (-9223372036854775808 <= v.retry_after_ms <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if isinstance(v.cause, str):
+        _size = len(v.cause.encode("utf-8", "surrogatepass"))
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.stop_sequence, str):
+        _size = len(v.stop_sequence.encode("utf-8", "surrogatepass"))
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    if v.retry_after_ms is not None:
+        if type(v.retry_after_ms) is not int: raise Refusal("wrong_type", 0)
+        if v.retry_after_ms < 1 or v.retry_after_ms > 86400000: raise Refusal("bad_value", 0)
+    if isinstance(v.dropped_extensions, list):
+        _size = len(v.dropped_extensions)
+        if _size > 64: raise Refusal("bad_value", 0)
+    if isinstance(v.dropped_extensions, list):
+        for oa_element in v.dropped_extensions:
+            if isinstance(oa_element, str):
+                _size = len(oa_element.encode("utf-8", "surrogatepass"))
+                if _size < 1 or _size > 128: raise Refusal("bad_value", 0)
+    _closed_enum(ChatResultOutcome, v.outcome)
+    if v.finish_reason is not None:
+        if not isinstance(v.finish_reason, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "cause")
+    out += b": "
+    _esc(out, v.cause)
+    encoded_counter.check(out, 1048576)
+    if v.finish_reason is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "finish_reason")
+        out += b": "
+        _esc(out, v.finish_reason)
+    encoded_counter.check(out, 1048576)
+    if v.stop_sequence:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "stop_sequence")
+        out += b": "
+        _esc(out, v.stop_sequence)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "usage")
+    out += b": "
+    _write_chat_usage(out, v.usage, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.served_by is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "served_by")
+        out += b": "
+        _write_served_by(out, v.served_by, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.cost is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "cost")
+        out += b": "
+        _write_cost(out, v.cost, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.refusal is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "refusal")
+        out += b": "
+        _write_oa_imported1(out, v.refusal, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.retry_after_ms is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "retry_after_ms")
+        out += b": "
+        _num(out, v.retry_after_ms)
+    encoded_counter.check(out, 1048576)
+    if v.timing is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "timing")
+        out += b": "
+        _write_chat_timing(out, v.timing, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.reasoning_applied is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "reasoning_applied")
+        out += b": "
+        _write_chat_reasoning_applied(out, v.reasoning_applied, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.dropped_extensions:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "dropped_extensions")
+        out += b": "
+        _strs(out, v.dropped_extensions, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_event(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if type(v.sequence) is not int: raise Refusal("wrong_type", 0)
+    if v.sequence < 0 or v.sequence > 9223372036854775807: raise Refusal("bad_value", 0)
+    _closed_enum(ChatEventKind, v.kind)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "sequence")
+    out += b": "
+    _num(out, v.sequence)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "kind")
+    out += b": "
+    _esc(out, v.kind)
+    encoded_counter.check(out, 1048576)
+    if v.progress is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "progress")
+        out += b": "
+        _write_chat_progress(out, v.progress, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.part is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "part")
+        out += b": "
+        _write_chat_part(out, v.part, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.block_end is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "block_end")
+        out += b": "
+        _write_chat_block_end(out, v.block_end, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.usage is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "usage")
+        out += b": "
+        _write_chat_usage(out, v.usage, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.end is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "end")
+        out += b": "
+        _write_chat_result(out, v.end, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_admission(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if v.retry_after_ms is not None and type(v.retry_after_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.retry_after_ms is not None and not (-9223372036854775808 <= v.retry_after_ms <= 9223372036854775807): raise Refusal("number_spelling", 0)
+    if isinstance(v.reason, str):
+        _size = len(v.reason.encode("utf-8", "surrogatepass"))
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.request, str):
+        _size = len(v.request.encode("utf-8", "surrogatepass"))
+        if _size > 128: raise Refusal("bad_value", 0)
+    if isinstance(v.request, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.request): raise Refusal("bad_value", 0)
+    if isinstance(v.server, str):
+        _size = len(v.server.encode("utf-8", "surrogatepass"))
+        if _size > 1048576: raise Refusal("bad_value", 0)
+    if isinstance(v.server, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.server): raise Refusal("bad_value", 0)
+    if isinstance(v.model, str):
+        _size = len(v.model.encode("utf-8", "surrogatepass"))
+        if _size > 256: raise Refusal("bad_value", 0)
+    if type(v.retention_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.retention_ms < 0 or v.retention_ms > 9223372036854775807: raise Refusal("bad_value", 0)
+    if type(v.idle_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.idle_ms < 0 or v.idle_ms > 9223372036854775807: raise Refusal("bad_value", 0)
+    if type(v.retained_deltas) is not int: raise Refusal("wrong_type", 0)
+    if v.retained_deltas < 0 or v.retained_deltas > 9223372036854775807: raise Refusal("bad_value", 0)
+    if isinstance(v.preferred_model, str):
+        _size = len(v.preferred_model.encode("utf-8", "surrogatepass"))
+        if _size > 256: raise Refusal("bad_value", 0)
+    if v.retry_after_ms is not None:
+        if type(v.retry_after_ms) is not int: raise Refusal("wrong_type", 0)
+        if v.retry_after_ms < 1 or v.retry_after_ms > 86400000: raise Refusal("bad_value", 0)
+    _closed_enum(ChatStartOutcome, v.outcome)
+    if v.selection_reason is not None:
+        _closed_enum(SelectionReason, v.selection_reason)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "reason")
+    out += b": "
+    _esc(out, v.reason)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _esc(out, v.request)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "server")
+    out += b": "
+    _esc(out, v.server)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "model")
+    out += b": "
+    _esc(out, v.model)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "retention_ms")
+    out += b": "
+    _num(out, v.retention_ms)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "idle_ms")
+    out += b": "
+    _num(out, v.idle_ms)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "retained_deltas")
+    out += b": "
+    _num(out, v.retained_deltas)
+    encoded_counter.check(out, 1048576)
+    if v.preferred_model:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "preferred_model")
+        out += b": "
+        _esc(out, v.preferred_model)
+    encoded_counter.check(out, 1048576)
+    if v.selection_reason is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "selection_reason")
+        out += b": "
+        _esc(out, v.selection_reason)
+    encoded_counter.check(out, 1048576)
+    if v.refusal is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "refusal")
+        out += b": "
+        _write_oa_imported1(out, v.refusal, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.retry_after_ms is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "retry_after_ms")
+        out += b": "
+        _num(out, v.retry_after_ms)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_page(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if isinstance(v.events, list):
+        _size = len(v.events)
+        if _size > 256: raise Refusal("bad_value", 0)
+    if type(v.next) is not int: raise Refusal("wrong_type", 0)
+    if v.next < 0 or v.next > 9223372036854775807: raise Refusal("bad_value", 0)
+    _closed_enum(PageOutcome, v.outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "events")
+    out += b": "
+    _write_list(out, v.events, depth + 1, _write_chat_event)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "next")
+    out += b": "
+    _num(out, v.next)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "at_end")
+    out += b": "
+    out += b"true" if v.at_end else b"false"
+    encoded_counter.check(out, 1048576)
+    if v.refusal is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "refusal")
+        out += b": "
+        _write_oa_imported1(out, v.refusal, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_chat_cancellation(out, v, depth):
+    _closed_enum(CancelOutcome, v.outcome)
+    if v.result_outcome is not None:
+        _closed_enum(ChatResultOutcome, v.result_outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    if v.result_outcome is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "result_outcome")
+        out += b": "
+        _esc(out, v.result_outcome)
+    if v.refusal is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "refusal")
+        out += b": "
+        _write_oa_imported1(out, v.refusal, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_chat_history_read(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    _closed_enum(ChatHistoryOutcome, v.outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    encoded_counter.check(out, 1048576)
+    if v.window is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "window")
+        out += b": "
+        _write_oa_imported2(out, v.window, depth + 1)
+    encoded_counter.check(out, 1048576)
+    if v.refusal is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "refusal")
+        out += b": "
+        _write_oa_imported1(out, v.refusal, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
 
 
 def _write_preload_reply(out, v, depth):
@@ -4111,6 +6274,104 @@ def _write_audit_page(out, v, depth):
     out += b"}"
 
 
+def _write_request_entry(out, v, depth):
+    if isinstance(v.preferred_model, str):
+        _size = len(v.preferred_model.encode("utf-8", "surrogatepass"))
+        if _size > 256: raise Refusal("bad_value", 0)
+    if isinstance(v.unavailable_hosts, list):
+        _size = len(v.unavailable_hosts)
+        if _size > 64: raise Refusal("bad_value", 0)
+    if isinstance(v.unavailable_hosts, list):
+        for oa_element in v.unavailable_hosts:
+            if isinstance(oa_element, str):
+                _size = len(oa_element.encode("utf-8", "surrogatepass"))
+                if _size < 1 or _size > 4096: raise Refusal("bad_value", 0)
+    if isinstance(v.selection, str):
+        _size = len(v.selection.encode("utf-8", "surrogatepass"))
+        if _size > 64: raise Refusal("bad_value", 0)
+    if isinstance(v.selection, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.selection): raise Refusal("bad_value", 0)
+    if v.placement is not None:
+        if not isinstance(v.placement, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "entry")
+    out += b": "
+    _write_audit_entry(out, v.entry, depth + 1)
+    if v.preferred_model:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "preferred_model")
+        out += b": "
+        _esc(out, v.preferred_model)
+    if v.unavailable_hosts:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "unavailable_hosts")
+        out += b": "
+        _strs(out, v.unavailable_hosts, depth + 1)
+    if v.selection:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "selection")
+        out += b": "
+        _esc(out, v.selection)
+    if v.placement is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "placement")
+        out += b": "
+        _esc(out, v.placement)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_request_page(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if isinstance(v.entries, list):
+        _size = len(v.entries)
+        if _size > 256: raise Refusal("bad_value", 0)
+    _closed_enum(AuditOutcome, v.outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "entries")
+    out += b": "
+    _write_list(out, v.entries, depth + 1, _write_request_entry)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "next")
+    out += b": "
+    _num(out, v.next)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "at_end")
+    out += b": "
+    out += b"true" if v.at_end else b"false"
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
 def _write_gateway_state(out, v, depth):
     _closed_enum(ListOutcome, v.outcome)
     out += b"{"
@@ -4180,6 +6441,239 @@ def _write_gateway_change(out, v, depth):
     _esc(out, "reason")
     out += b": "
     _esc(out, v.reason)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_program_budget(out, v, depth):
+    if type(v.tokens_per_day) is not int: raise Refusal("wrong_type", 0)
+    if v.tokens_per_day < 0 or v.tokens_per_day > 9223372036854775807: raise Refusal("bad_value", 0)
+    if type(v.micros_per_day) is not int: raise Refusal("wrong_type", 0)
+    if v.micros_per_day < 0 or v.micros_per_day > 9223372036854775807: raise Refusal("bad_value", 0)
+    if type(v.requests_per_day) is not int: raise Refusal("wrong_type", 0)
+    if v.requests_per_day < 0 or v.requests_per_day > 9223372036854775807: raise Refusal("bad_value", 0)
+    if type(v.images_per_day) is not int: raise Refusal("wrong_type", 0)
+    if v.images_per_day < 0 or v.images_per_day > 9223372036854775807: raise Refusal("bad_value", 0)
+    if type(v.audio_seconds_per_day) is not int: raise Refusal("wrong_type", 0)
+    if v.audio_seconds_per_day < 0 or v.audio_seconds_per_day > 9223372036854775807: raise Refusal("bad_value", 0)
+    if type(v.characters_per_day) is not int: raise Refusal("wrong_type", 0)
+    if v.characters_per_day < 0 or v.characters_per_day > 9223372036854775807: raise Refusal("bad_value", 0)
+    out += b"{"
+    first = True
+    if v.tokens_per_day != 0:
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "tokens_per_day")
+        out += b": "
+        _num(out, v.tokens_per_day)
+    if v.micros_per_day != 0:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "micros_per_day")
+        out += b": "
+        _num(out, v.micros_per_day)
+    if v.requests_per_day != 0:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "requests_per_day")
+        out += b": "
+        _num(out, v.requests_per_day)
+    if v.images_per_day != 0:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "images_per_day")
+        out += b": "
+        _num(out, v.images_per_day)
+    if v.audio_seconds_per_day != 0:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "audio_seconds_per_day")
+        out += b": "
+        _num(out, v.audio_seconds_per_day)
+    if v.characters_per_day != 0:
+        if not first:
+            out += b","
+        first = False
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "characters_per_day")
+        out += b": "
+        _num(out, v.characters_per_day)
+    if not first:
+        out += b"\n"
+        _pad(out, depth)
+    out += b"}"
+
+
+def _write_program_budget_entry(out, v, depth):
+    if isinstance(v.program, str):
+        _size = len(v.program.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 4096: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "program")
+    out += b": "
+    _esc(out, v.program)
+    if v.budget is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "budget")
+        out += b": "
+        _write_program_budget(out, v.budget, depth + 1)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "spend")
+    out += b": "
+    _write_spend(out, v.spend, depth + 1)
+    if v.cost_unreported:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "cost_unreported")
+        out += b": "
+        out += b"true" if v.cost_unreported else b"false"
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_program_budget_page(out, v, depth):
+    encoded_counter = _CompactEncodedCounter(len(out))
+    if isinstance(v.revision, str):
+        _size = len(v.revision.encode("utf-8", "surrogatepass"))
+        if _size > 128: raise Refusal("bad_value", 0)
+    if isinstance(v.revision, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.revision): raise Refusal("bad_value", 0)
+    if isinstance(v.entries, list):
+        _size = len(v.entries)
+        if _size > 256: raise Refusal("bad_value", 0)
+    if isinstance(v.profiles, list):
+        _size = len(v.profiles)
+        if _size > 16: raise Refusal("bad_value", 0)
+    if isinstance(v.profiles, list):
+        for oa_element in v.profiles:
+            if isinstance(oa_element, str):
+                _size = len(oa_element.encode("utf-8", "surrogatepass"))
+                if _size < 1 or _size > 256: raise Refusal("bad_value", 0)
+    _closed_enum(ProgramBudgetReadOutcome, v.outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "revision")
+    out += b": "
+    _esc(out, v.revision)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "entries")
+    out += b": "
+    _write_list(out, v.entries, depth + 1, _write_program_budget_entry)
+    encoded_counter.check(out, 1048576)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "profiles")
+    out += b": "
+    _strs(out, v.profiles, depth + 1)
+    encoded_counter.check(out, 1048576)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+    encoded_counter.check(out, 1048576)
+
+
+def _write_program_budget_result(out, v, depth):
+    if isinstance(v.revision, str):
+        _size = len(v.revision.encode("utf-8", "surrogatepass"))
+        if _size > 128: raise Refusal("bad_value", 0)
+    if isinstance(v.revision, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.revision): raise Refusal("bad_value", 0)
+    if isinstance(v.reason, str):
+        _size = len(v.reason.encode("utf-8", "surrogatepass"))
+        if _size > 256: raise Refusal("bad_value", 0)
+    if isinstance(v.reason, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.reason): raise Refusal("bad_value", 0)
+    _closed_enum(ProgramBudgetEditOutcome, v.outcome)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "outcome")
+    out += b": "
+    _esc(out, v.outcome)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "revision")
+    out += b": "
+    _esc(out, v.revision)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "reason")
+    out += b": "
+    _esc(out, v.reason)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_program_budget_change(out, v, depth):
+    if isinstance(v.expected_revision, str):
+        _size = len(v.expected_revision.encode("utf-8", "surrogatepass"))
+        if _size > 128: raise Refusal("bad_value", 0)
+    if isinstance(v.credential, str):
+        _size = len(v.credential.encode("utf-8", "surrogatepass"))
+        if _size > 64: raise Refusal("bad_value", 0)
+    if isinstance(v.program, str):
+        _size = len(v.program.encode("utf-8", "surrogatepass"))
+        if _size > 4096: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "expected_revision")
+    out += b": "
+    _esc(out, v.expected_revision)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "credential")
+    out += b": "
+    _esc(out, v.credential)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "program")
+    out += b": "
+    _esc(out, v.program)
+    if v.budget is not None:
+        out += b","
+        out += b"\n"
+        _pad(out, depth + 1)
+        _esc(out, "budget")
+        out += b": "
+        _write_program_budget(out, v.budget, depth + 1)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -4347,6 +6841,30 @@ def _write_oa_chat_cancel_arguments(out, v, depth):
     out += b"}"
 
 
+def _write_oa_chat_v2_start_with_guarantees_arguments(out, v, depth):
+    if isinstance(v.guarantees, list):
+        _size = len(v.guarantees)
+        if _size > 1: raise Refusal("bad_value", 0)
+    for item in v.guarantees:
+        if not isinstance(item, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _write_request_v2(out, v.request, depth + 1)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "guarantees")
+    out += b": "
+    _strs(out, v.guarantees, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_chat_v2_start_arguments(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -4402,6 +6920,87 @@ def _write_oa_chat_v2_cancel_arguments(out, v, depth):
     _esc(out, "operation")
     out += b": "
     _esc(out, v.operation)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v3_get_history_window_arguments(out, v, depth):
+    out += b"{"
+    out += b"}"
+
+
+def _write_oa_chat_v3_start_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _write_request_v3(out, v.request, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v3_observe_arguments(out, v, depth):
+    if isinstance(v.request, str):
+        _size = len(v.request.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 128: raise Refusal("bad_value", 0)
+    if isinstance(v.request, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.request): raise Refusal("bad_value", 0)
+    if type(v.cursor) is not int: raise Refusal("wrong_type", 0)
+    if v.cursor < 0 or v.cursor > 9223372036854775807: raise Refusal("bad_value", 0)
+    if type(v.max_deltas) is not int: raise Refusal("wrong_type", 0)
+    if v.max_deltas < 1 or v.max_deltas > 256: raise Refusal("bad_value", 0)
+    if type(v.max_bytes) is not int: raise Refusal("wrong_type", 0)
+    if v.max_bytes < 1 or v.max_bytes > 65536: raise Refusal("bad_value", 0)
+    if type(v.wait_ms) is not int: raise Refusal("wrong_type", 0)
+    if v.wait_ms < 0 or v.wait_ms > 30000: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _esc(out, v.request)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "cursor")
+    out += b": "
+    _num(out, v.cursor)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "max_deltas")
+    out += b": "
+    _num(out, v.max_deltas)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "max_bytes")
+    out += b": "
+    _num(out, v.max_bytes)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "wait_ms")
+    out += b": "
+    _num(out, v.wait_ms)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v3_cancel_arguments(out, v, depth):
+    if isinstance(v.request, str):
+        _size = len(v.request.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 128: raise Refusal("bad_value", 0)
+    if isinstance(v.request, str) and any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.request): raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _esc(out, v.request)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -4707,6 +7306,30 @@ def _write_oa_image_cancel_arguments(out, v, depth):
     out += b"}"
 
 
+def _write_oa_image_v2_start_with_guarantees_arguments(out, v, depth):
+    if isinstance(v.guarantees, list):
+        _size = len(v.guarantees)
+        if _size > 1: raise Refusal("bad_value", 0)
+    for item in v.guarantees:
+        if not isinstance(item, str):
+            raise Refusal("wrong_type", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _write_image_request_v2(out, v.request, depth + 1)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "guarantees")
+    out += b": "
+    _strs(out, v.guarantees, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_image_v2_start_arguments(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -4897,6 +7520,24 @@ def _write_oa_operator_audit_arguments(out, v, depth):
     out += b"}"
 
 
+def _write_oa_operator_requests_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "cursor")
+    out += b": "
+    _num(out, v.cursor)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "max_entries")
+    out += b": "
+    _num(out, v.max_entries)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_operator_gateway_arguments(out, v, depth):
     out += b"{"
     out += b"}"
@@ -4921,6 +7562,48 @@ def _write_oa_operator_set_gateway_arguments(out, v, depth):
     _esc(out, "address")
     out += b": "
     _esc(out, v.address)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_operator_program_budgets_arguments(out, v, depth):
+    if isinstance(v.credential, str):
+        _size = len(v.credential.encode("utf-8", "surrogatepass"))
+        if _size > 64: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "credential")
+    out += b": "
+    _esc(out, v.credential)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_operator_set_program_budget_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "request")
+    out += b": "
+    _write_program_budget_change(out, v.request, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_read_effective_arguments(out, v, depth):
+    if isinstance(v.name, str):
+        _size = len(v.name.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 64: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "name")
+    out += b": "
+    _esc(out, v.name)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -4976,6 +7659,66 @@ def _write_oa_selection_operator_v2_delete_policy_arguments(out, v, depth):
     out += b": "
     _esc(out, v.target_program)
     out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "expected_revision")
+    out += b": "
+    _esc(out, v.expected_revision)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "name")
+    out += b": "
+    _esc(out, v.name)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_read_account_default_arguments(out, v, depth):
+    if isinstance(v.name, str):
+        _size = len(v.name.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 64: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "name")
+    out += b": "
+    _esc(out, v.name)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_put_account_default_arguments(out, v, depth):
+    if isinstance(v.expected_revision, str):
+        _size = len(v.expected_revision.encode("utf-8", "surrogatepass"))
+        if _size > 256: raise Refusal("bad_value", 0)
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "expected_revision")
+    out += b": "
+    _esc(out, v.expected_revision)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "policy")
+    out += b": "
+    _write_selection_policy_v2(out, v.policy, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_delete_account_default_arguments(out, v, depth):
+    if isinstance(v.expected_revision, str):
+        _size = len(v.expected_revision.encode("utf-8", "surrogatepass"))
+        if _size > 256: raise Refusal("bad_value", 0)
+    if isinstance(v.name, str):
+        _size = len(v.name.encode("utf-8", "surrogatepass"))
+        if _size < 1 or _size > 64: raise Refusal("bad_value", 0)
+    out += b"{"
     out += b"\n"
     _pad(out, depth + 1)
     _esc(out, "expected_revision")
@@ -5112,6 +7855,18 @@ def _write_oa_chat_cancel_result(out, v, depth):
     out += b"}"
 
 
+def _write_oa_chat_v2_start_with_guarantees_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_admission_v2(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_chat_v2_start_result(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -5143,6 +7898,54 @@ def _write_oa_chat_v2_cancel_result(out, v, depth):
     _esc(out, "value")
     out += b": "
     _write_cancellation(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v3_get_history_window_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_chat_history_read(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v3_start_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_chat_admission(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v3_observe_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_chat_page(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_chat_v3_cancel_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_chat_cancellation(out, v.value, depth + 1)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -5340,6 +8143,18 @@ def _write_oa_image_cancel_result(out, v, depth):
     out += b"}"
 
 
+def _write_oa_image_v2_start_with_guarantees_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_admission_v2(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_image_v2_start_result(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -5496,6 +8311,18 @@ def _write_oa_operator_audit_result(out, v, depth):
     out += b"}"
 
 
+def _write_oa_operator_requests_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_request_page(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_operator_gateway_result(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -5515,6 +8342,42 @@ def _write_oa_operator_set_gateway_result(out, v, depth):
     _esc(out, "value")
     out += b": "
     _write_gateway_change(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_operator_program_budgets_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_program_budget_page(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_operator_set_program_budget_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_program_budget_result(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_read_effective_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_selection_read_v2(out, v.value, depth + 1)
     out += b"\n"
     _pad(out, depth)
     out += b"}"
@@ -5556,11 +8419,44 @@ def _write_oa_selection_operator_v2_delete_policy_result(out, v, depth):
     out += b"}"
 
 
-def encode(v):
-    out = bytearray()
-    _write_request(out, v, 0)
+def _write_oa_selection_operator_v2_read_account_default_result(out, v, depth):
+    out += b"{"
     out += b"\n"
-    return bytes(out)
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_selection_read_v2(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_put_account_default_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_selection_change(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_selection_operator_v2_delete_account_default_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_selection_change(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def encode(v):
+    return encode_request(v)
 
 
 _QUOTE, _BACKSLASH, _COLON, _COMMA = 0x22, 0x5C, 0x3A, 0x2C
@@ -5582,12 +8478,13 @@ class Refusal(ValueError):
 
 
 class _Reader:
-    __slots__ = ("buf", "pos", "depth")
+    __slots__ = ("buf", "pos", "depth", "limit")
 
     def __init__(self, buf):
         self.buf = buf
         self.pos = 0
         self.depth = 0
+        self.limit = _DEPTH_LIMIT
 
     def refuse(self, word):
         return Refusal(word, self.pos)
@@ -5601,7 +8498,7 @@ class _Reader:
 
     def enter(self):
         self.depth += 1
-        if self.depth > _DEPTH_LIMIT:
+        if self.depth > self.limit:
             raise self.refuse("depth_exceeded")
 
     def digit(self):
@@ -5921,6 +8818,46 @@ def _read_list(r, elem):
     r.pos += 1
     r.depth -= 1
     return out
+
+class _CompactEncodedCounter:
+    __slots__ = ('start', 'pos', 'count', 'quoted', 'escaped')
+    def __init__(self, start):
+        self.start = self.pos = start
+        self.count = 0
+        self.quoted = self.escaped = False
+    def check(self, out, limit):
+        if len(out)-self.start > 1048576: raise Refusal("encoded_size", 0)
+        while self.pos < len(out):
+            b = out[self.pos]
+            self.pos += 1
+            if not self.quoted and b in (0x20, 9, 10, 13): continue
+            self.count += 1
+            if self.count > limit: raise Refusal("encoded_size", 0)
+            if self.quoted:
+                if self.escaped: self.escaped = False
+                elif b == 0x5c: self.escaped = True
+                elif b == 0x22: self.quoted = False
+            elif b == 0x22: self.quoted = True
+
+def _check_encoded_size(r, limit):
+    depth, quoted, escaped, count = r.depth, False, False, 0
+    for i in range(r.pos, min(len(r.buf), r.pos + 1048577)):
+        if i-r.pos >= 1048576: raise r.refuse("encoded_size")
+        c = r.buf[i]
+        if not quoted and c in (0x20, 9, 10, 13): continue
+        count += 1
+        if count > limit: raise r.refuse("encoded_size")
+        if quoted:
+            if escaped: escaped = False
+            elif c == 0x5c: escaped = True
+            elif c == 0x22: quoted = False
+        elif c == 0x22: quoted = True
+        elif c in (0x7b, 0x5b):
+            depth += 1
+            if depth > 64: raise r.refuse("depth_exceeded")
+        elif c in (0x7d, 0x5d):
+            depth -= 1
+            if depth <= r.depth: return
 
 
 def _read_part(r):
@@ -6982,6 +9919,1722 @@ def _read_cancellation(r):
             v.reply_outcome = ReplyOutcome(v.reply_outcome)
         except ValueError:
             raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_progress(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatProgress()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "phase":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.phase = r.string()
+            elif key == "done":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.done = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "total":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.total = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "unit":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.unit = r.string()
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    if v.done is not None:
+        if v.done < 0 or v.done > 9223372036854775807: raise r.refuse("bad_value")
+    if v.total is not None:
+        if v.total < 0 or v.total > 9223372036854775807: raise r.refuse("bad_value")
+    _size = len(v.unit.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 1048576): raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.unit): raise r.refuse("bad_value")
+    v.phase = _open_enum(ChatProgressPhase, v.phase)
+    return v
+
+
+def _read_chat_usage(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ChatUsage()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "input":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.input = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "output":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.output = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "cache_read":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.cache_read = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "cache_write":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.cache_write = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "reasoning":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.reasoning = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if v.input is not None:
+        if v.input < 0 or v.input > 9223372036854775807: raise r.refuse("bad_value")
+    if v.output is not None:
+        if v.output < 0 or v.output > 9223372036854775807: raise r.refuse("bad_value")
+    if v.cache_read is not None:
+        if v.cache_read < 0 or v.cache_read > 9223372036854775807: raise r.refuse("bad_value")
+    if v.cache_write is not None:
+        if v.cache_write < 0 or v.cache_write > 9223372036854775807: raise r.refuse("bad_value")
+    if v.reasoning is not None:
+        if v.reasoning < 0 or v.reasoning > 9223372036854775807: raise r.refuse("bad_value")
+    return v
+
+
+def _read_chat_tool_choice(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ChatToolChoice()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "kind":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.kind = r.string()
+            elif key == "name":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.name = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    _size = len(v.name.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 64): raise r.refuse("bad_value")
+    if not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.name): raise r.refuse("bad_value")
+    try:
+        v.kind = ChatToolChoiceKind(v.kind)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_tool(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatTool()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "name":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.name = r.string()
+            elif key == "description":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.description = r.string()
+            elif key == "parameters":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.parameters = r.string()
+            elif key == "strict":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.strict = r.boolean()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    _size = len(v.name.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 64: raise r.refuse("bad_value")
+    if not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.name): raise r.refuse("bad_value")
+    _size = len(v.description.encode("utf-8", "surrogatepass"))
+    if _size > 1048576: raise r.refuse("bad_value")
+    _size = len(v.parameters.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 1048576: raise r.refuse("bad_value")
+    return v
+
+
+def _read_chat_reasoning(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ChatReasoning()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "effort":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.effort = r.string()
+            elif key == "budget":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.budget = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    if v.budget is not None:
+        if v.budget < 1 or v.budget > 1048576: raise r.refuse("bad_value")
+    try:
+        v.effort = ChatReasoningEffort(v.effort)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_options(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatOptions()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "max_output":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.max_output = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "temperature":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.temperature = _read_temperature(r)
+            elif key == "stop":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.stop = r.str_list()
+            elif key == "json_schema":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.json_schema = r.string()
+            elif key == "tool_choice":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.tool_choice = _read_chat_tool_choice(r)
+            elif key == "parallel_tools":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.parallel_tools = r.boolean()
+            elif key == "reasoning":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.reasoning = _read_chat_reasoning(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if v.max_output < 0 or v.max_output > 9223372036854775807: raise r.refuse("bad_value")
+    _size = len(v.stop)
+    if _size > 8: raise r.refuse("bad_value")
+    if isinstance(v.stop, list):
+        for oa_element in v.stop:
+            _size = len(oa_element.encode("utf-8", "surrogatepass"))
+            if _size > 1048576: raise r.refuse("bad_value")
+    _size = len(v.json_schema.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 1048576): raise r.refuse("bad_value")
+    return v
+
+
+def _read_chat_part(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatPart()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "block":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.block = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "kind":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.kind = r.string()
+            elif key == "text":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.text = r.string()
+            elif key == "call_id":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.call_id = r.string()
+            elif key == "name":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.name = r.string()
+            elif key == "arguments":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.arguments = r.string()
+            elif key == "seal":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.seal = _read_reasoning_seal(r)
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    if v.block < 0 or v.block > 4294967295: raise r.refuse("bad_value")
+    _size = len(v.text.encode("utf-8", "surrogatepass"))
+    if _size > 1048576: raise r.refuse("bad_value")
+    _size = len(v.call_id.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 1048576): raise r.refuse("bad_value")
+    _size = len(v.name.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 64): raise r.refuse("bad_value")
+    if not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.name): raise r.refuse("bad_value")
+    _size = len(v.arguments.encode("utf-8", "surrogatepass"))
+    if _size > 1048576: raise r.refuse("bad_value")
+    try:
+        v.kind = ChatPartKind(v.kind)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_block_end(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ChatBlockEnd()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "block":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.block = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "seal_omitted":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.seal_omitted = r.string()
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    if v.block < 0 or v.block > 4294967295: raise r.refuse("bad_value")
+    if v.seal_omitted is not None:
+        v.seal_omitted = _open_enum(SealOmission, v.seal_omitted)
+    return v
+
+
+def _read_reasoning_seal(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ReasoningSeal()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "origin":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.origin = r.string()
+            elif key == "bytes":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.bytes = _decode_binary(r.string())
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    _size = len(v.origin.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 256: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.origin): raise r.refuse("bad_value")
+    _size = len(v.bytes)
+    if _size > 524288: raise r.refuse("bad_value")
+    return v
+
+
+def _read_served_by(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ServedBy()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "place":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.place = r.string()
+            elif key == "server":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.server = r.string()
+            elif key == "machine":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.machine = r.string()
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    _size = len(v.server.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 1048576: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.server): raise r.refuse("bad_value")
+    _size = len(v.machine.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 1048576): raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.machine): raise r.refuse("bad_value")
+    v.place = _open_enum(ServedPlace, v.place)
+    return v
+
+
+def _read_chat_input_part(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatInputPart()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "kind":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.kind = r.string()
+            elif key == "text":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.text = r.string()
+            elif key == "digest":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.digest = r.string()
+            elif key == "media_type":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.media_type = r.string()
+            elif key == "call_id":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.call_id = r.string()
+            elif key == "name":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.name = r.string()
+            elif key == "arguments":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.arguments = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    _size = len(v.text.encode("utf-8", "surrogatepass"))
+    if _size > 1048576: raise r.refuse("bad_value")
+    _size = len(v.digest.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 71 or _size > 135): raise r.refuse("bad_value")
+    _size = len(v.media_type.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 10): raise r.refuse("bad_value")
+    _size = len(v.call_id.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 1048576): raise r.refuse("bad_value")
+    _size = len(v.name.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 64): raise r.refuse("bad_value")
+    if not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.name): raise r.refuse("bad_value")
+    _size = len(v.arguments.encode("utf-8", "surrogatepass"))
+    if _size > 1048576: raise r.refuse("bad_value")
+    try:
+        v.kind = PartKind(v.kind)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_replay(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatReplay()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "block":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.block = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "seal":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.seal = _read_reasoning_seal(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    if v.block < 0 or v.block > 4294967295: raise r.refuse("bad_value")
+    return v
+
+
+def _read_chat_message(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatMessage()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "role":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.role = r.string()
+            elif key == "parts":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.parts = _read_list(r, _read_chat_input_part)
+            elif key == "reasoning":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.reasoning = _read_list(r, _read_chat_replay)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    _size = len(v.parts)
+    if _size < 1 or _size > 64: raise r.refuse("bad_value")
+    _size = len(v.reasoning)
+    if _size > 64: raise r.refuse("bad_value")
+    try:
+        v.role = Role(v.role)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_target(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ChatTarget()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "model":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.model = r.string()
+            elif key == "selection_policy":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.selection_policy = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    _size = len(v.model.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 256): raise r.refuse("bad_value")
+    _size = len(v.selection_policy.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 64): raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.selection_policy): raise r.refuse("bad_value")
+    return v
+
+
+def _read_chat_content(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatContent()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "messages":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.messages = _read_list(r, _read_chat_message)
+            elif key == "tools":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.tools = _read_list(r, _read_chat_tool)
+            elif key == "options":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.options = _read_chat_options(r)
+            elif key == "extensions":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.extensions = r.str_map()
+            elif key == "required_extensions":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.required_extensions = r.str_list()
+            elif key == "guarantees":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.guarantees = r.str_list()
+            elif key == "credential":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.credential = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 33 != 33:
+        raise r.refuse("missing_field")
+    _size = len(v.messages)
+    if _size < 1 or _size > 512: raise r.refuse("bad_value")
+    _size = len(v.tools)
+    if _size > 128: raise r.refuse("bad_value")
+    _size = len(v.extensions)
+    if _size > 1048576: raise r.refuse("bad_value")
+    if isinstance(v.extensions, dict):
+        for oa_element in v.extensions:
+            _size = len(oa_element.encode("utf-8", "surrogatepass"))
+            if _size < 1 or _size > 128: raise r.refuse("bad_value")
+    if isinstance(v.extensions, dict):
+        for oa_element in v.extensions.values():
+            _size = len(oa_element.encode("utf-8", "surrogatepass"))
+            if _size > 1048576: raise r.refuse("bad_value")
+    _size = len(v.required_extensions)
+    if _size > 1048576: raise r.refuse("bad_value")
+    if isinstance(v.required_extensions, list):
+        for oa_element in v.required_extensions:
+            _size = len(oa_element.encode("utf-8", "surrogatepass"))
+            if _size < 1 or _size > 128: raise r.refuse("bad_value")
+    _size = len(v.guarantees)
+    if _size > 4: raise r.refuse("bad_value")
+    _size = len(v.credential.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 64): raise r.refuse("bad_value")
+    if not all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-" for c in v.credential): raise r.refuse("bad_value")
+    v.guarantees = [_open_enum(ChatGuarantee, item) for item in v.guarantees]
+    return v
+
+
+def _read_request_v3(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = RequestV3()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "identity":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.identity = _read_oa_imported0(r)
+            elif key == "target":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.target = _read_chat_target(r)
+            elif key == "content":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.content = _read_chat_content(r)
+            elif key == "model_ref":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.model_ref = r.string()
+            elif key == "conversation":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.conversation = r.string()
+            elif key == "use":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.use = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    _size = len(v.model_ref.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 71 or _size > 135): raise r.refuse("bad_value")
+    _size = len(v.conversation.encode("utf-8", "surrogatepass"))
+    if _size != 0 and (_size < 1 or _size > 128): raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.conversation): raise r.refuse("bad_value")
+    if v.use is not None:
+        try:
+            v.use = ChatUse(v.use)
+        except ValueError:
+            raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_timing(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ChatTiming()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "queue_ms":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.queue_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "load_ms":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.load_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "restore_ms":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.restore_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "prefill_ms":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.prefill_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "decode_ms":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.decode_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "prefill_tokens":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.prefill_tokens = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "reused_tokens":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.reused_tokens = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "load":
+                if seen & 128:
+                    raise r.refuse("duplicate_field")
+                seen |= 128
+                v.load = r.string()
+            elif key == "load_source":
+                if seen & 256:
+                    raise r.refuse("duplicate_field")
+                seen |= 256
+                v.load_source = r.string()
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if v.queue_ms is not None:
+        if v.queue_ms < 0 or v.queue_ms > 9223372036854775807: raise r.refuse("bad_value")
+    if v.load_ms is not None:
+        if v.load_ms < 0 or v.load_ms > 9223372036854775807: raise r.refuse("bad_value")
+    if v.restore_ms is not None:
+        if v.restore_ms < 0 or v.restore_ms > 9223372036854775807: raise r.refuse("bad_value")
+    if v.prefill_ms is not None:
+        if v.prefill_ms < 0 or v.prefill_ms > 9223372036854775807: raise r.refuse("bad_value")
+    if v.decode_ms is not None:
+        if v.decode_ms < 0 or v.decode_ms > 9223372036854775807: raise r.refuse("bad_value")
+    if v.prefill_tokens is not None:
+        if v.prefill_tokens < 0 or v.prefill_tokens > 9223372036854775807: raise r.refuse("bad_value")
+    if v.reused_tokens is not None:
+        if v.reused_tokens < 0 or v.reused_tokens > 9223372036854775807: raise r.refuse("bad_value")
+    if v.load is not None:
+        v.load = _open_enum(ChatLoad, v.load)
+    if v.load_source is not None:
+        v.load_source = _open_enum(ChatLoadSource, v.load_source)
+    return v
+
+
+def _read_chat_reasoning_applied(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ChatReasoningApplied()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "effort":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.effort = r.string()
+            elif key == "budget":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.budget = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "support":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.support = r.string()
+            elif key == "budget_support":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.budget_support = r.string()
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 4 != 4:
+        raise r.refuse("missing_field")
+    if v.budget is not None:
+        if v.budget < 1 or v.budget > 1048576: raise r.refuse("bad_value")
+    if v.effort is not None:
+        try:
+            v.effort = ChatReasoningEffort(v.effort)
+        except ValueError:
+            raise r.refuse("bad_enum") from None
+    v.support = _open_enum(ChatReasoningSupport, v.support)
+    if v.budget_support is not None:
+        v.budget_support = _open_enum(ChatReasoningSupport, v.budget_support)
+    return v
+
+
+def _read_chat_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatResult()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "cause":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.cause = r.string()
+            elif key == "finish_reason":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.finish_reason = r.string()
+            elif key == "stop_sequence":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.stop_sequence = r.string()
+            elif key == "usage":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.usage = _read_chat_usage(r)
+            elif key == "served_by":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.served_by = _read_served_by(r)
+            elif key == "cost":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.cost = _read_cost(r)
+            elif key == "refusal":
+                if seen & 128:
+                    raise r.refuse("duplicate_field")
+                seen |= 128
+                v.refusal = _read_oa_imported1(r)
+            elif key == "retry_after_ms":
+                if seen & 256:
+                    raise r.refuse("duplicate_field")
+                seen |= 256
+                v.retry_after_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "timing":
+                if seen & 512:
+                    raise r.refuse("duplicate_field")
+                seen |= 512
+                v.timing = _read_chat_timing(r)
+            elif key == "reasoning_applied":
+                if seen & 1024:
+                    raise r.refuse("duplicate_field")
+                seen |= 1024
+                v.reasoning_applied = _read_chat_reasoning_applied(r)
+            elif key == "dropped_extensions":
+                if seen & 2048:
+                    raise r.refuse("duplicate_field")
+                seen |= 2048
+                v.dropped_extensions = r.str_list()
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 19 != 19:
+        raise r.refuse("missing_field")
+    _size = len(v.cause.encode("utf-8", "surrogatepass"))
+    if _size > 1048576: raise r.refuse("bad_value")
+    _size = len(v.stop_sequence.encode("utf-8", "surrogatepass"))
+    if _size > 1048576: raise r.refuse("bad_value")
+    if v.retry_after_ms is not None:
+        if v.retry_after_ms < 1 or v.retry_after_ms > 86400000: raise r.refuse("bad_value")
+    _size = len(v.dropped_extensions)
+    if _size > 64: raise r.refuse("bad_value")
+    if isinstance(v.dropped_extensions, list):
+        for oa_element in v.dropped_extensions:
+            _size = len(oa_element.encode("utf-8", "surrogatepass"))
+            if _size < 1 or _size > 128: raise r.refuse("bad_value")
+    try:
+        v.outcome = ChatResultOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    if v.finish_reason is not None:
+        v.finish_reason = _open_enum(FinishReason, v.finish_reason)
+    return v
+
+
+def _read_chat_event(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatEvent()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "sequence":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.sequence = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "kind":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.kind = r.string()
+            elif key == "progress":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.progress = _read_chat_progress(r)
+            elif key == "part":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.part = _read_chat_part(r)
+            elif key == "block_end":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.block_end = _read_chat_block_end(r)
+            elif key == "usage":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.usage = _read_chat_usage(r)
+            elif key == "end":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.end = _read_chat_result(r)
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    if v.sequence < 0 or v.sequence > 9223372036854775807: raise r.refuse("bad_value")
+    try:
+        v.kind = ChatEventKind(v.kind)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_admission(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatAdmission()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "reason":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.reason = r.string()
+            elif key == "request":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.request = r.string()
+            elif key == "server":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.server = r.string()
+            elif key == "model":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.model = r.string()
+            elif key == "retention_ms":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.retention_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "idle_ms":
+                if seen & 64:
+                    raise r.refuse("duplicate_field")
+                seen |= 64
+                v.idle_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "retained_deltas":
+                if seen & 128:
+                    raise r.refuse("duplicate_field")
+                seen |= 128
+                v.retained_deltas = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "preferred_model":
+                if seen & 256:
+                    raise r.refuse("duplicate_field")
+                seen |= 256
+                v.preferred_model = r.string()
+            elif key == "selection_reason":
+                if seen & 512:
+                    raise r.refuse("duplicate_field")
+                seen |= 512
+                v.selection_reason = r.string()
+            elif key == "refusal":
+                if seen & 1024:
+                    raise r.refuse("duplicate_field")
+                seen |= 1024
+                v.refusal = _read_oa_imported1(r)
+            elif key == "retry_after_ms":
+                if seen & 2048:
+                    raise r.refuse("duplicate_field")
+                seen |= 2048
+                v.retry_after_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 255 != 255:
+        raise r.refuse("missing_field")
+    _size = len(v.reason.encode("utf-8", "surrogatepass"))
+    if _size > 1048576: raise r.refuse("bad_value")
+    _size = len(v.request.encode("utf-8", "surrogatepass"))
+    if _size > 128: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.request): raise r.refuse("bad_value")
+    _size = len(v.server.encode("utf-8", "surrogatepass"))
+    if _size > 1048576: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.server): raise r.refuse("bad_value")
+    _size = len(v.model.encode("utf-8", "surrogatepass"))
+    if _size > 256: raise r.refuse("bad_value")
+    if v.retention_ms < 0 or v.retention_ms > 9223372036854775807: raise r.refuse("bad_value")
+    if v.idle_ms < 0 or v.idle_ms > 9223372036854775807: raise r.refuse("bad_value")
+    if v.retained_deltas < 0 or v.retained_deltas > 9223372036854775807: raise r.refuse("bad_value")
+    _size = len(v.preferred_model.encode("utf-8", "surrogatepass"))
+    if _size > 256: raise r.refuse("bad_value")
+    if v.retry_after_ms is not None:
+        if v.retry_after_ms < 1 or v.retry_after_ms > 86400000: raise r.refuse("bad_value")
+    try:
+        v.outcome = ChatStartOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    if v.selection_reason is not None:
+        try:
+            v.selection_reason = SelectionReason(v.selection_reason)
+        except ValueError:
+            raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_page(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatPage()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "events":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.events = _read_list(r, _read_chat_event)
+            elif key == "next":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.next = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "at_end":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.at_end = r.boolean()
+            elif key == "refusal":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.refusal = _read_oa_imported1(r)
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 15 != 15:
+        raise r.refuse("missing_field")
+    _size = len(v.events)
+    if _size > 256: raise r.refuse("bad_value")
+    if v.next < 0 or v.next > 9223372036854775807: raise r.refuse("bad_value")
+    try:
+        v.outcome = PageOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_cancellation(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ChatCancellation()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "result_outcome":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.result_outcome = r.string()
+            elif key == "refusal":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.refusal = _read_oa_imported1(r)
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    try:
+        v.outcome = CancelOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    if v.result_outcome is not None:
+        try:
+            v.result_outcome = ChatResultOutcome(v.result_outcome)
+        except ValueError:
+            raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_chat_history_read(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ChatHistoryRead()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "window":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.window = _read_oa_imported2(r)
+            elif key == "refusal":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.refusal = _read_oa_imported1(r)
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    try:
+        v.outcome = ChatHistoryOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
     return v
 
 
@@ -9311,6 +13964,143 @@ def _read_audit_page(r):
     return v
 
 
+def _read_request_entry(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = RequestEntry()
+    seen = 0
+    r.ws()
+    unknown_keys = set()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "entry":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.entry = _read_audit_entry(r)
+            elif key == "preferred_model":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.preferred_model = r.string()
+            elif key == "unavailable_hosts":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.unavailable_hosts = r.str_list()
+            elif key == "selection":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.selection = r.string()
+            elif key == "placement":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.placement = r.string()
+            else:
+                if key in unknown_keys:
+                    raise r.refuse("duplicate_key")
+                unknown_keys.add(key)
+                r.skip_value()
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    _size = len(v.preferred_model.encode("utf-8", "surrogatepass"))
+    if _size > 256: raise r.refuse("bad_value")
+    _size = len(v.unavailable_hosts)
+    if _size > 64: raise r.refuse("bad_value")
+    if isinstance(v.unavailable_hosts, list):
+        for oa_element in v.unavailable_hosts:
+            _size = len(oa_element.encode("utf-8", "surrogatepass"))
+            if _size < 1 or _size > 4096: raise r.refuse("bad_value")
+    _size = len(v.selection.encode("utf-8", "surrogatepass"))
+    if _size > 64: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.selection): raise r.refuse("bad_value")
+    if v.placement is not None:
+        v.placement = _open_enum(ServedPlace, v.placement)
+    return v
+
+
+def _read_request_page(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = RequestPage()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "entries":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.entries = _read_list(r, _read_request_entry)
+            elif key == "next":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.next = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "at_end":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.at_end = r.boolean()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 15 != 15:
+        raise r.refuse("missing_field")
+    _size = len(v.entries)
+    if _size > 256: raise r.refuse("bad_value")
+    try:
+        v.outcome = AuditOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
 def _read_gateway_state(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -9434,6 +14224,319 @@ def _read_gateway_change(r):
         v.outcome = EditOutcome(v.outcome)
     except ValueError:
         raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_program_budget(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ProgramBudget()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "tokens_per_day":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.tokens_per_day = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "micros_per_day":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.micros_per_day = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "requests_per_day":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.requests_per_day = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "images_per_day":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.images_per_day = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "audio_seconds_per_day":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.audio_seconds_per_day = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "characters_per_day":
+                if seen & 32:
+                    raise r.refuse("duplicate_field")
+                seen |= 32
+                v.characters_per_day = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if v.tokens_per_day < 0 or v.tokens_per_day > 9223372036854775807: raise r.refuse("bad_value")
+    if v.micros_per_day < 0 or v.micros_per_day > 9223372036854775807: raise r.refuse("bad_value")
+    if v.requests_per_day < 0 or v.requests_per_day > 9223372036854775807: raise r.refuse("bad_value")
+    if v.images_per_day < 0 or v.images_per_day > 9223372036854775807: raise r.refuse("bad_value")
+    if v.audio_seconds_per_day < 0 or v.audio_seconds_per_day > 9223372036854775807: raise r.refuse("bad_value")
+    if v.characters_per_day < 0 or v.characters_per_day > 9223372036854775807: raise r.refuse("bad_value")
+    return v
+
+
+def _read_program_budget_entry(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ProgramBudgetEntry()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "program":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.program = r.string()
+            elif key == "budget":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.budget = _read_program_budget(r)
+            elif key == "spend":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.spend = _read_spend(r)
+            elif key == "cost_unreported":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.cost_unreported = r.boolean()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 5 != 5:
+        raise r.refuse("missing_field")
+    _size = len(v.program.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 4096: raise r.refuse("bad_value")
+    return v
+
+
+def _read_program_budget_page(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    _check_encoded_size(r, 1048576)
+    r.enter()
+    r.pos += 1
+    v = ProgramBudgetPage()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "revision":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.revision = r.string()
+            elif key == "entries":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.entries = _read_list(r, _read_program_budget_entry)
+            elif key == "profiles":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.profiles = r.str_list()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 15 != 15:
+        raise r.refuse("missing_field")
+    _size = len(v.revision.encode("utf-8", "surrogatepass"))
+    if _size > 128: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.revision): raise r.refuse("bad_value")
+    _size = len(v.entries)
+    if _size > 256: raise r.refuse("bad_value")
+    _size = len(v.profiles)
+    if _size > 16: raise r.refuse("bad_value")
+    if isinstance(v.profiles, list):
+        for oa_element in v.profiles:
+            _size = len(oa_element.encode("utf-8", "surrogatepass"))
+            if _size < 1 or _size > 256: raise r.refuse("bad_value")
+    try:
+        v.outcome = ProgramBudgetReadOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_program_budget_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ProgramBudgetResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "revision":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.revision = r.string()
+            elif key == "reason":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.reason = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    _size = len(v.revision.encode("utf-8", "surrogatepass"))
+    if _size > 128: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.revision): raise r.refuse("bad_value")
+    _size = len(v.reason.encode("utf-8", "surrogatepass"))
+    if _size > 256: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.reason): raise r.refuse("bad_value")
+    try:
+        v.outcome = ProgramBudgetEditOutcome(v.outcome)
+    except ValueError:
+        raise r.refuse("bad_enum") from None
+    return v
+
+
+def _read_program_budget_change(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ProgramBudgetChange()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "expected_revision":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.expected_revision = r.string()
+            elif key == "credential":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.credential = r.string()
+            elif key == "program":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.program = r.string()
+            elif key == "budget":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.budget = _read_program_budget(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    _size = len(v.expected_revision.encode("utf-8", "surrogatepass"))
+    if _size > 128: raise r.refuse("bad_value")
+    _size = len(v.credential.encode("utf-8", "surrogatepass"))
+    if _size > 64: raise r.refuse("bad_value")
+    _size = len(v.program.encode("utf-8", "surrogatepass"))
+    if _size > 4096: raise r.refuse("bad_value")
     return v
 
 
@@ -9782,6 +14885,53 @@ def _read_oa_chat_cancel_arguments(r):
     return v
 
 
+def _read_oa_chat_v2_start_with_guarantees_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV2StartWithGuaranteesArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = _read_request_v2(r)
+            elif key == "guarantees":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.guarantees = r.str_list()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    _size = len(v.guarantees)
+    if _size > 1: raise r.refuse("bad_value")
+    v.guarantees = [_open_enum(RequestGuarantee, item) for item in v.guarantees]
+    return v
+
+
 def _read_oa_chat_v2_start_arguments(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -9916,6 +15066,187 @@ def _read_oa_chat_v2_cancel_arguments(r):
     r.depth -= 1
     if seen & 1 != 1:
         raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v3_get_history_window_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV3GetHistoryWindowArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if False:
+                pass
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    return v
+
+
+def _read_oa_chat_v3_start_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV3StartArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = _read_request_v3(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v3_observe_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV3ObserveArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = r.string()
+            elif key == "cursor":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.cursor = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "max_deltas":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.max_deltas = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "max_bytes":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.max_bytes = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "wait_ms":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.wait_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 31 != 31:
+        raise r.refuse("missing_field")
+    _size = len(v.request.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 128: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.request): raise r.refuse("bad_value")
+    if v.cursor < 0 or v.cursor > 9223372036854775807: raise r.refuse("bad_value")
+    if v.max_deltas < 1 or v.max_deltas > 256: raise r.refuse("bad_value")
+    if v.max_bytes < 1 or v.max_bytes > 65536: raise r.refuse("bad_value")
+    if v.wait_ms < 0 or v.wait_ms > 30000: raise r.refuse("bad_value")
+    return v
+
+
+def _read_oa_chat_v3_cancel_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV3CancelArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    _size = len(v.request.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 128: raise r.refuse("bad_value")
+    if any(c < "\x20" or "\x7f" <= c <= "\x9f" for c in v.request): raise r.refuse("bad_value")
     return v
 
 
@@ -10633,6 +15964,53 @@ def _read_oa_image_cancel_arguments(r):
     return v
 
 
+def _read_oa_image_v2_start_with_guarantees_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ImageV2StartWithGuaranteesArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = _read_image_request_v2(r)
+            elif key == "guarantees":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.guarantees = r.str_list()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    _size = len(v.guarantees)
+    if _size > 1: raise r.refuse("bad_value")
+    v.guarantees = [_open_enum(RequestGuarantee, item) for item in v.guarantees]
+    return v
+
+
 def _read_oa_image_v2_start_arguments(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -11170,6 +16548,50 @@ def _read_oa_operator_audit_arguments(r):
     return v
 
 
+def _read_oa_operator_requests_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _OperatorRequestsArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "cursor":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.cursor = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "max_entries":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.max_entries = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_oa_operator_gateway_arguments(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -11250,6 +16672,127 @@ def _read_oa_operator_set_gateway_arguments(r):
     r.depth -= 1
     if seen & 7 != 7:
         raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_operator_program_budgets_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _OperatorProgramBudgetsArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "credential":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.credential = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    _size = len(v.credential.encode("utf-8", "surrogatepass"))
+    if _size > 64: raise r.refuse("bad_value")
+    return v
+
+
+def _read_oa_operator_set_program_budget_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _OperatorSetProgramBudgetArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = _read_program_budget_change(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_selection_operator_v2_read_effective_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2ReadEffectiveArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "name":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.name = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    _size = len(v.name.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 64: raise r.refuse("bad_value")
     return v
 
 
@@ -11392,6 +16935,141 @@ def _read_oa_selection_operator_v2_delete_policy_arguments(r):
     r.depth -= 1
     if seen & 7 != 7:
         raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_selection_operator_v2_read_account_default_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2ReadAccountDefaultArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "name":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.name = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    _size = len(v.name.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 64: raise r.refuse("bad_value")
+    return v
+
+
+def _read_oa_selection_operator_v2_put_account_default_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2PutAccountDefaultArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "expected_revision":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.expected_revision = r.string()
+            elif key == "policy":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.policy = _read_selection_policy_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    _size = len(v.expected_revision.encode("utf-8", "surrogatepass"))
+    if _size > 256: raise r.refuse("bad_value")
+    return v
+
+
+def _read_oa_selection_operator_v2_delete_account_default_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2DeleteAccountDefaultArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "expected_revision":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.expected_revision = r.string()
+            elif key == "name":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.name = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    _size = len(v.expected_revision.encode("utf-8", "surrogatepass"))
+    if _size > 256: raise r.refuse("bad_value")
+    _size = len(v.name.encode("utf-8", "surrogatepass"))
+    if _size < 1 or _size > 64: raise r.refuse("bad_value")
     return v
 
 
@@ -11669,6 +17347,45 @@ def _read_oa_chat_cancel_result(r):
     return v
 
 
+def _read_oa_chat_v2_start_with_guarantees_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV2StartWithGuaranteesResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_admission_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_oa_chat_v2_start_result(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -11771,6 +17488,162 @@ def _read_oa_chat_v2_cancel_result(r):
                     raise r.refuse("duplicate_field")
                 seen |= 1
                 v.value = _read_cancellation(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v3_get_history_window_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV3GetHistoryWindowResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_chat_history_read(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v3_start_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV3StartResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_chat_admission(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v3_observe_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV3ObserveResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_chat_page(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_chat_v3_cancel_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ChatV3CancelResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_chat_cancellation(r)
             else:
                 raise r.refuse("unknown_field")
             r.ws()
@@ -12410,6 +18283,45 @@ def _read_oa_image_cancel_result(r):
     return v
 
 
+def _read_oa_image_v2_start_with_guarantees_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _ImageV2StartWithGuaranteesResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_admission_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_oa_image_v2_start_result(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -12917,6 +18829,45 @@ def _read_oa_operator_audit_result(r):
     return v
 
 
+def _read_oa_operator_requests_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _OperatorRequestsResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_request_page(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_oa_operator_gateway_result(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -12980,6 +18931,123 @@ def _read_oa_operator_set_gateway_result(r):
                     raise r.refuse("duplicate_field")
                 seen |= 1
                 v.value = _read_gateway_change(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_operator_program_budgets_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _OperatorProgramBudgetsResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_program_budget_page(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_operator_set_program_budget_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _OperatorSetProgramBudgetResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_program_budget_result(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_selection_operator_v2_read_effective_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2ReadEffectiveResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_selection_read_v2(r)
             else:
                 raise r.refuse("unknown_field")
             r.ws()
@@ -13112,6 +19180,123 @@ def _read_oa_selection_operator_v2_delete_policy_result(r):
     return v
 
 
+def _read_oa_selection_operator_v2_read_account_default_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2ReadAccountDefaultResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_selection_read_v2(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_selection_operator_v2_put_account_default_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2PutAccountDefaultResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_selection_change(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _read_oa_selection_operator_v2_delete_account_default_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _SelectionOperatorV2DeleteAccountDefaultResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_selection_change(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
 def decode(data):
     r = _Reader(bytes(data))
     r.ws()
@@ -13122,9 +19307,127 @@ def decode(data):
     return v
 
 
+_JSON_RECORDS = {
+    Part: (_write_part, _read_part),
+    Message: (_write_message, _read_message),
+    Tool: (_write_tool, _read_tool),
+    Temperature: (_write_temperature, _read_temperature),
+    Options: (_write_options, _read_options),
+    Request: (_write_request, _read_request),
+    Target: (_write_target, _read_target),
+    RequestContent: (_write_request_content, _read_request_content),
+    RequestV2: (_write_request_v2, _read_request_v2),
+    Usage: (_write_usage, _read_usage),
+    Cost: (_write_cost, _read_cost),
+    Reply: (_write_reply, _read_reply),
+    Delta: (_write_delta, _read_delta),
+    Admission: (_write_admission, _read_admission),
+    AdmissionV2: (_write_admission_v2, _read_admission_v2),
+    DeltaPage: (_write_delta_page, _read_delta_page),
+    Cancellation: (_write_cancellation, _read_cancellation),
+    ChatProgress: (_write_chat_progress, _read_chat_progress),
+    ChatUsage: (_write_chat_usage, _read_chat_usage),
+    ChatToolChoice: (_write_chat_tool_choice, _read_chat_tool_choice),
+    ChatTool: (_write_chat_tool, _read_chat_tool),
+    ChatReasoning: (_write_chat_reasoning, _read_chat_reasoning),
+    ChatOptions: (_write_chat_options, _read_chat_options),
+    ChatPart: (_write_chat_part, _read_chat_part),
+    ChatBlockEnd: (_write_chat_block_end, _read_chat_block_end),
+    ReasoningSeal: (_write_reasoning_seal, _read_reasoning_seal),
+    ServedBy: (_write_served_by, _read_served_by),
+    ChatInputPart: (_write_chat_input_part, _read_chat_input_part),
+    ChatReplay: (_write_chat_replay, _read_chat_replay),
+    ChatMessage: (_write_chat_message, _read_chat_message),
+    ChatTarget: (_write_chat_target, _read_chat_target),
+    ChatContent: (_write_chat_content, _read_chat_content),
+    RequestV3: (_write_request_v3, _read_request_v3),
+    ChatTiming: (_write_chat_timing, _read_chat_timing),
+    ChatReasoningApplied: (_write_chat_reasoning_applied, _read_chat_reasoning_applied),
+    ChatResult: (_write_chat_result, _read_chat_result),
+    ChatEvent: (_write_chat_event, _read_chat_event),
+    ChatAdmission: (_write_chat_admission, _read_chat_admission),
+    ChatPage: (_write_chat_page, _read_chat_page),
+    ChatCancellation: (_write_chat_cancellation, _read_chat_cancellation),
+    ChatHistoryRead: (_write_chat_history_read, _read_chat_history_read),
+    PreloadReply: (_write_preload_reply, _read_preload_reply),
+    EmbedRequest: (_write_embed_request, _read_embed_request),
+    Embeddings: (_write_embeddings, _read_embeddings),
+    TranscriptionRequest: (_write_transcription_request, _read_transcription_request),
+    TranscriptSegment: (_write_transcript_segment, _read_transcript_segment),
+    TranscriptionReply: (_write_transcription_reply, _read_transcription_reply),
+    SpeechRequest: (_write_speech_request, _read_speech_request),
+    AudioChunk: (_write_audio_chunk, _read_audio_chunk),
+    Delivery: (_write_delivery, _read_delivery),
+    SpeechReply: (_write_speech_reply, _read_speech_reply),
+    LiveRequest: (_write_live_request, _read_live_request),
+    LiveInputResult: (_write_live_input_result, _read_live_input_result),
+    LiveTranscript: (_write_live_transcript, _read_live_transcript),
+    LiveReply: (_write_live_reply, _read_live_reply),
+    ImageRequest: (_write_image_request, _read_image_request),
+    ImageRequestContent: (_write_image_request_content, _read_image_request_content),
+    ImageRequestV2: (_write_image_request_v2, _read_image_request_v2),
+    ImageProgress: (_write_image_progress, _read_image_progress),
+    ImageResult: (_write_image_result, _read_image_result),
+    ImageReply: (_write_image_reply, _read_image_reply),
+    VideoRequest: (_write_video_request, _read_video_request),
+    VideoAdmission: (_write_video_admission, _read_video_admission),
+    VideoObservation: (_write_video_observation, _read_video_observation),
+    CeilingLimit: (_write_ceiling_limit, _read_ceiling_limit),
+    HostEntry: (_write_host_entry, _read_host_entry),
+    Spend: (_write_spend, _read_spend),
+    HostState: (_write_host_state, _read_host_state),
+    HostList: (_write_host_list, _read_host_list),
+    HostChange: (_write_host_change, _read_host_change),
+    LocalKey: (_write_local_key, _read_local_key),
+    KeyList: (_write_key_list, _read_key_list),
+    KeyIssued: (_write_key_issued, _read_key_issued),
+    KeyRevoked: (_write_key_revoked, _read_key_revoked),
+    AuditEntry: (_write_audit_entry, _read_audit_entry),
+    AuditPage: (_write_audit_page, _read_audit_page),
+    RequestEntry: (_write_request_entry, _read_request_entry),
+    RequestPage: (_write_request_page, _read_request_page),
+    GatewayState: (_write_gateway_state, _read_gateway_state),
+    GatewayChange: (_write_gateway_change, _read_gateway_change),
+    ProgramBudget: (_write_program_budget, _read_program_budget),
+    ProgramBudgetEntry: (_write_program_budget_entry, _read_program_budget_entry),
+    ProgramBudgetPage: (_write_program_budget_page, _read_program_budget_page),
+    ProgramBudgetResult: (_write_program_budget_result, _read_program_budget_result),
+    ProgramBudgetChange: (_write_program_budget_change, _read_program_budget_change),
+    SelectionChange: (_write_selection_change, _read_selection_change),
+    SelectionCandidateV2: (_write_selection_candidate_v2, _read_selection_candidate_v2),
+    SelectionPolicyV2: (_write_selection_policy_v2, _read_selection_policy_v2),
+    SelectionReadV2: (_write_selection_read_v2, _read_selection_read_v2),
+}
+
+
+def to_json(value):
+    """One record as JSON bytes, laid out as this module's documents are and
+    without the document terminator."""
+    codec = _JSON_RECORDS.get(type(value))
+    if codec is None:
+        raise TypeError("to_json takes a record of this module, not %s" % type(value).__name__)
+    out = bytearray()
+    codec[0](out, value, 0)
+    return bytes(out)
+
+
+def from_json(kind, data):
+    """Read one record of class kind from data; a refused input raises Refusal."""
+    codec = _JSON_RECORDS.get(kind)
+    if codec is None:
+        raise TypeError("from_json takes a record class of this module, not %r" % (kind,))
+    r = _Reader(bytes(data))
+    r.ws()
+    v = codec[1](r)
+    r.ws()
+    if r.pos < len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
 # _REFUSALS is in the order two of them are chosen between.
 
-_REFUSALS = ["malformed", "bad_string", "bad_binary", "number_spelling", "wrong_type", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "bad_enum", "trailing_bytes"]
+_REFUSALS = ["malformed", "bad_string", "bad_binary", "number_spelling", "wrong_type", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "bad_enum", "bad_value", "encoded_size", "trailing_bytes"]
 
 
 def _refusal_rank(word):
@@ -13217,6 +19520,11 @@ def _service_check(kind, value, depth=0):
             for key, item in value.items():
                 _service_check("string", key, depth + 1)
                 _service_check(kind[11:-1], item, depth + 1)
+    elif kind in _NAMED_IMPORTED:
+        cls, check = _NAMED_IMPORTED[kind]
+        valid = isinstance(value, cls)
+        if valid:
+            check(value, depth, _DEPTH_LIMIT)
     else:
         cls, fields = _SERVICE_RECORDS[kind]
         valid = isinstance(value, cls)
@@ -13280,6 +19588,30 @@ _SERVICE_RECORDS = {
     "AdmissionV2": (AdmissionV2, [("outcome", "enum", "never"), ("reason", "string", "never"), ("operation", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("retention_ms", "i64", "never"), ("idle_ms", "i64", "never"), ("retained_deltas", "i64", "never"), ("preferred_model", "string", "zero"), ("selection_reason", "enum", "absent"), ]),
     "DeltaPage": (DeltaPage, [("outcome", "enum", "never"), ("deltas", "list<Delta>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ]),
     "Cancellation": (Cancellation, [("outcome", "enum", "never"), ("reply_outcome", "enum", "absent"), ]),
+    "ChatProgress": (ChatProgress, [("phase", "enum", "never"), ("done", "i64", "absent"), ("total", "i64", "absent"), ("unit", "string", "absent"), ]),
+    "ChatUsage": (ChatUsage, [("input", "i64", "absent"), ("output", "i64", "absent"), ("cache_read", "i64", "absent"), ("cache_write", "i64", "absent"), ("reasoning", "i64", "absent"), ]),
+    "ChatToolChoice": (ChatToolChoice, [("kind", "enum", "never"), ("name", "string", "zero"), ]),
+    "ChatTool": (ChatTool, [("name", "string", "never"), ("description", "string", "never"), ("parameters", "string", "never"), ("strict", "bool", "absent"), ]),
+    "ChatReasoning": (ChatReasoning, [("effort", "enum", "never"), ("budget", "i64", "absent"), ]),
+    "ChatOptions": (ChatOptions, [("max_output", "i64", "zero"), ("temperature", "Temperature", "absent"), ("stop", "list<string>", "zero"), ("json_schema", "string", "zero"), ("tool_choice", "ChatToolChoice", "absent"), ("parallel_tools", "bool", "absent"), ("reasoning", "ChatReasoning", "absent"), ]),
+    "ChatPart": (ChatPart, [("block", "i64", "never"), ("kind", "enum", "never"), ("text", "string", "zero"), ("call_id", "string", "zero"), ("name", "string", "zero"), ("arguments", "string", "zero"), ("seal", "ReasoningSeal", "absent"), ]),
+    "ChatBlockEnd": (ChatBlockEnd, [("block", "i64", "never"), ("seal_omitted", "enum", "absent"), ]),
+    "ReasoningSeal": (ReasoningSeal, [("origin", "string", "never"), ("bytes", "binary", "never"), ]),
+    "ServedBy": (ServedBy, [("place", "enum", "never"), ("server", "string", "never"), ("machine", "string", "zero"), ]),
+    "ChatInputPart": (ChatInputPart, [("kind", "enum", "never"), ("text", "string", "zero"), ("digest", "string", "zero"), ("media_type", "string", "zero"), ("call_id", "string", "zero"), ("name", "string", "zero"), ("arguments", "string", "zero"), ]),
+    "ChatReplay": (ChatReplay, [("block", "i64", "never"), ("seal", "ReasoningSeal", "never"), ]),
+    "ChatMessage": (ChatMessage, [("role", "enum", "never"), ("parts", "list<ChatInputPart>", "never"), ("reasoning", "list<ChatReplay>", "zero"), ]),
+    "ChatTarget": (ChatTarget, [("model", "string", "zero"), ("selection_policy", "string", "zero"), ]),
+    "ChatContent": (ChatContent, [("messages", "list<ChatMessage>", "never"), ("tools", "list<ChatTool>", "zero"), ("options", "ChatOptions", "absent"), ("extensions", "map<string,string>", "zero"), ("required_extensions", "list<string>", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ]),
+    "RequestV3": (RequestV3, [("identity", "OAImported0", "never"), ("target", "ChatTarget", "never"), ("content", "ChatContent", "never"), ("model_ref", "string", "absent"), ("conversation", "string", "zero"), ("use", "enum", "absent"), ]),
+    "ChatTiming": (ChatTiming, [("queue_ms", "i64", "absent"), ("load_ms", "i64", "absent"), ("restore_ms", "i64", "absent"), ("prefill_ms", "i64", "absent"), ("decode_ms", "i64", "absent"), ("prefill_tokens", "i64", "absent"), ("reused_tokens", "i64", "absent"), ("load", "enum", "absent"), ("load_source", "enum", "absent"), ]),
+    "ChatReasoningApplied": (ChatReasoningApplied, [("effort", "enum", "absent"), ("budget", "i64", "absent"), ("support", "enum", "never"), ("budget_support", "enum", "absent"), ]),
+    "ChatResult": (ChatResult, [("outcome", "enum", "never"), ("cause", "string", "never"), ("finish_reason", "enum", "absent"), ("stop_sequence", "string", "absent"), ("usage", "ChatUsage", "never"), ("served_by", "ServedBy", "absent"), ("cost", "Cost", "absent"), ("refusal", "OAImported1", "absent"), ("retry_after_ms", "i64", "absent"), ("timing", "ChatTiming", "absent"), ("reasoning_applied", "ChatReasoningApplied", "absent"), ("dropped_extensions", "list<string>", "zero"), ]),
+    "ChatEvent": (ChatEvent, [("sequence", "i64", "never"), ("kind", "enum", "never"), ("progress", "ChatProgress", "absent"), ("part", "ChatPart", "absent"), ("block_end", "ChatBlockEnd", "absent"), ("usage", "ChatUsage", "absent"), ("end", "ChatResult", "absent"), ]),
+    "ChatAdmission": (ChatAdmission, [("outcome", "enum", "never"), ("reason", "string", "never"), ("request", "string", "never"), ("server", "string", "never"), ("model", "string", "never"), ("retention_ms", "i64", "never"), ("idle_ms", "i64", "never"), ("retained_deltas", "i64", "never"), ("preferred_model", "string", "zero"), ("selection_reason", "enum", "absent"), ("refusal", "OAImported1", "absent"), ("retry_after_ms", "i64", "absent"), ]),
+    "ChatPage": (ChatPage, [("outcome", "enum", "never"), ("events", "list<ChatEvent>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ("refusal", "OAImported1", "absent"), ]),
+    "ChatCancellation": (ChatCancellation, [("outcome", "enum", "never"), ("result_outcome", "enum", "absent"), ("refusal", "OAImported1", "absent"), ]),
+    "ChatHistoryRead": (ChatHistoryRead, [("outcome", "enum", "never"), ("window", "OAImported2", "absent"), ("refusal", "OAImported1", "absent"), ]),
     "PreloadReply": (PreloadReply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("tokens", "i64", "never"), ]),
     "EmbedRequest": (EmbedRequest, [("model", "string", "never"), ("inputs", "list<string>", "never"), ("dimensions", "i64", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("extensions", "map<string,string>", "zero"), ]),
     "Embeddings": (Embeddings, [("outcome", "enum", "never"), ("reason", "string", "never"), ("vectors", "list<string>", "never"), ("dimensions", "i64", "never"), ("usage", "Usage", "never"), ("host", "string", "never"), ("model", "string", "never"), ("cost", "Cost", "absent"), ]),
@@ -13315,8 +19647,15 @@ _SERVICE_RECORDS = {
     "KeyRevoked": (KeyRevoked, [("outcome", "enum", "never"), ]),
     "AuditEntry": (AuditEntry, [("sequence", "i64", "never"), ("unix_ms", "i64", "never"), ("route", "enum", "never"), ("rung", "string", "never"), ("program", "string", "never"), ("operation", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("credential", "string", "never"), ("outcome", "string", "never"), ("reason", "string", "never"), ("tokens_in", "i64", "never"), ("tokens_out", "i64", "never"), ("wall_ms", "i64", "never"), ("ceiling", "string", "never"), ("domain", "string", "zero"), ("claim", "string", "zero"), ("profile", "string", "zero"), ("audio_seconds", "i64", "zero"), ("characters", "i64", "zero"), ("images", "i64", "zero"), ]),
     "AuditPage": (AuditPage, [("outcome", "enum", "never"), ("entries", "list<AuditEntry>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ]),
+    "RequestEntry": (RequestEntry, [("entry", "AuditEntry", "never"), ("preferred_model", "string", "zero"), ("unavailable_hosts", "list<string>", "zero"), ("selection", "string", "zero"), ("placement", "enum", "absent"), ]),
+    "RequestPage": (RequestPage, [("outcome", "enum", "never"), ("entries", "list<RequestEntry>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ]),
     "GatewayState": (GatewayState, [("outcome", "enum", "never"), ("revision", "string", "never"), ("open", "bool", "never"), ("address", "string", "never"), ("listening", "bool", "never"), ("listening_address", "string", "never"), ("why", "string", "never"), ]),
     "GatewayChange": (GatewayChange, [("outcome", "enum", "never"), ("revision", "string", "never"), ("reason", "string", "never"), ]),
+    "ProgramBudget": (ProgramBudget, [("tokens_per_day", "i64", "zero"), ("micros_per_day", "i64", "zero"), ("requests_per_day", "i64", "zero"), ("images_per_day", "i64", "zero"), ("audio_seconds_per_day", "i64", "zero"), ("characters_per_day", "i64", "zero"), ]),
+    "ProgramBudgetEntry": (ProgramBudgetEntry, [("program", "string", "never"), ("budget", "ProgramBudget", "absent"), ("spend", "Spend", "never"), ("cost_unreported", "bool", "zero"), ]),
+    "ProgramBudgetPage": (ProgramBudgetPage, [("outcome", "enum", "never"), ("revision", "string", "never"), ("entries", "list<ProgramBudgetEntry>", "never"), ("profiles", "list<string>", "never"), ]),
+    "ProgramBudgetResult": (ProgramBudgetResult, [("outcome", "enum", "never"), ("revision", "string", "never"), ("reason", "string", "never"), ]),
+    "ProgramBudgetChange": (ProgramBudgetChange, [("expected_revision", "string", "never"), ("credential", "string", "never"), ("program", "string", "never"), ("budget", "ProgramBudget", "absent"), ]),
     "SelectionChange": (SelectionChange, [("outcome", "enum", "never"), ("revision", "string", "never"), ("reason", "string", "never"), ]),
     "SelectionCandidateV2": (SelectionCandidateV2, [("model", "string", "never"), ("placement", "enum", "never"), ("credential", "string", "zero"), ("provider", "string", "zero"), ]),
     "SelectionPolicyV2": (SelectionPolicyV2, [("name", "string", "never"), ("candidates", "list<SelectionCandidateV2>", "never"), ]),
@@ -13324,9 +19663,14 @@ _SERVICE_RECORDS = {
     "OAChatStartArguments": (_ChatStartArguments, [("request", "Request", "never"), ]),
     "OAChatObserveArguments": (_ChatObserveArguments, [("operation", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
     "OAChatCancelArguments": (_ChatCancelArguments, [("operation", "string", "never"), ]),
+    "OAChatV2StartWithGuaranteesArguments": (_ChatV2StartWithGuaranteesArguments, [("request", "RequestV2", "never"), ("guarantees", "list<enum>", "never"), ]),
     "OAChatV2StartArguments": (_ChatV2StartArguments, [("request", "RequestV2", "never"), ]),
     "OAChatV2ObserveArguments": (_ChatV2ObserveArguments, [("operation", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
     "OAChatV2CancelArguments": (_ChatV2CancelArguments, [("operation", "string", "never"), ]),
+    "OAChatV3GetHistoryWindowArguments": (_ChatV3GetHistoryWindowArguments, []),
+    "OAChatV3StartArguments": (_ChatV3StartArguments, [("request", "RequestV3", "never"), ]),
+    "OAChatV3ObserveArguments": (_ChatV3ObserveArguments, [("request", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
+    "OAChatV3CancelArguments": (_ChatV3CancelArguments, [("request", "string", "never"), ]),
     "OAPreloaderPreloadArguments": (_PreloaderPreloadArguments, [("request", "Request", "never"), ]),
     "OAEmbedderEmbedArguments": (_EmbedderEmbedArguments, [("request", "EmbedRequest", "never"), ]),
     "OATranscriptionStartArguments": (_TranscriptionStartArguments, [("request", "TranscriptionRequest", "never"), ]),
@@ -13343,6 +19687,7 @@ _SERVICE_RECORDS = {
     "OAImageStartArguments": (_ImageStartArguments, [("request", "ImageRequest", "never"), ]),
     "OAImageObserveArguments": (_ImageObserveArguments, [("operation", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
     "OAImageCancelArguments": (_ImageCancelArguments, [("operation", "string", "never"), ]),
+    "OAImageV2StartWithGuaranteesArguments": (_ImageV2StartWithGuaranteesArguments, [("request", "ImageRequestV2", "never"), ("guarantees", "list<enum>", "never"), ]),
     "OAImageV2StartArguments": (_ImageV2StartArguments, [("request", "ImageRequestV2", "never"), ]),
     "OAImageV2ObserveArguments": (_ImageV2ObserveArguments, [("operation", "string", "never"), ("cursor", "i64", "never"), ("max_deltas", "i64", "never"), ("max_bytes", "i64", "never"), ("wait_ms", "i64", "never"), ]),
     "OAImageV2CancelArguments": (_ImageV2CancelArguments, [("operation", "string", "never"), ]),
@@ -13356,20 +19701,32 @@ _SERVICE_RECORDS = {
     "OAOperatorIssueKeyArguments": (_OperatorIssueKeyArguments, [("program", "string", "never"), ("credential", "string", "never"), ]),
     "OAOperatorRevokeKeyArguments": (_OperatorRevokeKeyArguments, [("program", "string", "never"), ]),
     "OAOperatorAuditArguments": (_OperatorAuditArguments, [("cursor", "i64", "never"), ("max_entries", "i64", "never"), ]),
+    "OAOperatorRequestsArguments": (_OperatorRequestsArguments, [("cursor", "i64", "never"), ("max_entries", "i64", "never"), ]),
     "OAOperatorGatewayArguments": (_OperatorGatewayArguments, []),
     "OAOperatorSetGatewayArguments": (_OperatorSetGatewayArguments, [("expected_revision", "string", "never"), ("open", "bool", "never"), ("address", "string", "never"), ]),
+    "OAOperatorProgramBudgetsArguments": (_OperatorProgramBudgetsArguments, [("credential", "string", "never"), ]),
+    "OAOperatorSetProgramBudgetArguments": (_OperatorSetProgramBudgetArguments, [("request", "ProgramBudgetChange", "never"), ]),
+    "OASelectionOperatorV2ReadEffectiveArguments": (_SelectionOperatorV2ReadEffectiveArguments, [("name", "string", "never"), ]),
     "OASelectionOperatorV2ReadArguments": (_SelectionOperatorV2ReadArguments, [("target_program", "string", "never"), ("name", "string", "never"), ]),
     "OASelectionOperatorV2PutArguments": (_SelectionOperatorV2PutArguments, [("target_program", "string", "never"), ("expected_revision", "string", "never"), ("policy", "SelectionPolicyV2", "never"), ]),
     "OASelectionOperatorV2DeletePolicyArguments": (_SelectionOperatorV2DeletePolicyArguments, [("target_program", "string", "never"), ("expected_revision", "string", "never"), ("name", "string", "never"), ]),
+    "OASelectionOperatorV2ReadAccountDefaultArguments": (_SelectionOperatorV2ReadAccountDefaultArguments, [("name", "string", "never"), ]),
+    "OASelectionOperatorV2PutAccountDefaultArguments": (_SelectionOperatorV2PutAccountDefaultArguments, [("expected_revision", "string", "never"), ("policy", "SelectionPolicyV2", "never"), ]),
+    "OASelectionOperatorV2DeleteAccountDefaultArguments": (_SelectionOperatorV2DeleteAccountDefaultArguments, [("expected_revision", "string", "never"), ("name", "string", "never"), ]),
     "OAServiceFrame": (_ServiceFrame, [("version", "i32", "never"), ("service", "string", "never"), ("method", "string", "never"), ("arguments", "json", "never"), ]),
     "OAServiceReply": (_ServiceReply, [("version", "i32", "never"), ("service", "string", "never"), ("method", "string", "never"), ("ok", "bool", "never"), ("payload", "json", "never"), ]),
     "OAServiceError": (_ServiceError, [("code", "string", "never"), ("message", "string", "never"), ]),
     "OAChatStartResult": (_ChatStartResult, [("value", "Admission", "never"), ]),
     "OAChatObserveResult": (_ChatObserveResult, [("value", "DeltaPage", "never"), ]),
     "OAChatCancelResult": (_ChatCancelResult, [("value", "Cancellation", "never"), ]),
+    "OAChatV2StartWithGuaranteesResult": (_ChatV2StartWithGuaranteesResult, [("value", "AdmissionV2", "never"), ]),
     "OAChatV2StartResult": (_ChatV2StartResult, [("value", "AdmissionV2", "never"), ]),
     "OAChatV2ObserveResult": (_ChatV2ObserveResult, [("value", "DeltaPage", "never"), ]),
     "OAChatV2CancelResult": (_ChatV2CancelResult, [("value", "Cancellation", "never"), ]),
+    "OAChatV3GetHistoryWindowResult": (_ChatV3GetHistoryWindowResult, [("value", "ChatHistoryRead", "never"), ]),
+    "OAChatV3StartResult": (_ChatV3StartResult, [("value", "ChatAdmission", "never"), ]),
+    "OAChatV3ObserveResult": (_ChatV3ObserveResult, [("value", "ChatPage", "never"), ]),
+    "OAChatV3CancelResult": (_ChatV3CancelResult, [("value", "ChatCancellation", "never"), ]),
     "OAPreloaderPreloadResult": (_PreloaderPreloadResult, [("value", "PreloadReply", "never"), ]),
     "OAEmbedderEmbedResult": (_EmbedderEmbedResult, [("value", "Embeddings", "never"), ]),
     "OATranscriptionStartResult": (_TranscriptionStartResult, [("value", "Admission", "never"), ]),
@@ -13386,6 +19743,7 @@ _SERVICE_RECORDS = {
     "OAImageStartResult": (_ImageStartResult, [("value", "Admission", "never"), ]),
     "OAImageObserveResult": (_ImageObserveResult, [("value", "DeltaPage", "never"), ]),
     "OAImageCancelResult": (_ImageCancelResult, [("value", "Cancellation", "never"), ]),
+    "OAImageV2StartWithGuaranteesResult": (_ImageV2StartWithGuaranteesResult, [("value", "AdmissionV2", "never"), ]),
     "OAImageV2StartResult": (_ImageV2StartResult, [("value", "AdmissionV2", "never"), ]),
     "OAImageV2ObserveResult": (_ImageV2ObserveResult, [("value", "DeltaPage", "never"), ]),
     "OAImageV2CancelResult": (_ImageV2CancelResult, [("value", "Cancellation", "never"), ]),
@@ -13399,16 +19757,24 @@ _SERVICE_RECORDS = {
     "OAOperatorIssueKeyResult": (_OperatorIssueKeyResult, [("value", "KeyIssued", "never"), ]),
     "OAOperatorRevokeKeyResult": (_OperatorRevokeKeyResult, [("value", "KeyRevoked", "never"), ]),
     "OAOperatorAuditResult": (_OperatorAuditResult, [("value", "AuditPage", "never"), ]),
+    "OAOperatorRequestsResult": (_OperatorRequestsResult, [("value", "RequestPage", "never"), ]),
     "OAOperatorGatewayResult": (_OperatorGatewayResult, [("value", "GatewayState", "never"), ]),
     "OAOperatorSetGatewayResult": (_OperatorSetGatewayResult, [("value", "GatewayChange", "never"), ]),
+    "OAOperatorProgramBudgetsResult": (_OperatorProgramBudgetsResult, [("value", "ProgramBudgetPage", "never"), ]),
+    "OAOperatorSetProgramBudgetResult": (_OperatorSetProgramBudgetResult, [("value", "ProgramBudgetResult", "never"), ]),
+    "OASelectionOperatorV2ReadEffectiveResult": (_SelectionOperatorV2ReadEffectiveResult, [("value", "SelectionReadV2", "never"), ]),
     "OASelectionOperatorV2ReadResult": (_SelectionOperatorV2ReadResult, [("value", "SelectionReadV2", "never"), ]),
     "OASelectionOperatorV2PutResult": (_SelectionOperatorV2PutResult, [("value", "SelectionChange", "never"), ]),
     "OASelectionOperatorV2DeletePolicyResult": (_SelectionOperatorV2DeletePolicyResult, [("value", "SelectionChange", "never"), ]),
+    "OASelectionOperatorV2ReadAccountDefaultResult": (_SelectionOperatorV2ReadAccountDefaultResult, [("value", "SelectionReadV2", "never"), ]),
+    "OASelectionOperatorV2PutAccountDefaultResult": (_SelectionOperatorV2PutAccountDefaultResult, [("value", "SelectionChange", "never"), ]),
+    "OASelectionOperatorV2DeleteAccountDefaultResult": (_SelectionOperatorV2DeleteAccountDefaultResult, [("value", "SelectionChange", "never"), ]),
 }
 
 
 class Chat:
-    """Model calls performed by the receiving runtime for the bound caller.
+    """[Chat](https://openabstractions.github.io/reference.html#concept-inference.chat-service).
+    Model calls performed by the receiving runtime for the bound caller.
     Operations are visible only to the account and program that started them.
     Every request to a hosted host carries headers from abstraction.credentials
     applier@1 applied for the bound caller, sent once and kept out of every
@@ -13496,6 +19862,15 @@ class ChatV2:
     """Typed explicit model or named service-owned model selection for a bound
     caller. A runtime without chat@2 refuses this service version explicitly."""
 
+    def start_with_guarantees(self, request: RequestV2, guarantees: list[RequestGuarantee | str]) -> AdmissionV2:
+        """Start with an additional caller restriction. guarantees is empty or
+        exactly local-only. It intersects existing request and endpoint
+        restrictions; contradictory intent refuses before effects. Policy
+        content guarantees and credential remain empty. A hosted candidate
+        refused by local-only does not authorize fallback. Unsupported methods
+        refuse explicitly; callers never retry unrestricted Start."""
+        raise NotImplementedError
+
     def start(self, request: RequestV2) -> AdmissionV2:
         """Resolve the explicit target or named policy for the bound caller and
         admit one selected model. Each candidate must pass all chat@1
@@ -13522,6 +19897,19 @@ class ChatV2Client(ChatV2):
 
     def __init__(self, transport):
         self._transport = transport
+
+    def start_with_guarantees(self, request: RequestV2, guarantees: list[RequestGuarantee | str]) -> AdmissionV2:
+        _service_check("RequestV2", request)
+        _service_check("list<enum>", guarantees)
+        _args = _ChatV2StartWithGuaranteesArguments()
+        _args.request = request
+        _args.guarantees = guarantees
+        _arguments = _service_encode(_write_oa_chat_v2_start_with_guarantees_arguments, _args, 1)
+        _service_decode(_read_oa_chat_v2_start_with_guarantees_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/chat@2", "StartWithGuarantees", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@2", "StartWithGuarantees")
+        _result = _service_decode(_read_oa_chat_v2_start_with_guarantees_result, _payload, 1)
+        return _result.value
 
     def start(self, request: RequestV2) -> AdmissionV2:
         _service_check("RequestV2", request)
@@ -13562,6 +19950,109 @@ class ChatV2Client(ChatV2):
         _request = _service_request("abstraction.inference/chat@2", "Cancel", _arguments)
         _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@2", "Cancel")
         _result = _service_decode(_read_oa_chat_v2_cancel_result, _payload, 1)
+        return _result.value
+
+
+class ChatV3:
+    """The final-form chat seat, native or paired through the same capability API.
+    Discovery/select/fallback happens before dispatch; an accepted operation,
+    possible send or partial stream never authorizes retry or weaker fallback.
+    New events and types are reachable only through this version; native
+    chat@1/@2 receiving is unchanged. The receiving native subject or
+    certificate-mapped remote runtime owns authority; claimed-program is audit
+    data and never a decision subject."""
+
+    def get_history_window(self) -> ChatHistoryRead:
+        """Read the existing Job-owned epoch/retention record before first send;
+        creates no work. Every runtime start issues a never-reused 128-bit
+        epoch. Rotation of the bounded key table closes its old epoch before
+        dropping evidence. An old or foreign epoch never admits unseen work. No
+        durable Job or downstream recovery guarantee is added."""
+        raise NotImplementedError
+
+    def start(self, request: RequestV3) -> ChatAdmission:
+        """Admit one request after shape, required support, router selection,
+        rights, content, credentials, budget and capacity checks. Same current
+        epoch/key/equal canonical body replays admission; another body is
+        conflict. Closed/restarted/foreign epochs are unknown and never
+        resubmitted automatically. An explicit attempt is eligible only after
+        its predecessor failed terminally. The relay derives a T3 key from local
+        subject, caller key and caller epoch, retains the remote epoch and never
+        resubmits on remote unknown."""
+        raise NotImplementedError
+
+    def observe(self, request: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> ChatPage:
+        """Observe the attested caller's accepted chat@3 request without selection
+        or resubmission. A wait deadline or disconnect ends only this wait.
+        Cursor/gap/retention and 10-second unobserved cancellation retain their
+        existing operation owner. The remote relay passes progress, reasoning,
+        seals, usage and terminal events through unchanged."""
+        raise NotImplementedError
+
+    def cancel(self, request: str) -> ChatCancellation:
+        """Explicitly cancel this caller's accepted chat@3 request and propagate
+        upstream. An acknowledgement timeout does not prove closure. Never
+        invoked implicitly because an Observe wait expired, a cursor has a gap,
+        or a page was refused."""
+        raise NotImplementedError
+
+
+class ChatV3Client(ChatV3):
+    """Calls abstraction.inference/chat@3 through a transport that exchanges frames."""
+
+    def __init__(self, transport):
+        self._transport = transport
+
+    def get_history_window(self) -> ChatHistoryRead:
+        _args = _ChatV3GetHistoryWindowArguments()
+        _arguments = _service_encode(_write_oa_chat_v3_get_history_window_arguments, _args, 1)
+        _service_decode(_read_oa_chat_v3_get_history_window_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/chat@3", "GetHistoryWindow", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@3", "GetHistoryWindow")
+        _result = _service_decode(_read_oa_chat_v3_get_history_window_result, _payload, 1)
+        if (_result.value.outcome == "available") != (_result.value.window is not None):
+            raise ServiceError("invalid_result", "")
+        return _result.value
+
+    def start(self, request: RequestV3) -> ChatAdmission:
+        _service_check("RequestV3", request)
+        _args = _ChatV3StartArguments()
+        _args.request = request
+        _arguments = _service_encode(_write_oa_chat_v3_start_arguments, _args, 1)
+        _service_decode(_read_oa_chat_v3_start_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/chat@3", "Start", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@3", "Start")
+        _result = _service_decode(_read_oa_chat_v3_start_result, _payload, 1)
+        return _result.value
+
+    def observe(self, request: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> ChatPage:
+        _service_check("string", request)
+        _service_check("i64", cursor)
+        _service_check("i64", max_deltas)
+        _service_check("i64", max_bytes)
+        _service_check("i64", wait_ms)
+        _args = _ChatV3ObserveArguments()
+        _args.request = request
+        _args.cursor = cursor
+        _args.max_deltas = max_deltas
+        _args.max_bytes = max_bytes
+        _args.wait_ms = wait_ms
+        _arguments = _service_encode(_write_oa_chat_v3_observe_arguments, _args, 1)
+        _service_decode(_read_oa_chat_v3_observe_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/chat@3", "Observe", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@3", "Observe")
+        _result = _service_decode(_read_oa_chat_v3_observe_result, _payload, 1)
+        return _result.value
+
+    def cancel(self, request: str) -> ChatCancellation:
+        _service_check("string", request)
+        _args = _ChatV3CancelArguments()
+        _args.request = request
+        _arguments = _service_encode(_write_oa_chat_v3_cancel_arguments, _args, 1)
+        _service_decode(_read_oa_chat_v3_cancel_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/chat@3", "Cancel", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/chat@3", "Cancel")
+        _result = _service_decode(_read_oa_chat_v3_cancel_result, _payload, 1)
         return _result.value
 
 
@@ -13975,6 +20466,15 @@ class ImageV2:
     """Image generation and edit using the account and program scoped selection
     policy. Image@1 remains available for explicit model calls."""
 
+    def start_with_guarantees(self, request: ImageRequestV2, guarantees: list[RequestGuarantee | str]) -> AdmissionV2:
+        """Start with an additional caller restriction. guarantees is empty or
+        exactly local-only. It intersects existing request and endpoint
+        restrictions; contradictory intent refuses before effects. Policy
+        content guarantees and credential remain empty. A hosted candidate
+        refused by local-only does not authorize fallback. Unsupported methods
+        refuse explicitly; callers never retry unrestricted Start."""
+        raise NotImplementedError
+
     def start(self, request: ImageRequestV2) -> AdmissionV2:
         """Select an explicit model or a bounded named policy before image
         admission. A selected route runs one image@1 admission; fallback is
@@ -13995,6 +20495,19 @@ class ImageV2Client(ImageV2):
 
     def __init__(self, transport):
         self._transport = transport
+
+    def start_with_guarantees(self, request: ImageRequestV2, guarantees: list[RequestGuarantee | str]) -> AdmissionV2:
+        _service_check("ImageRequestV2", request)
+        _service_check("list<enum>", guarantees)
+        _args = _ImageV2StartWithGuaranteesArguments()
+        _args.request = request
+        _args.guarantees = guarantees
+        _arguments = _service_encode(_write_oa_image_v2_start_with_guarantees_arguments, _args, 1)
+        _service_decode(_read_oa_image_v2_start_with_guarantees_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/image@2", "StartWithGuarantees", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/image@2", "StartWithGuarantees")
+        _result = _service_decode(_read_oa_image_v2_start_with_guarantees_result, _payload, 1)
+        return _result.value
 
     def start(self, request: ImageRequestV2) -> AdmissionV2:
         _service_check("ImageRequestV2", request)
@@ -14161,6 +20674,13 @@ class Operator:
         the oldest retained entry; max_entries is 1..256."""
         raise NotImplementedError
 
+    def requests(self, cursor: int, max_entries: int) -> RequestPage:
+        """Read retained inference requests from both routes with recorded
+        selection and placement. Uses the Audit journal, cursor and retention.
+        Gated by abstraction.inference/audit.read on resource account. cursor 0
+        starts at the oldest retained entry; max_entries is 1..256."""
+        raise NotImplementedError
+
     def gateway(self) -> GatewayState:
         """Read the gateway window setting and whether the window listens now.
         Gated by abstraction.inference/host.manage on resource account."""
@@ -14173,6 +20693,21 @@ class Operator:
         127.0.0.1:<port>; empty keeps the recorded address when opening, and
         127.0.0.1:8793 when none is recorded. The setting survives a restart.
         Gated by host.manage."""
+        raise NotImplementedError
+
+    def program_budgets(self, credential: str) -> ProgramBudgetPage:
+        """Read one credential's durable per-program budgets and observed usage in
+        the existing ceiling owner. Gated by abstraction.inference/host.manage
+        on resource account for the native bound operator."""
+        raise NotImplementedError
+
+    def set_program_budget(self, request: ProgramBudgetChange) -> ProgramBudgetResult:
+        """Conditionally set one receiving-account native program's budget for
+        credential in the existing ceiling state. Absent budget removes its
+        configured limit while retaining usage; a present all-zero budget
+        records explicit No limit. Gated by host.manage. The native presenter
+        supplies the question's bound program; this operation grants no
+        credential use or inference authority."""
         raise NotImplementedError
 
 
@@ -14263,6 +20798,19 @@ class OperatorClient(Operator):
         _result = _service_decode(_read_oa_operator_audit_result, _payload, 1)
         return _result.value
 
+    def requests(self, cursor: int, max_entries: int) -> RequestPage:
+        _service_check("i64", cursor)
+        _service_check("i64", max_entries)
+        _args = _OperatorRequestsArguments()
+        _args.cursor = cursor
+        _args.max_entries = max_entries
+        _arguments = _service_encode(_write_oa_operator_requests_arguments, _args, 1)
+        _service_decode(_read_oa_operator_requests_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/operator@1", "Requests", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/operator@1", "Requests")
+        _result = _service_decode(_read_oa_operator_requests_result, _payload, 1)
+        return _result.value
+
     def gateway(self) -> GatewayState:
         _args = _OperatorGatewayArguments()
         _arguments = _service_encode(_write_oa_operator_gateway_arguments, _args, 1)
@@ -14287,13 +20835,45 @@ class OperatorClient(Operator):
         _result = _service_decode(_read_oa_operator_set_gateway_result, _payload, 1)
         return _result.value
 
+    def program_budgets(self, credential: str) -> ProgramBudgetPage:
+        _service_check("string", credential)
+        _args = _OperatorProgramBudgetsArguments()
+        _args.credential = credential
+        _arguments = _service_encode(_write_oa_operator_program_budgets_arguments, _args, 1)
+        _service_decode(_read_oa_operator_program_budgets_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/operator@1", "ProgramBudgets", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/operator@1", "ProgramBudgets")
+        _result = _service_decode(_read_oa_operator_program_budgets_result, _payload, 1)
+        return _result.value
+
+    def set_program_budget(self, request: ProgramBudgetChange) -> ProgramBudgetResult:
+        _service_check("ProgramBudgetChange", request)
+        _args = _OperatorSetProgramBudgetArguments()
+        _args.request = request
+        _arguments = _service_encode(_write_oa_operator_set_program_budget_arguments, _args, 1)
+        _service_decode(_read_oa_operator_set_program_budget_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/operator@1", "SetProgramBudget", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/operator@1", "SetProgramBudget")
+        _result = _service_decode(_read_oa_operator_set_program_budget_result, _payload, 1)
+        return _result.value
+
 
 class SelectionOperatorV2:
-    """Manage policies for this program or an explicit executable in the bound
-    account, with optional logical provider pins. Cross-program management
-    requires selection.manage_for; the target program is a policy namespace,
-    never requesting identity. Reads of the bound program need no grant; edits
-    retain selection.manage."""
+    """Manage program policies and account defaults in the bound native account,
+    with optional logical provider pins. Cross-program management and every
+    account-default method require selection.manage_for; the target program is a
+    policy namespace, never requesting identity. Raw reads of the bound program
+    need no grant; program edits retain selection.manage. Inference applies the
+    same named account default only after proven absence of a program policy."""
+
+    def read_effective(self, name: str) -> SelectionReadV2:
+        """Read the bound native caller's effective named policy with no management
+        grant. The caller's program policy wins; the same named account default
+        applies only after proven absence. Store failure or corruption refuses
+        without fallback. This pure snapshot performs no activation,
+        reservation, inference or permission change and does not promise that a
+        future request is executable."""
+        raise NotImplementedError
 
     def read(self, target_program: str, name: str) -> SelectionReadV2:
         """Read a policy for target_program in the bound account. Empty or the
@@ -14315,12 +20895,41 @@ class SelectionOperatorV2:
         selection.manage_for on account."""
         raise NotImplementedError
 
+    def read_account_default(self, name: str) -> SelectionReadV2:
+        """Read the account default for this named policy in the bound native
+        account. Requires selection.manage_for. Raw program policies remain
+        separately readable through Read."""
+        raise NotImplementedError
+
+    def put_account_default(self, expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange:
+        """Conditionally create or replace the account default for this named
+        policy. Requires selection.manage_for on the bound native account. It
+        applies only when the requesting program has no policy of the same name
+        and grants no execution, host or credential authority."""
+        raise NotImplementedError
+
+    def delete_account_default(self, expected_revision: str, name: str) -> SelectionChange:
+        """Conditionally delete the account default for this named policy. Requires
+        selection.manage_for on the bound native account."""
+        raise NotImplementedError
+
 
 class SelectionOperatorV2Client(SelectionOperatorV2):
     """Calls abstraction.inference/selection-operator@2 through a transport that exchanges frames."""
 
     def __init__(self, transport):
         self._transport = transport
+
+    def read_effective(self, name: str) -> SelectionReadV2:
+        _service_check("string", name)
+        _args = _SelectionOperatorV2ReadEffectiveArguments()
+        _args.name = name
+        _arguments = _service_encode(_write_oa_selection_operator_v2_read_effective_arguments, _args, 1)
+        _service_decode(_read_oa_selection_operator_v2_read_effective_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/selection-operator@2", "ReadEffective", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/selection-operator@2", "ReadEffective")
+        _result = _service_decode(_read_oa_selection_operator_v2_read_effective_result, _payload, 1)
+        return _result.value
 
     def read(self, target_program: str, name: str) -> SelectionReadV2:
         _service_check("string", target_program)
@@ -14364,3 +20973,3735 @@ class SelectionOperatorV2Client(SelectionOperatorV2):
         _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/selection-operator@2", "DeletePolicy")
         _result = _service_decode(_read_oa_selection_operator_v2_delete_policy_result, _payload, 1)
         return _result.value
+
+    def read_account_default(self, name: str) -> SelectionReadV2:
+        _service_check("string", name)
+        _args = _SelectionOperatorV2ReadAccountDefaultArguments()
+        _args.name = name
+        _arguments = _service_encode(_write_oa_selection_operator_v2_read_account_default_arguments, _args, 1)
+        _service_decode(_read_oa_selection_operator_v2_read_account_default_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/selection-operator@2", "ReadAccountDefault", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/selection-operator@2", "ReadAccountDefault")
+        _result = _service_decode(_read_oa_selection_operator_v2_read_account_default_result, _payload, 1)
+        return _result.value
+
+    def put_account_default(self, expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange:
+        _service_check("string", expected_revision)
+        _service_check("SelectionPolicyV2", policy)
+        _args = _SelectionOperatorV2PutAccountDefaultArguments()
+        _args.expected_revision = expected_revision
+        _args.policy = policy
+        _arguments = _service_encode(_write_oa_selection_operator_v2_put_account_default_arguments, _args, 1)
+        _service_decode(_read_oa_selection_operator_v2_put_account_default_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/selection-operator@2", "PutAccountDefault", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/selection-operator@2", "PutAccountDefault")
+        _result = _service_decode(_read_oa_selection_operator_v2_put_account_default_result, _payload, 1)
+        return _result.value
+
+    def delete_account_default(self, expected_revision: str, name: str) -> SelectionChange:
+        _service_check("string", expected_revision)
+        _service_check("string", name)
+        _args = _SelectionOperatorV2DeleteAccountDefaultArguments()
+        _args.expected_revision = expected_revision
+        _args.name = name
+        _arguments = _service_encode(_write_oa_selection_operator_v2_delete_account_default_arguments, _args, 1)
+        _service_decode(_read_oa_selection_operator_v2_delete_account_default_arguments, _arguments, 1)
+        _request = _service_request("abstraction.inference/selection-operator@2", "DeleteAccountDefault", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.inference/selection-operator@2", "DeleteAccountDefault")
+        _result = _service_decode(_read_oa_selection_operator_v2_delete_account_default_result, _payload, 1)
+        return _result.value
+
+
+def _write_oa_imported0(out, v, depth):
+    try:
+        out += _dependency_acceptance._encode_request_identity_at(v, depth)
+    except _dependency_acceptance.Refusal as e:
+        raise Refusal(e.word, e.offset) from e
+
+
+def _read_oa_imported0(r):
+    try:
+        v, n = _dependency_acceptance._decode_request_identity_at(r.buf[r.pos:], r.depth, r.limit)
+    except _dependency_acceptance.Refusal as e:
+        raise Refusal(e.word, r.pos + e.offset) from e
+    r.pos += n
+    return v
+
+
+def _write_oa_imported1(out, v, depth):
+    try:
+        out += _dependency_rights._encode_refusal_detail_at(v, depth)
+    except _dependency_rights.Refusal as e:
+        raise Refusal(e.word, e.offset) from e
+
+
+def _read_oa_imported1(r):
+    try:
+        v, n = _dependency_rights._decode_refusal_detail_at(r.buf[r.pos:], r.depth, r.limit)
+    except _dependency_rights.Refusal as e:
+        raise Refusal(e.word, r.pos + e.offset) from e
+    r.pos += n
+    return v
+
+
+def _write_oa_imported2(out, v, depth):
+    try:
+        out += _dependency_acceptance._encode_history_window_at(v, depth)
+    except _dependency_acceptance.Refusal as e:
+        raise Refusal(e.word, e.offset) from e
+
+
+def _read_oa_imported2(r):
+    try:
+        v, n = _dependency_acceptance._decode_history_window_at(r.buf[r.pos:], r.depth, r.limit)
+    except _dependency_acceptance.Refusal as e:
+        raise Refusal(e.word, r.pos + e.offset) from e
+    r.pos += n
+    return v
+
+
+_NAMED_IMPORTED = {}
+
+
+def _check_oa_imported0(v, depth, limit):
+    try:
+        _dependency_acceptance._check_request_identity(v, depth, limit)
+    except _dependency_acceptance.Refusal as e:
+        raise Refusal(e.word, e.offset) from e
+
+
+_NAMED_IMPORTED["OAImported0"] = (_Imported0, _check_oa_imported0)
+
+
+def _check_oa_imported1(v, depth, limit):
+    try:
+        _dependency_rights._check_refusal_detail(v, depth, limit)
+    except _dependency_rights.Refusal as e:
+        raise Refusal(e.word, e.offset) from e
+
+
+_NAMED_IMPORTED["OAImported1"] = (_Imported1, _check_oa_imported1)
+
+
+def _check_oa_imported2(v, depth, limit):
+    try:
+        _dependency_acceptance._check_history_window(v, depth, limit)
+    except _dependency_acceptance.Refusal as e:
+        raise Refusal(e.word, e.offset) from e
+
+
+_NAMED_IMPORTED["OAImported2"] = (_Imported2, _check_oa_imported2)
+
+_NAMED_RECORDS = {
+    "Part": (Part, [("kind", "enum", "never"), ("text", "string", "zero"), ("digest", "string", "zero"), ("media_type", "string", "zero"), ("call_id", "string", "zero"), ("name", "string", "zero"), ("arguments", "string", "zero"), ]),
+    "Message": (Message, [("role", "enum", "never"), ("parts", "list<Part>", "never"), ]),
+    "Tool": (Tool, [("name", "string", "never"), ("description", "string", "never"), ("parameters", "string", "never"), ]),
+    "Temperature": (Temperature, [("milli", "i64", "never"), ]),
+    "Options": (Options, [("max_output", "i64", "zero"), ("temperature", "Temperature", "absent"), ("stop", "list<string>", "zero"), ("json_schema", "string", "zero"), ]),
+    "Request": (Request, [("model", "string", "never"), ("messages", "list<Message>", "never"), ("tools", "list<Tool>", "zero"), ("options", "Options", "absent"), ("extensions", "map<string,string>", "zero"), ("required_extensions", "list<string>", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ]),
+    "Target": (Target, [("model", "string", "zero"), ("selection_policy", "string", "zero"), ]),
+    "RequestContent": (RequestContent, [("messages", "list<Message>", "never"), ("tools", "list<Tool>", "zero"), ("options", "Options", "absent"), ("extensions", "map<string,string>", "zero"), ("required_extensions", "list<string>", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ]),
+    "RequestV2": (RequestV2, [("target", "Target", "never"), ("content", "RequestContent", "never"), ]),
+    "Usage": (Usage, [("input", "i64", "never"), ("output", "i64", "never"), ("cached", "i64", "never"), ]),
+    "Cost": (Cost, [("micros", "i64", "never"), ("currency", "string", "never"), ]),
+    "Reply": (Reply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("message", "Message", "never"), ("stop_reason", "enum", "never"), ("usage", "Usage", "never"), ("host", "string", "never"), ("model", "string", "never"), ("cost", "Cost", "absent"), ]),
+    "Delta": (Delta, [("sequence", "i64", "never"), ("kind", "enum", "never"), ("index", "i64", "zero"), ("part", "Part", "absent"), ("usage", "Usage", "absent"), ("end", "Reply", "absent"), ("segment", "TranscriptSegment", "absent"), ("transcription_end", "TranscriptionReply", "absent"), ("audio", "AudioChunk", "absent"), ("speech_end", "SpeechReply", "absent"), ("transcript", "LiveTranscript", "absent"), ("live_end", "LiveReply", "absent"), ("image_progress", "ImageProgress", "absent"), ("image_result", "ImageResult", "absent"), ("image_end", "ImageReply", "absent"), ]),
+    "Admission": (Admission, [("outcome", "enum", "never"), ("reason", "string", "never"), ("operation", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("retention_ms", "i64", "never"), ("idle_ms", "i64", "never"), ("retained_deltas", "i64", "never"), ]),
+    "AdmissionV2": (AdmissionV2, [("outcome", "enum", "never"), ("reason", "string", "never"), ("operation", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("retention_ms", "i64", "never"), ("idle_ms", "i64", "never"), ("retained_deltas", "i64", "never"), ("preferred_model", "string", "zero"), ("selection_reason", "enum", "absent"), ]),
+    "DeltaPage": (DeltaPage, [("outcome", "enum", "never"), ("deltas", "list<Delta>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ]),
+    "Cancellation": (Cancellation, [("outcome", "enum", "never"), ("reply_outcome", "enum", "absent"), ]),
+    "ChatProgress": (ChatProgress, [("phase", "enum", "never"), ("done", "i64", "absent"), ("total", "i64", "absent"), ("unit", "string", "absent"), ]),
+    "ChatUsage": (ChatUsage, [("input", "i64", "absent"), ("output", "i64", "absent"), ("cache_read", "i64", "absent"), ("cache_write", "i64", "absent"), ("reasoning", "i64", "absent"), ]),
+    "ChatToolChoice": (ChatToolChoice, [("kind", "enum", "never"), ("name", "string", "zero"), ]),
+    "ChatTool": (ChatTool, [("name", "string", "never"), ("description", "string", "never"), ("parameters", "string", "never"), ("strict", "bool", "absent"), ]),
+    "ChatReasoning": (ChatReasoning, [("effort", "enum", "never"), ("budget", "i64", "absent"), ]),
+    "ChatOptions": (ChatOptions, [("max_output", "i64", "zero"), ("temperature", "Temperature", "absent"), ("stop", "list<string>", "zero"), ("json_schema", "string", "zero"), ("tool_choice", "ChatToolChoice", "absent"), ("parallel_tools", "bool", "absent"), ("reasoning", "ChatReasoning", "absent"), ]),
+    "ChatPart": (ChatPart, [("block", "i64", "never"), ("kind", "enum", "never"), ("text", "string", "zero"), ("call_id", "string", "zero"), ("name", "string", "zero"), ("arguments", "string", "zero"), ("seal", "ReasoningSeal", "absent"), ]),
+    "ChatBlockEnd": (ChatBlockEnd, [("block", "i64", "never"), ("seal_omitted", "enum", "absent"), ]),
+    "ReasoningSeal": (ReasoningSeal, [("origin", "string", "never"), ("bytes", "binary", "never"), ]),
+    "ServedBy": (ServedBy, [("place", "enum", "never"), ("server", "string", "never"), ("machine", "string", "zero"), ]),
+    "ChatInputPart": (ChatInputPart, [("kind", "enum", "never"), ("text", "string", "zero"), ("digest", "string", "zero"), ("media_type", "string", "zero"), ("call_id", "string", "zero"), ("name", "string", "zero"), ("arguments", "string", "zero"), ]),
+    "ChatReplay": (ChatReplay, [("block", "i64", "never"), ("seal", "ReasoningSeal", "never"), ]),
+    "ChatMessage": (ChatMessage, [("role", "enum", "never"), ("parts", "list<ChatInputPart>", "never"), ("reasoning", "list<ChatReplay>", "zero"), ]),
+    "ChatTarget": (ChatTarget, [("model", "string", "zero"), ("selection_policy", "string", "zero"), ]),
+    "ChatContent": (ChatContent, [("messages", "list<ChatMessage>", "never"), ("tools", "list<ChatTool>", "zero"), ("options", "ChatOptions", "absent"), ("extensions", "map<string,string>", "zero"), ("required_extensions", "list<string>", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ]),
+    "RequestV3": (RequestV3, [("identity", "OAImported0", "never"), ("target", "ChatTarget", "never"), ("content", "ChatContent", "never"), ("model_ref", "string", "absent"), ("conversation", "string", "zero"), ("use", "enum", "absent"), ]),
+    "ChatTiming": (ChatTiming, [("queue_ms", "i64", "absent"), ("load_ms", "i64", "absent"), ("restore_ms", "i64", "absent"), ("prefill_ms", "i64", "absent"), ("decode_ms", "i64", "absent"), ("prefill_tokens", "i64", "absent"), ("reused_tokens", "i64", "absent"), ("load", "enum", "absent"), ("load_source", "enum", "absent"), ]),
+    "ChatReasoningApplied": (ChatReasoningApplied, [("effort", "enum", "absent"), ("budget", "i64", "absent"), ("support", "enum", "never"), ("budget_support", "enum", "absent"), ]),
+    "ChatResult": (ChatResult, [("outcome", "enum", "never"), ("cause", "string", "never"), ("finish_reason", "enum", "absent"), ("stop_sequence", "string", "absent"), ("usage", "ChatUsage", "never"), ("served_by", "ServedBy", "absent"), ("cost", "Cost", "absent"), ("refusal", "OAImported1", "absent"), ("retry_after_ms", "i64", "absent"), ("timing", "ChatTiming", "absent"), ("reasoning_applied", "ChatReasoningApplied", "absent"), ("dropped_extensions", "list<string>", "zero"), ]),
+    "ChatEvent": (ChatEvent, [("sequence", "i64", "never"), ("kind", "enum", "never"), ("progress", "ChatProgress", "absent"), ("part", "ChatPart", "absent"), ("block_end", "ChatBlockEnd", "absent"), ("usage", "ChatUsage", "absent"), ("end", "ChatResult", "absent"), ]),
+    "ChatAdmission": (ChatAdmission, [("outcome", "enum", "never"), ("reason", "string", "never"), ("request", "string", "never"), ("server", "string", "never"), ("model", "string", "never"), ("retention_ms", "i64", "never"), ("idle_ms", "i64", "never"), ("retained_deltas", "i64", "never"), ("preferred_model", "string", "zero"), ("selection_reason", "enum", "absent"), ("refusal", "OAImported1", "absent"), ("retry_after_ms", "i64", "absent"), ]),
+    "ChatPage": (ChatPage, [("outcome", "enum", "never"), ("events", "list<ChatEvent>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ("refusal", "OAImported1", "absent"), ]),
+    "ChatCancellation": (ChatCancellation, [("outcome", "enum", "never"), ("result_outcome", "enum", "absent"), ("refusal", "OAImported1", "absent"), ]),
+    "ChatHistoryRead": (ChatHistoryRead, [("outcome", "enum", "never"), ("window", "OAImported2", "absent"), ("refusal", "OAImported1", "absent"), ]),
+    "PreloadReply": (PreloadReply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("tokens", "i64", "never"), ]),
+    "EmbedRequest": (EmbedRequest, [("model", "string", "never"), ("inputs", "list<string>", "never"), ("dimensions", "i64", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("extensions", "map<string,string>", "zero"), ]),
+    "Embeddings": (Embeddings, [("outcome", "enum", "never"), ("reason", "string", "never"), ("vectors", "list<string>", "never"), ("dimensions", "i64", "never"), ("usage", "Usage", "never"), ("host", "string", "never"), ("model", "string", "never"), ("cost", "Cost", "absent"), ]),
+    "TranscriptionRequest": (TranscriptionRequest, [("model", "string", "never"), ("audio_digest", "string", "never"), ("media_type", "string", "never"), ("language", "string", "zero"), ("timestamps", "enum", "never"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("extensions", "map<string,string>", "zero"), ]),
+    "TranscriptSegment": (TranscriptSegment, [("index", "i64", "never"), ("kind", "enum", "never"), ("start_ms", "i64", "never"), ("end_ms", "i64", "never"), ("text", "string", "never"), ]),
+    "TranscriptionReply": (TranscriptionReply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("language", "string", "never"), ("duration_ms", "i64", "never"), ("usage", "Usage", "never"), ("host", "string", "never"), ("model", "string", "never"), ("cost", "Cost", "absent"), ]),
+    "SpeechRequest": (SpeechRequest, [("model", "string", "never"), ("voice", "string", "never"), ("text", "string", "never"), ("format", "enum", "never"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("extensions", "map<string,string>", "zero"), ]),
+    "AudioChunk": (AudioChunk, [("index", "i64", "never"), ("data", "binary", "never"), ]),
+    "Delivery": (Delivery, [("digest", "string", "never"), ("media_type", "string", "never"), ("size", "i64", "never"), ("location", "string", "never"), ]),
+    "SpeechReply": (SpeechReply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("delivery", "Delivery", "never"), ("characters", "i64", "never"), ("usage", "Usage", "never"), ("host", "string", "never"), ("model", "string", "never"), ("cost", "Cost", "absent"), ]),
+    "LiveRequest": (LiveRequest, [("model", "string", "never"), ("voice", "string", "never"), ("format", "enum", "never"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("extensions", "map<string,string>", "zero"), ]),
+    "LiveInputResult": (LiveInputResult, [("outcome", "enum", "never"), ("next_sequence", "i64", "never"), ]),
+    "LiveTranscript": (LiveTranscript, [("text", "string", "never"), ("is_final", "bool", "never"), ]),
+    "LiveReply": (LiveReply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("delivery", "Delivery", "never"), ("usage", "Usage", "never"), ("input_audio_bytes", "i64", "never"), ("output_audio_bytes", "i64", "never"), ("host", "string", "never"), ("model", "string", "never"), ]),
+    "ImageRequest": (ImageRequest, [("model", "string", "never"), ("mode", "enum", "never"), ("prompt", "string", "never"), ("size", "string", "never"), ("count", "i64", "never"), ("image_digest", "string", "zero"), ("image_media_type", "string", "zero"), ("mask_digest", "string", "zero"), ("mask_media_type", "string", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("required_extensions", "list<string>", "zero"), ("extensions", "map<string,string>", "zero"), ]),
+    "ImageRequestContent": (ImageRequestContent, [("mode", "enum", "never"), ("prompt", "string", "never"), ("size", "string", "never"), ("count", "i64", "never"), ("image_digest", "string", "zero"), ("image_media_type", "string", "zero"), ("mask_digest", "string", "zero"), ("mask_media_type", "string", "zero"), ("guarantees", "list<enum>", "never"), ("credential", "string", "zero"), ("required_extensions", "list<string>", "zero"), ("extensions", "map<string,string>", "zero"), ]),
+    "ImageRequestV2": (ImageRequestV2, [("target", "Target", "never"), ("content", "ImageRequestContent", "never"), ]),
+    "ImageProgress": (ImageProgress, [("percent", "i64", "zero"), ("message", "string", "never"), ]),
+    "ImageResult": (ImageResult, [("index", "i64", "never"), ("delivery", "Delivery", "never"), ]),
+    "ImageReply": (ImageReply, [("outcome", "enum", "never"), ("reason", "string", "never"), ("deliveries", "list<Delivery>", "never"), ("images", "i64", "never"), ("usage", "Usage", "never"), ("host", "string", "never"), ("model", "string", "never"), ("cost", "Cost", "absent"), ]),
+    "VideoRequest": (VideoRequest, [("model", "string", "never"), ("prompt", "string", "never"), ("size", "string", "never"), ("duration_ms", "i64", "never"), ("fps", "i64", "zero"), ("seed", "i64", "zero"), ("image_digest", "string", "zero"), ("image_media_type", "string", "zero"), ("required_extensions", "list<string>", "zero"), ("extensions", "map<string,string>", "zero"), ("request_id", "string", "never"), ]),
+    "VideoAdmission": (VideoAdmission, [("outcome", "enum", "never"), ("reason", "string", "never"), ("operation", "string", "never"), ("retention_ms", "i64", "never"), ]),
+    "VideoObservation": (VideoObservation, [("status", "enum", "never"), ("step", "i64", "zero"), ("steps", "i64", "zero"), ("queue_position", "i64", "zero"), ("reason", "string", "zero"), ("delivery", "Delivery", "absent"), ]),
+    "CeilingLimit": (CeilingLimit, [("tokens_per_day", "i64", "zero"), ("micros_per_day", "i64", "zero"), ("requests_per_day", "i64", "zero"), ("images_per_day", "i64", "zero"), ("audio_seconds_per_day", "i64", "zero"), ("characters_per_day", "i64", "zero"), ]),
+    "HostEntry": (HostEntry, [("name", "string", "never"), ("hosted", "bool", "never"), ("kind", "string", "never"), ("base", "string", "never"), ("credential", "string", "zero"), ("ceiling", "CeilingLimit", "absent"), ("profiles", "list<string>", "zero"), ("declared_by", "string", "zero"), ]),
+    "Spend": (Spend, [("day", "string", "never"), ("tokens", "i64", "never"), ("micros", "i64", "never"), ("requests", "i64", "zero"), ("audio_seconds", "i64", "zero"), ("characters", "i64", "zero"), ("images", "i64", "zero"), ]),
+    "HostState": (HostState, [("entry", "HostEntry", "never"), ("up", "bool", "never"), ("why", "string", "never"), ("spend", "Spend", "absent"), ]),
+    "HostList": (HostList, [("outcome", "enum", "never"), ("revision", "string", "never"), ("hosts", "list<HostState>", "never"), ]),
+    "HostChange": (HostChange, [("outcome", "enum", "never"), ("revision", "string", "never"), ("reason", "string", "never"), ]),
+    "LocalKey": (LocalKey, [("program", "string", "never"), ("name", "string", "never"), ("credential", "string", "zero"), ("issued_unix_ms", "i64", "never"), ("issued_by", "string", "never"), ("state", "enum", "never"), ]),
+    "KeyList": (KeyList, [("outcome", "enum", "never"), ("keys", "list<LocalKey>", "never"), ]),
+    "KeyIssued": (KeyIssued, [("outcome", "enum", "never"), ("reason", "string", "never"), ("key", "string", "zero"), ("record", "LocalKey", "absent"), ]),
+    "KeyRevoked": (KeyRevoked, [("outcome", "enum", "never"), ]),
+    "AuditEntry": (AuditEntry, [("sequence", "i64", "never"), ("unix_ms", "i64", "never"), ("route", "enum", "never"), ("rung", "string", "never"), ("program", "string", "never"), ("operation", "string", "never"), ("host", "string", "never"), ("model", "string", "never"), ("credential", "string", "never"), ("outcome", "string", "never"), ("reason", "string", "never"), ("tokens_in", "i64", "never"), ("tokens_out", "i64", "never"), ("wall_ms", "i64", "never"), ("ceiling", "string", "never"), ("domain", "string", "zero"), ("claim", "string", "zero"), ("profile", "string", "zero"), ("audio_seconds", "i64", "zero"), ("characters", "i64", "zero"), ("images", "i64", "zero"), ]),
+    "AuditPage": (AuditPage, [("outcome", "enum", "never"), ("entries", "list<AuditEntry>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ]),
+    "RequestEntry": (RequestEntry, [("entry", "AuditEntry", "never"), ("preferred_model", "string", "zero"), ("unavailable_hosts", "list<string>", "zero"), ("selection", "string", "zero"), ("placement", "enum", "absent"), ]),
+    "RequestPage": (RequestPage, [("outcome", "enum", "never"), ("entries", "list<RequestEntry>", "never"), ("next", "i64", "never"), ("at_end", "bool", "never"), ]),
+    "GatewayState": (GatewayState, [("outcome", "enum", "never"), ("revision", "string", "never"), ("open", "bool", "never"), ("address", "string", "never"), ("listening", "bool", "never"), ("listening_address", "string", "never"), ("why", "string", "never"), ]),
+    "GatewayChange": (GatewayChange, [("outcome", "enum", "never"), ("revision", "string", "never"), ("reason", "string", "never"), ]),
+    "ProgramBudget": (ProgramBudget, [("tokens_per_day", "i64", "zero"), ("micros_per_day", "i64", "zero"), ("requests_per_day", "i64", "zero"), ("images_per_day", "i64", "zero"), ("audio_seconds_per_day", "i64", "zero"), ("characters_per_day", "i64", "zero"), ]),
+    "ProgramBudgetEntry": (ProgramBudgetEntry, [("program", "string", "never"), ("budget", "ProgramBudget", "absent"), ("spend", "Spend", "never"), ("cost_unreported", "bool", "zero"), ]),
+    "ProgramBudgetPage": (ProgramBudgetPage, [("outcome", "enum", "never"), ("revision", "string", "never"), ("entries", "list<ProgramBudgetEntry>", "never"), ("profiles", "list<string>", "never"), ]),
+    "ProgramBudgetResult": (ProgramBudgetResult, [("outcome", "enum", "never"), ("revision", "string", "never"), ("reason", "string", "never"), ]),
+    "ProgramBudgetChange": (ProgramBudgetChange, [("expected_revision", "string", "never"), ("credential", "string", "never"), ("program", "string", "never"), ("budget", "ProgramBudget", "absent"), ]),
+    "SelectionChange": (SelectionChange, [("outcome", "enum", "never"), ("revision", "string", "never"), ("reason", "string", "never"), ]),
+    "SelectionCandidateV2": (SelectionCandidateV2, [("model", "string", "never"), ("placement", "enum", "never"), ("credential", "string", "zero"), ("provider", "string", "zero"), ]),
+    "SelectionPolicyV2": (SelectionPolicyV2, [("name", "string", "never"), ("candidates", "list<SelectionCandidateV2>", "never"), ]),
+    "SelectionReadV2": (SelectionReadV2, [("outcome", "enum", "never"), ("revision", "string", "never"), ("policy", "SelectionPolicyV2", "absent"), ]),
+}
+
+
+def _named_check(kind, value, depth=0, limit=_DEPTH_LIMIT):
+    # Python coercions must not silently change typed service arguments.
+    if depth >= limit and (kind.startswith(("list<", "map<")) or kind in _NAMED_RECORDS):
+        raise Refusal("depth_exceeded", 0)
+    if kind == "binary":
+        valid = type(value) is bytes
+    elif kind == "string":
+        valid = type(value) is str
+    elif kind == "enum":
+        valid = value is None or isinstance(value, str)
+    elif kind in ("i32", "i64"):
+        valid = type(value) is int
+        if valid:
+            limit = 1 << (31 if kind == "i32" else 63)
+            if not -limit <= value < limit:
+                raise Refusal("number_spelling", 0)
+    elif kind == "bool":
+        valid = type(value) is bool
+    elif kind == "json":
+        valid = isinstance(value, (str, bytes, bytearray, memoryview))
+    elif kind.startswith("list<"):
+        valid = type(value) is list
+        if valid:
+            for item in value:
+                _named_check(kind[5:-1], item, depth + 1, limit)
+    elif kind.startswith("map<string,"):
+        valid = type(value) is dict
+        if valid:
+            for key, item in value.items():
+                _named_check("string", key, depth + 1, limit)
+                _named_check(kind[11:-1], item, depth + 1, limit)
+    elif kind in _NAMED_IMPORTED:
+        cls, check = _NAMED_IMPORTED[kind]
+        valid = isinstance(value, cls)
+        if valid:
+            check(value, depth, limit)
+    else:
+        cls, fields = _NAMED_RECORDS[kind]
+        valid = isinstance(value, cls)
+        if valid:
+            for name, field_kind, omit in fields:
+                if not hasattr(value, name):
+                    raise Refusal("missing_field", 0)
+                item = getattr(value, name)
+                if omit == "absent" and item is None:
+                    continue
+                _named_check(field_kind, item, depth + 1, limit)
+    if not valid:
+        raise Refusal("wrong_type", 0)
+
+
+def _check_part(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Part", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_message(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Message", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_tool(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Tool", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_temperature(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Temperature", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_options(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Options", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_request(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Request", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_target(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Target", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_request_content(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("RequestContent", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_request_v2(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("RequestV2", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_usage(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Usage", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_cost(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Cost", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_reply(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Reply", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_delta(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Delta", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_admission(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Admission", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_admission_v2(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("AdmissionV2", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_delta_page(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("DeltaPage", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_cancellation(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Cancellation", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_progress(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatProgress", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_usage(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatUsage", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_tool_choice(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatToolChoice", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_tool(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatTool", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_reasoning(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatReasoning", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_options(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatOptions", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_part(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatPart", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_block_end(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatBlockEnd", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_reasoning_seal(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ReasoningSeal", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_served_by(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ServedBy", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_input_part(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatInputPart", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_replay(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatReplay", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_message(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatMessage", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_target(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatTarget", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_content(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatContent", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_request_v3(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("RequestV3", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_timing(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatTiming", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_reasoning_applied(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatReasoningApplied", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_result(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatResult", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_event(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatEvent", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_admission(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatAdmission", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_page(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatPage", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_cancellation(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatCancellation", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_chat_history_read(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ChatHistoryRead", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_preload_reply(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("PreloadReply", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_embed_request(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("EmbedRequest", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_embeddings(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Embeddings", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_transcription_request(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("TranscriptionRequest", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_transcript_segment(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("TranscriptSegment", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_transcription_reply(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("TranscriptionReply", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_speech_request(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("SpeechRequest", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_audio_chunk(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("AudioChunk", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_delivery(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Delivery", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_speech_reply(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("SpeechReply", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_live_request(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("LiveRequest", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_live_input_result(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("LiveInputResult", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_live_transcript(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("LiveTranscript", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_live_reply(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("LiveReply", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_image_request(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ImageRequest", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_image_request_content(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ImageRequestContent", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_image_request_v2(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ImageRequestV2", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_image_progress(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ImageProgress", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_image_result(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ImageResult", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_image_reply(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ImageReply", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_video_request(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("VideoRequest", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_video_admission(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("VideoAdmission", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_video_observation(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("VideoObservation", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_ceiling_limit(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("CeilingLimit", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_host_entry(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("HostEntry", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_spend(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("Spend", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_host_state(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("HostState", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_host_list(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("HostList", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_host_change(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("HostChange", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_local_key(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("LocalKey", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_key_list(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("KeyList", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_key_issued(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("KeyIssued", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_key_revoked(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("KeyRevoked", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_audit_entry(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("AuditEntry", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_audit_page(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("AuditPage", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_request_entry(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("RequestEntry", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_request_page(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("RequestPage", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_gateway_state(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("GatewayState", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_gateway_change(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("GatewayChange", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_program_budget(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ProgramBudget", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_program_budget_entry(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ProgramBudgetEntry", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_program_budget_page(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ProgramBudgetPage", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_program_budget_result(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ProgramBudgetResult", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_program_budget_change(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("ProgramBudgetChange", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_selection_change(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("SelectionChange", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_selection_candidate_v2(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("SelectionCandidateV2", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_selection_policy_v2(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("SelectionPolicyV2", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _check_selection_read_v2(v, depth=0, limit=_DEPTH_LIMIT):
+    _named_check("SelectionReadV2", v, depth, min(limit, _DEPTH_LIMIT))
+
+
+def _decode_part_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_part(r)
+    return v, r.pos
+
+
+def _encode_part_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_part(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_part(out, v, depth)
+    _decode_part_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_part(v):
+    return _encode_part_at(v, 0) + "\n".encode()
+
+
+def decode_part(data):
+    v, n = _decode_part_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_message_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_message(r)
+    return v, r.pos
+
+
+def _encode_message_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_message(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_message(out, v, depth)
+    _decode_message_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_message(v):
+    return _encode_message_at(v, 0) + "\n".encode()
+
+
+def decode_message(data):
+    v, n = _decode_message_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_tool_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_tool(r)
+    return v, r.pos
+
+
+def _encode_tool_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_tool(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_tool(out, v, depth)
+    _decode_tool_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_tool(v):
+    return _encode_tool_at(v, 0) + "\n".encode()
+
+
+def decode_tool(data):
+    v, n = _decode_tool_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_temperature_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_temperature(r)
+    return v, r.pos
+
+
+def _encode_temperature_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_temperature(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_temperature(out, v, depth)
+    _decode_temperature_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_temperature(v):
+    return _encode_temperature_at(v, 0) + "\n".encode()
+
+
+def decode_temperature(data):
+    v, n = _decode_temperature_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_options_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_options(r)
+    return v, r.pos
+
+
+def _encode_options_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_options(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_options(out, v, depth)
+    _decode_options_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_options(v):
+    return _encode_options_at(v, 0) + "\n".encode()
+
+
+def decode_options(data):
+    v, n = _decode_options_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_request_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_request(r)
+    return v, r.pos
+
+
+def _encode_request_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_request(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_request(out, v, depth)
+    _decode_request_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_request(v):
+    return _encode_request_at(v, 0) + "\n".encode()
+
+
+def decode_request(data):
+    v, n = _decode_request_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_target_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_target(r)
+    return v, r.pos
+
+
+def _encode_target_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_target(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_target(out, v, depth)
+    _decode_target_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_target(v):
+    return _encode_target_at(v, 0) + "\n".encode()
+
+
+def decode_target(data):
+    v, n = _decode_target_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_request_content_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_request_content(r)
+    return v, r.pos
+
+
+def _encode_request_content_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_request_content(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_request_content(out, v, depth)
+    _decode_request_content_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_request_content(v):
+    return _encode_request_content_at(v, 0) + "\n".encode()
+
+
+def decode_request_content(data):
+    v, n = _decode_request_content_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_request_v2_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_request_v2(r)
+    return v, r.pos
+
+
+def _encode_request_v2_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_request_v2(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_request_v2(out, v, depth)
+    _decode_request_v2_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_request_v2(v):
+    return _encode_request_v2_at(v, 0) + "\n".encode()
+
+
+def decode_request_v2(data):
+    v, n = _decode_request_v2_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_usage_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_usage(r)
+    return v, r.pos
+
+
+def _encode_usage_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_usage(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_usage(out, v, depth)
+    _decode_usage_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_usage(v):
+    return _encode_usage_at(v, 0) + "\n".encode()
+
+
+def decode_usage(data):
+    v, n = _decode_usage_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_cost_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_cost(r)
+    return v, r.pos
+
+
+def _encode_cost_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_cost(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_cost(out, v, depth)
+    _decode_cost_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_cost(v):
+    return _encode_cost_at(v, 0) + "\n".encode()
+
+
+def decode_cost(data):
+    v, n = _decode_cost_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_reply_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_reply(r)
+    return v, r.pos
+
+
+def _encode_reply_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_reply(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_reply(out, v, depth)
+    _decode_reply_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_reply(v):
+    return _encode_reply_at(v, 0) + "\n".encode()
+
+
+def decode_reply(data):
+    v, n = _decode_reply_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_delta_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_delta(r)
+    return v, r.pos
+
+
+def _encode_delta_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_delta(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_delta(out, v, depth)
+    _decode_delta_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_delta(v):
+    return _encode_delta_at(v, 0) + "\n".encode()
+
+
+def decode_delta(data):
+    v, n = _decode_delta_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_admission_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_admission(r)
+    return v, r.pos
+
+
+def _encode_admission_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_admission(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_admission(out, v, depth)
+    _decode_admission_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_admission(v):
+    return _encode_admission_at(v, 0) + "\n".encode()
+
+
+def decode_admission(data):
+    v, n = _decode_admission_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_admission_v2_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_admission_v2(r)
+    return v, r.pos
+
+
+def _encode_admission_v2_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_admission_v2(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_admission_v2(out, v, depth)
+    _decode_admission_v2_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_admission_v2(v):
+    return _encode_admission_v2_at(v, 0) + "\n".encode()
+
+
+def decode_admission_v2(data):
+    v, n = _decode_admission_v2_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_delta_page_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_delta_page(r)
+    return v, r.pos
+
+
+def _encode_delta_page_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_delta_page(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_delta_page(out, v, depth)
+    _decode_delta_page_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_delta_page(v):
+    return _encode_delta_page_at(v, 0) + "\n".encode()
+
+
+def decode_delta_page(data):
+    v, n = _decode_delta_page_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_cancellation_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_cancellation(r)
+    return v, r.pos
+
+
+def _encode_cancellation_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_cancellation(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_cancellation(out, v, depth)
+    _decode_cancellation_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_cancellation(v):
+    return _encode_cancellation_at(v, 0) + "\n".encode()
+
+
+def decode_cancellation(data):
+    v, n = _decode_cancellation_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_progress_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_progress(r)
+    return v, r.pos
+
+
+def _encode_chat_progress_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_progress(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_progress(out, v, depth)
+    _decode_chat_progress_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_progress(v):
+    return _encode_chat_progress_at(v, 0) + "\n".encode()
+
+
+def decode_chat_progress(data):
+    v, n = _decode_chat_progress_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_usage_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_usage(r)
+    return v, r.pos
+
+
+def _encode_chat_usage_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_usage(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_usage(out, v, depth)
+    _decode_chat_usage_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_usage(v):
+    return _encode_chat_usage_at(v, 0) + "\n".encode()
+
+
+def decode_chat_usage(data):
+    v, n = _decode_chat_usage_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_tool_choice_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_tool_choice(r)
+    return v, r.pos
+
+
+def _encode_chat_tool_choice_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_tool_choice(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_tool_choice(out, v, depth)
+    _decode_chat_tool_choice_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_tool_choice(v):
+    return _encode_chat_tool_choice_at(v, 0) + "\n".encode()
+
+
+def decode_chat_tool_choice(data):
+    v, n = _decode_chat_tool_choice_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_tool_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_tool(r)
+    return v, r.pos
+
+
+def _encode_chat_tool_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_tool(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_tool(out, v, depth)
+    _decode_chat_tool_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_tool(v):
+    return _encode_chat_tool_at(v, 0) + "\n".encode()
+
+
+def decode_chat_tool(data):
+    v, n = _decode_chat_tool_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_reasoning_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_reasoning(r)
+    return v, r.pos
+
+
+def _encode_chat_reasoning_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_reasoning(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_reasoning(out, v, depth)
+    _decode_chat_reasoning_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_reasoning(v):
+    return _encode_chat_reasoning_at(v, 0) + "\n".encode()
+
+
+def decode_chat_reasoning(data):
+    v, n = _decode_chat_reasoning_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_options_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_options(r)
+    return v, r.pos
+
+
+def _encode_chat_options_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_options(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_options(out, v, depth)
+    _decode_chat_options_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_options(v):
+    return _encode_chat_options_at(v, 0) + "\n".encode()
+
+
+def decode_chat_options(data):
+    v, n = _decode_chat_options_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_part_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_part(r)
+    return v, r.pos
+
+
+def _encode_chat_part_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_part(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_part(out, v, depth)
+    _decode_chat_part_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_part(v):
+    return _encode_chat_part_at(v, 0) + "\n".encode()
+
+
+def decode_chat_part(data):
+    v, n = _decode_chat_part_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_block_end_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_block_end(r)
+    return v, r.pos
+
+
+def _encode_chat_block_end_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_block_end(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_block_end(out, v, depth)
+    _decode_chat_block_end_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_block_end(v):
+    return _encode_chat_block_end_at(v, 0) + "\n".encode()
+
+
+def decode_chat_block_end(data):
+    v, n = _decode_chat_block_end_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_reasoning_seal_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_reasoning_seal(r)
+    return v, r.pos
+
+
+def _encode_reasoning_seal_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_reasoning_seal(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_reasoning_seal(out, v, depth)
+    _decode_reasoning_seal_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_reasoning_seal(v):
+    return _encode_reasoning_seal_at(v, 0) + "\n".encode()
+
+
+def decode_reasoning_seal(data):
+    v, n = _decode_reasoning_seal_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_served_by_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_served_by(r)
+    return v, r.pos
+
+
+def _encode_served_by_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_served_by(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_served_by(out, v, depth)
+    _decode_served_by_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_served_by(v):
+    return _encode_served_by_at(v, 0) + "\n".encode()
+
+
+def decode_served_by(data):
+    v, n = _decode_served_by_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_input_part_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_input_part(r)
+    return v, r.pos
+
+
+def _encode_chat_input_part_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_input_part(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_input_part(out, v, depth)
+    _decode_chat_input_part_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_input_part(v):
+    return _encode_chat_input_part_at(v, 0) + "\n".encode()
+
+
+def decode_chat_input_part(data):
+    v, n = _decode_chat_input_part_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_replay_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_replay(r)
+    return v, r.pos
+
+
+def _encode_chat_replay_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_replay(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_replay(out, v, depth)
+    _decode_chat_replay_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_replay(v):
+    return _encode_chat_replay_at(v, 0) + "\n".encode()
+
+
+def decode_chat_replay(data):
+    v, n = _decode_chat_replay_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_message_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_message(r)
+    return v, r.pos
+
+
+def _encode_chat_message_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_message(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_message(out, v, depth)
+    _decode_chat_message_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_message(v):
+    return _encode_chat_message_at(v, 0) + "\n".encode()
+
+
+def decode_chat_message(data):
+    v, n = _decode_chat_message_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_target_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_target(r)
+    return v, r.pos
+
+
+def _encode_chat_target_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_target(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_target(out, v, depth)
+    _decode_chat_target_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_target(v):
+    return _encode_chat_target_at(v, 0) + "\n".encode()
+
+
+def decode_chat_target(data):
+    v, n = _decode_chat_target_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_content_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_content(r)
+    return v, r.pos
+
+
+def _encode_chat_content_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_content(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_content(out, v, depth)
+    _decode_chat_content_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_content(v):
+    return _encode_chat_content_at(v, 0) + "\n".encode()
+
+
+def decode_chat_content(data):
+    v, n = _decode_chat_content_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_request_v3_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_request_v3(r)
+    return v, r.pos
+
+
+def _encode_request_v3_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_request_v3(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_request_v3(out, v, depth)
+    _decode_request_v3_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_request_v3(v):
+    return _encode_request_v3_at(v, 0) + "\n".encode()
+
+
+def decode_request_v3(data):
+    v, n = _decode_request_v3_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_timing_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_timing(r)
+    return v, r.pos
+
+
+def _encode_chat_timing_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_timing(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_timing(out, v, depth)
+    _decode_chat_timing_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_timing(v):
+    return _encode_chat_timing_at(v, 0) + "\n".encode()
+
+
+def decode_chat_timing(data):
+    v, n = _decode_chat_timing_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_reasoning_applied_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_reasoning_applied(r)
+    return v, r.pos
+
+
+def _encode_chat_reasoning_applied_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_reasoning_applied(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_reasoning_applied(out, v, depth)
+    _decode_chat_reasoning_applied_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_reasoning_applied(v):
+    return _encode_chat_reasoning_applied_at(v, 0) + "\n".encode()
+
+
+def decode_chat_reasoning_applied(data):
+    v, n = _decode_chat_reasoning_applied_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_result_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_result(r)
+    return v, r.pos
+
+
+def _encode_chat_result_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_result(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_result(out, v, depth)
+    _decode_chat_result_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_result(v):
+    return _encode_chat_result_at(v, 0) + "\n".encode()
+
+
+def decode_chat_result(data):
+    v, n = _decode_chat_result_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_event_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_event(r)
+    return v, r.pos
+
+
+def _encode_chat_event_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_event(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_event(out, v, depth)
+    _decode_chat_event_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_event(v):
+    return _encode_chat_event_at(v, 0) + "\n".encode()
+
+
+def decode_chat_event(data):
+    v, n = _decode_chat_event_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_admission_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_admission(r)
+    return v, r.pos
+
+
+def _encode_chat_admission_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_admission(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_admission(out, v, depth)
+    _decode_chat_admission_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_admission(v):
+    return _encode_chat_admission_at(v, 0) + "\n".encode()
+
+
+def decode_chat_admission(data):
+    v, n = _decode_chat_admission_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_page_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_page(r)
+    return v, r.pos
+
+
+def _encode_chat_page_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_page(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_page(out, v, depth)
+    _decode_chat_page_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_page(v):
+    return _encode_chat_page_at(v, 0) + "\n".encode()
+
+
+def decode_chat_page(data):
+    v, n = _decode_chat_page_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_cancellation_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_cancellation(r)
+    return v, r.pos
+
+
+def _encode_chat_cancellation_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_cancellation(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_cancellation(out, v, depth)
+    _decode_chat_cancellation_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_cancellation(v):
+    return _encode_chat_cancellation_at(v, 0) + "\n".encode()
+
+
+def decode_chat_cancellation(data):
+    v, n = _decode_chat_cancellation_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_chat_history_read_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_chat_history_read(r)
+    return v, r.pos
+
+
+def _encode_chat_history_read_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_chat_history_read(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_chat_history_read(out, v, depth)
+    _decode_chat_history_read_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_chat_history_read(v):
+    return _encode_chat_history_read_at(v, 0) + "\n".encode()
+
+
+def decode_chat_history_read(data):
+    v, n = _decode_chat_history_read_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_preload_reply_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_preload_reply(r)
+    return v, r.pos
+
+
+def _encode_preload_reply_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_preload_reply(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_preload_reply(out, v, depth)
+    _decode_preload_reply_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_preload_reply(v):
+    return _encode_preload_reply_at(v, 0) + "\n".encode()
+
+
+def decode_preload_reply(data):
+    v, n = _decode_preload_reply_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_embed_request_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_embed_request(r)
+    return v, r.pos
+
+
+def _encode_embed_request_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_embed_request(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_embed_request(out, v, depth)
+    _decode_embed_request_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_embed_request(v):
+    return _encode_embed_request_at(v, 0) + "\n".encode()
+
+
+def decode_embed_request(data):
+    v, n = _decode_embed_request_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_embeddings_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_embeddings(r)
+    return v, r.pos
+
+
+def _encode_embeddings_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_embeddings(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_embeddings(out, v, depth)
+    _decode_embeddings_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_embeddings(v):
+    return _encode_embeddings_at(v, 0) + "\n".encode()
+
+
+def decode_embeddings(data):
+    v, n = _decode_embeddings_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_transcription_request_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_transcription_request(r)
+    return v, r.pos
+
+
+def _encode_transcription_request_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_transcription_request(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_transcription_request(out, v, depth)
+    _decode_transcription_request_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_transcription_request(v):
+    return _encode_transcription_request_at(v, 0) + "\n".encode()
+
+
+def decode_transcription_request(data):
+    v, n = _decode_transcription_request_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_transcript_segment_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_transcript_segment(r)
+    return v, r.pos
+
+
+def _encode_transcript_segment_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_transcript_segment(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_transcript_segment(out, v, depth)
+    _decode_transcript_segment_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_transcript_segment(v):
+    return _encode_transcript_segment_at(v, 0) + "\n".encode()
+
+
+def decode_transcript_segment(data):
+    v, n = _decode_transcript_segment_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_transcription_reply_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_transcription_reply(r)
+    return v, r.pos
+
+
+def _encode_transcription_reply_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_transcription_reply(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_transcription_reply(out, v, depth)
+    _decode_transcription_reply_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_transcription_reply(v):
+    return _encode_transcription_reply_at(v, 0) + "\n".encode()
+
+
+def decode_transcription_reply(data):
+    v, n = _decode_transcription_reply_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_speech_request_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_speech_request(r)
+    return v, r.pos
+
+
+def _encode_speech_request_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_speech_request(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_speech_request(out, v, depth)
+    _decode_speech_request_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_speech_request(v):
+    return _encode_speech_request_at(v, 0) + "\n".encode()
+
+
+def decode_speech_request(data):
+    v, n = _decode_speech_request_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_audio_chunk_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_audio_chunk(r)
+    return v, r.pos
+
+
+def _encode_audio_chunk_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_audio_chunk(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_audio_chunk(out, v, depth)
+    _decode_audio_chunk_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_audio_chunk(v):
+    return _encode_audio_chunk_at(v, 0) + "\n".encode()
+
+
+def decode_audio_chunk(data):
+    v, n = _decode_audio_chunk_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_delivery_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_delivery(r)
+    return v, r.pos
+
+
+def _encode_delivery_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_delivery(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_delivery(out, v, depth)
+    _decode_delivery_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_delivery(v):
+    return _encode_delivery_at(v, 0) + "\n".encode()
+
+
+def decode_delivery(data):
+    v, n = _decode_delivery_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_speech_reply_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_speech_reply(r)
+    return v, r.pos
+
+
+def _encode_speech_reply_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_speech_reply(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_speech_reply(out, v, depth)
+    _decode_speech_reply_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_speech_reply(v):
+    return _encode_speech_reply_at(v, 0) + "\n".encode()
+
+
+def decode_speech_reply(data):
+    v, n = _decode_speech_reply_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_live_request_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_live_request(r)
+    return v, r.pos
+
+
+def _encode_live_request_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_live_request(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_live_request(out, v, depth)
+    _decode_live_request_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_live_request(v):
+    return _encode_live_request_at(v, 0) + "\n".encode()
+
+
+def decode_live_request(data):
+    v, n = _decode_live_request_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_live_input_result_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_live_input_result(r)
+    return v, r.pos
+
+
+def _encode_live_input_result_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_live_input_result(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_live_input_result(out, v, depth)
+    _decode_live_input_result_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_live_input_result(v):
+    return _encode_live_input_result_at(v, 0) + "\n".encode()
+
+
+def decode_live_input_result(data):
+    v, n = _decode_live_input_result_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_live_transcript_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_live_transcript(r)
+    return v, r.pos
+
+
+def _encode_live_transcript_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_live_transcript(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_live_transcript(out, v, depth)
+    _decode_live_transcript_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_live_transcript(v):
+    return _encode_live_transcript_at(v, 0) + "\n".encode()
+
+
+def decode_live_transcript(data):
+    v, n = _decode_live_transcript_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_live_reply_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_live_reply(r)
+    return v, r.pos
+
+
+def _encode_live_reply_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_live_reply(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_live_reply(out, v, depth)
+    _decode_live_reply_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_live_reply(v):
+    return _encode_live_reply_at(v, 0) + "\n".encode()
+
+
+def decode_live_reply(data):
+    v, n = _decode_live_reply_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_image_request_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_image_request(r)
+    return v, r.pos
+
+
+def _encode_image_request_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_image_request(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_image_request(out, v, depth)
+    _decode_image_request_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_image_request(v):
+    return _encode_image_request_at(v, 0) + "\n".encode()
+
+
+def decode_image_request(data):
+    v, n = _decode_image_request_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_image_request_content_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_image_request_content(r)
+    return v, r.pos
+
+
+def _encode_image_request_content_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_image_request_content(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_image_request_content(out, v, depth)
+    _decode_image_request_content_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_image_request_content(v):
+    return _encode_image_request_content_at(v, 0) + "\n".encode()
+
+
+def decode_image_request_content(data):
+    v, n = _decode_image_request_content_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_image_request_v2_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_image_request_v2(r)
+    return v, r.pos
+
+
+def _encode_image_request_v2_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_image_request_v2(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_image_request_v2(out, v, depth)
+    _decode_image_request_v2_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_image_request_v2(v):
+    return _encode_image_request_v2_at(v, 0) + "\n".encode()
+
+
+def decode_image_request_v2(data):
+    v, n = _decode_image_request_v2_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_image_progress_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_image_progress(r)
+    return v, r.pos
+
+
+def _encode_image_progress_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_image_progress(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_image_progress(out, v, depth)
+    _decode_image_progress_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_image_progress(v):
+    return _encode_image_progress_at(v, 0) + "\n".encode()
+
+
+def decode_image_progress(data):
+    v, n = _decode_image_progress_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_image_result_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_image_result(r)
+    return v, r.pos
+
+
+def _encode_image_result_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_image_result(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_image_result(out, v, depth)
+    _decode_image_result_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_image_result(v):
+    return _encode_image_result_at(v, 0) + "\n".encode()
+
+
+def decode_image_result(data):
+    v, n = _decode_image_result_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_image_reply_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_image_reply(r)
+    return v, r.pos
+
+
+def _encode_image_reply_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_image_reply(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_image_reply(out, v, depth)
+    _decode_image_reply_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_image_reply(v):
+    return _encode_image_reply_at(v, 0) + "\n".encode()
+
+
+def decode_image_reply(data):
+    v, n = _decode_image_reply_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_video_request_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_video_request(r)
+    return v, r.pos
+
+
+def _encode_video_request_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_video_request(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_video_request(out, v, depth)
+    _decode_video_request_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_video_request(v):
+    return _encode_video_request_at(v, 0) + "\n".encode()
+
+
+def decode_video_request(data):
+    v, n = _decode_video_request_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_video_admission_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_video_admission(r)
+    return v, r.pos
+
+
+def _encode_video_admission_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_video_admission(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_video_admission(out, v, depth)
+    _decode_video_admission_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_video_admission(v):
+    return _encode_video_admission_at(v, 0) + "\n".encode()
+
+
+def decode_video_admission(data):
+    v, n = _decode_video_admission_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_video_observation_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_video_observation(r)
+    return v, r.pos
+
+
+def _encode_video_observation_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_video_observation(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_video_observation(out, v, depth)
+    _decode_video_observation_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_video_observation(v):
+    return _encode_video_observation_at(v, 0) + "\n".encode()
+
+
+def decode_video_observation(data):
+    v, n = _decode_video_observation_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_ceiling_limit_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_ceiling_limit(r)
+    return v, r.pos
+
+
+def _encode_ceiling_limit_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_ceiling_limit(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_ceiling_limit(out, v, depth)
+    _decode_ceiling_limit_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_ceiling_limit(v):
+    return _encode_ceiling_limit_at(v, 0) + "\n".encode()
+
+
+def decode_ceiling_limit(data):
+    v, n = _decode_ceiling_limit_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_host_entry_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_host_entry(r)
+    return v, r.pos
+
+
+def _encode_host_entry_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_host_entry(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_host_entry(out, v, depth)
+    _decode_host_entry_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_host_entry(v):
+    return _encode_host_entry_at(v, 0) + "\n".encode()
+
+
+def decode_host_entry(data):
+    v, n = _decode_host_entry_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_spend_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_spend(r)
+    return v, r.pos
+
+
+def _encode_spend_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_spend(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_spend(out, v, depth)
+    _decode_spend_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_spend(v):
+    return _encode_spend_at(v, 0) + "\n".encode()
+
+
+def decode_spend(data):
+    v, n = _decode_spend_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_host_state_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_host_state(r)
+    return v, r.pos
+
+
+def _encode_host_state_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_host_state(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_host_state(out, v, depth)
+    _decode_host_state_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_host_state(v):
+    return _encode_host_state_at(v, 0) + "\n".encode()
+
+
+def decode_host_state(data):
+    v, n = _decode_host_state_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_host_list_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_host_list(r)
+    return v, r.pos
+
+
+def _encode_host_list_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_host_list(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_host_list(out, v, depth)
+    _decode_host_list_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_host_list(v):
+    return _encode_host_list_at(v, 0) + "\n".encode()
+
+
+def decode_host_list(data):
+    v, n = _decode_host_list_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_host_change_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_host_change(r)
+    return v, r.pos
+
+
+def _encode_host_change_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_host_change(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_host_change(out, v, depth)
+    _decode_host_change_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_host_change(v):
+    return _encode_host_change_at(v, 0) + "\n".encode()
+
+
+def decode_host_change(data):
+    v, n = _decode_host_change_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_local_key_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_local_key(r)
+    return v, r.pos
+
+
+def _encode_local_key_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_local_key(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_local_key(out, v, depth)
+    _decode_local_key_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_local_key(v):
+    return _encode_local_key_at(v, 0) + "\n".encode()
+
+
+def decode_local_key(data):
+    v, n = _decode_local_key_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_key_list_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_key_list(r)
+    return v, r.pos
+
+
+def _encode_key_list_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_key_list(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_key_list(out, v, depth)
+    _decode_key_list_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_key_list(v):
+    return _encode_key_list_at(v, 0) + "\n".encode()
+
+
+def decode_key_list(data):
+    v, n = _decode_key_list_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_key_issued_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_key_issued(r)
+    return v, r.pos
+
+
+def _encode_key_issued_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_key_issued(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_key_issued(out, v, depth)
+    _decode_key_issued_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_key_issued(v):
+    return _encode_key_issued_at(v, 0) + "\n".encode()
+
+
+def decode_key_issued(data):
+    v, n = _decode_key_issued_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_key_revoked_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_key_revoked(r)
+    return v, r.pos
+
+
+def _encode_key_revoked_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_key_revoked(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_key_revoked(out, v, depth)
+    _decode_key_revoked_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_key_revoked(v):
+    return _encode_key_revoked_at(v, 0) + "\n".encode()
+
+
+def decode_key_revoked(data):
+    v, n = _decode_key_revoked_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_audit_entry_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_audit_entry(r)
+    return v, r.pos
+
+
+def _encode_audit_entry_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_audit_entry(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_audit_entry(out, v, depth)
+    _decode_audit_entry_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_audit_entry(v):
+    return _encode_audit_entry_at(v, 0) + "\n".encode()
+
+
+def decode_audit_entry(data):
+    v, n = _decode_audit_entry_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_audit_page_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_audit_page(r)
+    return v, r.pos
+
+
+def _encode_audit_page_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_audit_page(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_audit_page(out, v, depth)
+    _decode_audit_page_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_audit_page(v):
+    return _encode_audit_page_at(v, 0) + "\n".encode()
+
+
+def decode_audit_page(data):
+    v, n = _decode_audit_page_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_request_entry_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_request_entry(r)
+    return v, r.pos
+
+
+def _encode_request_entry_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_request_entry(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_request_entry(out, v, depth)
+    _decode_request_entry_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_request_entry(v):
+    return _encode_request_entry_at(v, 0) + "\n".encode()
+
+
+def decode_request_entry(data):
+    v, n = _decode_request_entry_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_request_page_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_request_page(r)
+    return v, r.pos
+
+
+def _encode_request_page_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_request_page(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_request_page(out, v, depth)
+    _decode_request_page_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_request_page(v):
+    return _encode_request_page_at(v, 0) + "\n".encode()
+
+
+def decode_request_page(data):
+    v, n = _decode_request_page_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_gateway_state_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_gateway_state(r)
+    return v, r.pos
+
+
+def _encode_gateway_state_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_gateway_state(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_gateway_state(out, v, depth)
+    _decode_gateway_state_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_gateway_state(v):
+    return _encode_gateway_state_at(v, 0) + "\n".encode()
+
+
+def decode_gateway_state(data):
+    v, n = _decode_gateway_state_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_gateway_change_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_gateway_change(r)
+    return v, r.pos
+
+
+def _encode_gateway_change_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_gateway_change(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_gateway_change(out, v, depth)
+    _decode_gateway_change_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_gateway_change(v):
+    return _encode_gateway_change_at(v, 0) + "\n".encode()
+
+
+def decode_gateway_change(data):
+    v, n = _decode_gateway_change_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_program_budget_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_program_budget(r)
+    return v, r.pos
+
+
+def _encode_program_budget_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_program_budget(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_program_budget(out, v, depth)
+    _decode_program_budget_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_program_budget(v):
+    return _encode_program_budget_at(v, 0) + "\n".encode()
+
+
+def decode_program_budget(data):
+    v, n = _decode_program_budget_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_program_budget_entry_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_program_budget_entry(r)
+    return v, r.pos
+
+
+def _encode_program_budget_entry_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_program_budget_entry(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_program_budget_entry(out, v, depth)
+    _decode_program_budget_entry_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_program_budget_entry(v):
+    return _encode_program_budget_entry_at(v, 0) + "\n".encode()
+
+
+def decode_program_budget_entry(data):
+    v, n = _decode_program_budget_entry_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_program_budget_page_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_program_budget_page(r)
+    return v, r.pos
+
+
+def _encode_program_budget_page_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_program_budget_page(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_program_budget_page(out, v, depth)
+    _decode_program_budget_page_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_program_budget_page(v):
+    return _encode_program_budget_page_at(v, 0) + "\n".encode()
+
+
+def decode_program_budget_page(data):
+    v, n = _decode_program_budget_page_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_program_budget_result_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_program_budget_result(r)
+    return v, r.pos
+
+
+def _encode_program_budget_result_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_program_budget_result(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_program_budget_result(out, v, depth)
+    _decode_program_budget_result_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_program_budget_result(v):
+    return _encode_program_budget_result_at(v, 0) + "\n".encode()
+
+
+def decode_program_budget_result(data):
+    v, n = _decode_program_budget_result_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_program_budget_change_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_program_budget_change(r)
+    return v, r.pos
+
+
+def _encode_program_budget_change_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_program_budget_change(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_program_budget_change(out, v, depth)
+    _decode_program_budget_change_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_program_budget_change(v):
+    return _encode_program_budget_change_at(v, 0) + "\n".encode()
+
+
+def decode_program_budget_change(data):
+    v, n = _decode_program_budget_change_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_selection_change_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_selection_change(r)
+    return v, r.pos
+
+
+def _encode_selection_change_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_selection_change(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_selection_change(out, v, depth)
+    _decode_selection_change_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_selection_change(v):
+    return _encode_selection_change_at(v, 0) + "\n".encode()
+
+
+def decode_selection_change(data):
+    v, n = _decode_selection_change_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_selection_candidate_v2_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_selection_candidate_v2(r)
+    return v, r.pos
+
+
+def _encode_selection_candidate_v2_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_selection_candidate_v2(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_selection_candidate_v2(out, v, depth)
+    _decode_selection_candidate_v2_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_selection_candidate_v2(v):
+    return _encode_selection_candidate_v2_at(v, 0) + "\n".encode()
+
+
+def decode_selection_candidate_v2(data):
+    v, n = _decode_selection_candidate_v2_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_selection_policy_v2_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_selection_policy_v2(r)
+    return v, r.pos
+
+
+def _encode_selection_policy_v2_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_selection_policy_v2(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_selection_policy_v2(out, v, depth)
+    _decode_selection_policy_v2_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_selection_policy_v2(v):
+    return _encode_selection_policy_v2_at(v, 0) + "\n".encode()
+
+
+def decode_selection_policy_v2(data):
+    v, n = _decode_selection_policy_v2_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
+def _decode_selection_read_v2_at(data, depth, limit):
+    r = _Reader(bytes(data))
+    if depth < 0 or limit < 1:
+        raise r.refuse("depth_exceeded")
+    r.depth = depth
+    r.limit = min(limit, _DEPTH_LIMIT)
+    r.ws()
+    v = _read_selection_read_v2(r)
+    return v, r.pos
+
+
+def _encode_selection_read_v2_at(v, depth):
+    if depth < 0 or depth >= _DEPTH_LIMIT:
+        raise _Reader(b"").refuse("depth_exceeded")
+    _check_selection_read_v2(v, depth, _DEPTH_LIMIT)
+    out = bytearray()
+    _write_selection_read_v2(out, v, depth)
+    _decode_selection_read_v2_at(out, depth, _DEPTH_LIMIT)
+    return bytes(out)
+
+
+def encode_selection_read_v2(v):
+    return _encode_selection_read_v2_at(v, 0) + "\n".encode()
+
+
+def decode_selection_read_v2(data):
+    v, n = _decode_selection_read_v2_at(data, 0, _DEPTH_LIMIT)
+    r = _Reader(bytes(data))
+    r.pos = n
+    r.ws()
+    if r.pos != len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v

@@ -13,6 +13,7 @@ public:
  explicit Operator(std::string endpoint):endpoint_(std::move(endpoint)){}
  Operator with_server_expectation(std::optional<ipc::ServerExpectation> server)const{auto copy=*this;copy.server_=std::move(server);return copy;}
  Operator with_cancellation(ipc::CancellationToken token)const{auto copy=*this;copy.cancellation_=std::move(token);return copy;}
+ Operator with_deadline(std::optional<ipc::Deadline> deadline)const{auto copy=*this;copy.deadline_=deadline;return copy;}
  api::HostList hosts()const{auto t=transport();api::OperatorClient<ipc::FrameTransport> c(t);return c.hosts();}
  api::HostChange add_host(const std::string& expected_revision,const api::HostEntry& host)const{auto t=transport();api::OperatorClient<ipc::FrameTransport> c(t);return c.add_host(expected_revision,host);}
  api::HostChange remove_host(const std::string& expected_revision,const std::string& name)const{auto t=transport();api::OperatorClient<ipc::FrameTransport> c(t);return c.remove_host(expected_revision,name);}
@@ -34,10 +35,12 @@ public:
 private:
  static constexpr std::uint32_t kTimeoutMs=10000;
  ipc::FrameTransport transport()const{
-  return ipc::FrameTransport(endpoint_,kTimeoutMs,1u<<20).with_server_expectation(server_).with_cancellation(cancellation_);
+  auto result=ipc::FrameTransport(endpoint_,kTimeoutMs,ipc::kDefaultMaxFrame).with_server_expectation(server_).with_cancellation(cancellation_);
+  return deadline_?result.with_call_deadline(*deadline_):result;
  }
  std::string endpoint_;
  std::optional<ipc::ServerExpectation> server_;
  ipc::CancellationToken cancellation_;
+ std::optional<ipc::Deadline> deadline_;
 };
 }

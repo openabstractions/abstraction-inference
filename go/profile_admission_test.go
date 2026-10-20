@@ -49,7 +49,7 @@ func TestSlowAdmissionStartsIdleBudgetAtRegistration(t *testing.T) {
 	if op.stopIdle(now(), f.provider.cfg.Idle) {
 		t.Fatal("in-flight Observe was treated as idle")
 	}
-	op.observeEnd(now())
+	op.observeEnd(now(), false)
 	elapsed.Store(int64(599 * time.Millisecond))
 	if op.stopIdle(now(), f.provider.cfg.Idle) {
 		t.Fatal("idle budget did not restart at Observe completion")

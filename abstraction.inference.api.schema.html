@@ -2,22 +2,22 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Open Abstractions — schema</title>
+<title>OpenAbstractions — schema</title>
 <link rel="stylesheet" href="style.css">
 
 <main>
-<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">Open Abstractions</a>
+<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">OpenAbstractions</a>
 <a href="adopt.html">Adopt</a><a href="cases.html">Cases</a><span class="nav-devs-label">for developers</span><a href="reference.html">Reference</a><a href="coverage.html">Coverage</a><a href="catalogue.html">Catalogue</a><a href="https://github.com/openabstractions">GitHub</a></nav>
 
 
 <h1>Schema</h1>
 <p class="lead">Use this reference to inspect fields, methods, accepted values and failure outcomes. For setup and working examples, start with the <a href="reference.html">API guide</a>.</p>
 <p>Definition: <code>abstraction.inference.api</code></p>
-<nav aria-label="Schema sections" class="meta"><a href="#service-Chat">Chat</a> · <a href="#service-ChatV2">ChatV2</a> · <a href="#service-Preloader">Preloader</a> · <a href="#service-Embedder">Embedder</a> · <a href="#service-Transcription">Transcription</a> · <a href="#service-Speech">Speech</a> · <a href="#service-Live">Live</a> · <a href="#service-Image">Image</a> · <a href="#service-ImageV2">ImageV2</a> · <a href="#service-Video">Video</a> · <a href="#service-Operator">Operator</a> · <a href="#service-SelectionOperatorV2">SelectionOperatorV2</a> · <a href="#types">Types</a> · <a href="#structs">Fields</a> · <a href="#enums">Enumerations</a> · <a href="#constants">Constants</a> · <a href="#encoding">Encoding</a> · <a href="#refusals">Refusals</a></nav>
-<h2 id="service-Chat">Service <code>Chat</code> <span class="tag">[DEF-S1]</span></h2>
-<p>Model calls performed by the receiving runtime for the bound caller. Operations are visible only to the account and program that started them. Every request to a hosted host carries headers from abstraction.credentials applier@1 applied for the bound caller, sent once and kept out of every reply, delta, record and log. Caller exit cancels: an operation nobody observes for idle_ms is closed, because a stream nobody reads is spend. A decision point that cannot answer reads unavailable, never permission.</p>
+<nav aria-label="Schema sections" class="meta"><a href="#service-Chat">Chat</a> · <a href="#service-ChatV2">ChatV2</a> · <a href="#service-ChatV3">ChatV3</a> · <a href="#service-Preloader">Preloader</a> · <a href="#service-Embedder">Embedder</a> · <a href="#service-Transcription">Transcription</a> · <a href="#service-Speech">Speech</a> · <a href="#service-Live">Live</a> · <a href="#service-Image">Image</a> · <a href="#service-ImageV2">ImageV2</a> · <a href="#service-Video">Video</a> · <a href="#service-Operator">Operator</a> · <a href="#service-SelectionOperatorV2">SelectionOperatorV2</a> · <a href="#types">Types</a> · <a href="#structs">Fields</a> · <a href="#enums">Enumerations</a> · <a href="#constants">Constants</a> · <a href="#encoding">Encoding</a> · <a href="#refusals">Refusals</a></nav>
+<h2 id="service-Chat">Service <a href="https://openabstractions.github.io/reference.html#concept-inference.chat-service"><code>Chat</code></a> <span class="tag">[DEF-S1]</span></h2>
+<p><a href="https://openabstractions.github.io/reference.html#concept-inference.chat-service">Chat</a>. Model calls performed by the receiving runtime for the bound caller. Operations are visible only to the account and program that started them. Every request to a hosted host carries headers from abstraction.credentials applier@1 applied for the bound caller, sent once and kept out of every reply, delta, record and log. Caller exit cancels: an operation nobody observes for idle_ms is closed, because a stream nobody reads is spend. A decision point that cannot answer reads unavailable, never permission.</p>
 <p>Wire identity: <code>abstraction.inference/chat@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Admit one model call for the bound caller and begin it. In order: argument shape (invalid), guarantees and host selection through the router (no_host), host features and required extensions (unsupported_feature), the rights decision for abstraction.inference/complete on host:&lt;name&gt; (not_permitted, or unavailable when the decision point cannot answer), the credential&#39;s ceiling (budget_exceeded), the caller&#39;s concurrent operations (exhausted), then for a hosted host the credentials applier (not_permitted or unavailable). Nothing leaves the service before every check passes. Deltas are observed with Observe.</p>
@@ -25,7 +25,7 @@
 <li>Argument 1: <code>Request</code> <code>request</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Read a bounded page of an operation&#39;s deltas from cursor. max_deltas is 1..256, max_bytes 1..65536 and wait_ms 0..30000. When no delta at cursor exists yet and the operation has not ended, wait up to wait_ms for one, then return what is there. An Observe in flight keeps the operation from idling; a caller that disconnects mid-wait stops the wait. Reconnecting with the last next resumes without loss inside retained_deltas.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code> · idempotent <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
@@ -33,21 +33,26 @@
 <li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Stop an operation the bound caller started and close its upstream request. Reports whether this call cancelled it or it had already ended.</p>
-<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-ChatV2">Service <code>ChatV2</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Typed explicit model or named service-owned model selection for a bound caller. A runtime without chat@2 refuses this service version explicitly.</p>
 <p>Wire identity: <code>abstraction.inference/chat@2</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Start with an additional caller restriction. guarantees is empty or exactly local-only. It intersects existing request and endpoint restrictions; contradictory intent refuses before effects. Policy content guarantees and credential remain empty. A hosted candidate refused by local-only does not authorize fallback. Unsupported methods refuse explicitly; callers never retry unrestricted Start.</p>
+<h3><code>StartWithGuarantees</code></h3><p><code>request-response</code> <code>AdmissionV2</code> · no idempotency or replay guarantee <span class="tag">[DEF-S3]</span></p><ul>
+<li>Argument 1: <code>RequestV2</code> <code>request</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>list&lt;RequestGuarantee&gt;</code> <code>guarantees</code> (required; length ..1 entries; refusal <code>bad_value</code>, including zero/false/empty)</li>
+</ul>
 <p>Resolve the explicit target or named policy for the bound caller and admit one selected model. Each candidate must pass all chat@1 guarantees, features, rights, credential, budget and capacity checks. A later candidate is considered only after a fresh definitive preferred-route absence before admission or dispatch. A possible send, accepted operation, partial output or tool effect never retries another candidate.</p>
 <h3><code>Start</code></h3><p><code>request-response</code> <code>AdmissionV2</code></p><ul>
 <li>Argument 1: <code>RequestV2</code> <code>request</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Observe the same caller-bound operation registry and DeltaPage as chat@1, without reselecting the model.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
@@ -55,13 +60,39 @@
 <li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Cancel the same caller-bound operation as chat@1, without reselecting the model.</p>
-<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="service-ChatV3">Service <code>ChatV3</code> <span class="tag">[DEF-S1]</span></h2>
+<p>The final-form chat seat, native or paired through the same capability API. Discovery/select/fallback happens before dispatch; an accepted operation, possible send or partial stream never authorizes retry or weaker fallback. New events and types are reachable only through this version; native chat@1/@2 receiving is unchanged. The receiving native subject or certificate-mapped remote runtime owns authority; claimed-program is audit data and never a decision subject.</p>
+<p>Wire identity: <code>abstraction.inference/chat@3</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Read the existing Job-owned epoch/retention record before first send; creates no work. Every runtime start issues a never-reused 128-bit epoch. Rotation of the bounded key table closes its old epoch before dropping evidence. An old or foreign epoch never admits unseen work. No durable Job or downstream recovery guarantee is added.</p>
+<h3><code>GetHistoryWindow</code></h3><p><code>request-response</code> <code>ChatHistoryRead</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
+</ul>
+<p>Service result postcondition: <code>window</code> is present exactly when <code>outcome</code> is <code>available</code>. Clients validate before return; dispatchers validate before reply. Standalone record codecs remain structural.</p>
+<p>Admit one request after shape, required support, router selection, rights, content, credentials, budget and capacity checks. Same current epoch/key/equal canonical body replays admission; another body is conflict. Closed/restarted/foreign epochs are unknown and never resubmitted automatically. An explicit attempt is eligible only after its predecessor failed terminally. The relay derives a T3 key from local subject, caller key and caller epoch, retains the remote epoch and never resubmits on remote unknown.</p>
+<h3><code>Start</code></h3><p><code>request-response</code> <code>ChatAdmission</code> · idempotency key request.identity.key</p><ul>
+<li>Argument 1: <code>RequestV3</code> <code>request</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Observe the attested caller&#39;s accepted chat@3 request without selection or resubmission. A wait deadline or disconnect ends only this wait. Cursor/gap/retention and 10-second unobserved cancellation retain their existing operation owner. The remote relay passes progress, reasoning, seals, usage and terminal events through unchanged.</p>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>ChatPage</code> · readonly</p><ul>
+<li>Argument 1: <code>string</code> <code>request</code> (required; length 1..128 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code>, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>cursor</code> (required; range 0..9223372036854775807; refusal <code>bad_value</code>, including zero/false/empty)</li>
+<li>Argument 3: <code>i64</code> <code>max_deltas</code> (required; range 1..256; refusal <code>bad_value</code>, including zero/false/empty)</li>
+<li>Argument 4: <code>i64</code> <code>max_bytes</code> (required; range 1..65536; refusal <code>bad_value</code>, including zero/false/empty)</li>
+<li>Argument 5: <code>i64</code> <code>wait_ms</code> (required; range 0..30000; refusal <code>bad_value</code>, including zero/false/empty)</li>
+</ul>
+<p>Explicitly cancel this caller&#39;s accepted chat@3 request and propagate upstream. An acknowledgement timeout does not prove closure. Never invoked implicitly because an Observe wait expired, a cursor has a gap, or a page was refused.</p>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>ChatCancellation</code> · idempotent</p><ul>
+<li>Argument 1: <code>string</code> <code>request</code> (required; length 1..128 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code>, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Preloader">Service <code>Preloader</code> <span class="tag">[DEF-S1]</span></h2>
 <p>The first request of a conversation on a local model waits for its whole prompt to be evaluated: OpenCode&#39;s Local assistant&#39;s first answer on Qwen3.6-35B-A3B took 10.6-12 s, against 3.6 s with its fixed prefix evaluated ahead (research/live-runs/2026-10-02-demo-model-opencode.md). Preload lets an application have its own prefix evaluated before it sends that request. Only a server whose provider evaluates prefixes serves it; every other host answers unsupported_feature.</p>
 <p>Wire identity: <code>abstraction.inference/preload@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Load the model a chat request for the bound caller would reach and have its server evaluate the request&#39;s messages and tools as the prefix of the caller&#39;s next request. request is a chat@1 Request whose last message is not a user message: the caller&#39;s next request is these messages followed by its user message. Admission follows chat@1 Start&#39;s order: argument shape, guarantees and host selection, host support, the rights decision for abstraction.inference/complete on host:&lt;name&gt;, then the provider&#39;s model load. A preload is speculative work: it never asks another holder to yield, and its evaluation is never model use, so a yield stops the server under it and it answers unavailable, reason engine:stopped. The provider keeps nothing of the request after the call. The call returns when the server has evaluated the prefix, refused it, or the call budget ends.</p>
@@ -71,7 +102,7 @@
 <h2 id="service-Embedder">Service <code>Embedder</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Text embeddings computed by a host the receiving runtime picks, for the bound caller. Every request to a hosted host carries headers from abstraction.credentials applier@1 applied once for the bound caller and kept out of every reply, record and log. A decision point that cannot answer reads unavailable, never permission.</p>
 <p>Wire identity: <code>abstraction.inference/embed@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Embed texts for the bound caller in one bounded call. Admission follows Chat.Start&#39;s order for profile embed, without its feature and capacity steps: argument shape (invalid), guarantees and host selection (no_host), the host&#39;s wire (unsupported_feature), the rights decision for abstraction.inference/complete on host:&lt;name&gt; (not_permitted, or unavailable), the credential&#39;s ceiling (budget_exceeded), then for a hosted host the credentials applier with consumer abstraction.inference/embed@1. Nothing leaves the service before every check passes. The call returns when the host replies.</p>
@@ -81,7 +112,7 @@
 <h2 id="service-Transcription">Service <code>Transcription</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Prerecorded speech-to-text over an authorized content digest. Operations use the shared retained-delta lifecycle and are visible only through this profile to the account and program that started them.</p>
 <p>Wire identity: <code>abstraction.inference/transcription@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Admit one prerecorded transcription for the bound caller. Admission follows chat order for profile transcription: arguments, host and wire/format support, complete rights, authorized bounded content resolution and verification, ceiling, capacity, then the profile-scoped hosted credential. Nothing leaves the service before all checks pass.</p>
@@ -89,7 +120,7 @@
 <li>Argument 1: <code>TranscriptionRequest</code> <code>request</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Read retained segment and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code> · idempotent <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
@@ -97,13 +128,13 @@
 <li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Stop a transcription operation and close its upstream request, using the shared operation cancellation outcomes.</p>
-<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Speech">Service <code>Speech</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Streaming text-to-speech with bounded audio deltas and a final storage reference. Operations are visible only through this profile to the account and program that started them.</p>
 <p>Wire identity: <code>abstraction.inference/speech@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Admit text-to-speech for the bound caller. Admission follows chat order for profile speech: arguments, host and wire/format support, complete rights, authorized output-write preflight, ceiling, capacity, then the profile-scoped hosted credential. Nothing leaves the service before every check passes.</p>
@@ -111,7 +142,7 @@
 <li>Argument 1: <code>SpeechRequest</code> <code>request</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Read retained audio and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code> · idempotent <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
@@ -119,13 +150,13 @@
 <li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Stop a speech operation and close its upstream request, using the shared operation cancellation outcomes.</p>
-<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Live">Service <code>Live</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Live audio through bounded native IPC calls. One session produces one final response. A new response starts a new session. Credentials and vendor WebSockets stay in the service.</p>
 <p>Wire identity: <code>abstraction.inference/live@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Admit a live session after host support, complete permission, output-write preflight, budget, shared capacity and credential checks. The service owns the upstream session. Observe reports setup failures after admission.</p>
@@ -139,7 +170,7 @@
 <li>Argument 3: <code>binary</code> <code>audio</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Read retained transcript, audio and terminal deltas using shared cursor and wait semantics.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code> · idempotent <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
@@ -151,13 +182,13 @@
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Immediately stop the live session and its upstream connection. Uses shared operation cancellation and ownership semantics.</p>
-<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Image">Service <code>Image</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Image generation and edit with authorized digest inputs, bounded progress and typed result deliveries. Operations are visible only through this profile to the account and program that started them.</p>
 <p>Wire identity: <code>abstraction.inference/image@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Admit image generation or edit for the bound caller. Admission checks arguments, explicit host mode/size/count support, complete rights, authorized input and mask resolution, output-write preflight, ceiling, shared capacity and the profile-scoped credential before paid work.</p>
@@ -165,7 +196,7 @@
 <li>Argument 1: <code>ImageRequest</code> <code>request</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Read retained progress, result and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code> · idempotent <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
@@ -173,21 +204,26 @@
 <li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Stop image work, including queue polling, and cancel the upstream job where its wire supports cancellation.</p>
-<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-ImageV2">Service <code>ImageV2</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Image generation and edit using the account and program scoped selection policy. Image@1 remains available for explicit model calls.</p>
 <p>Wire identity: <code>abstraction.inference/image@2</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Start with an additional caller restriction. guarantees is empty or exactly local-only. It intersects existing request and endpoint restrictions; contradictory intent refuses before effects. Policy content guarantees and credential remain empty. A hosted candidate refused by local-only does not authorize fallback. Unsupported methods refuse explicitly; callers never retry unrestricted Start.</p>
+<h3><code>StartWithGuarantees</code></h3><p><code>request-response</code> <code>AdmissionV2</code> · no idempotency or replay guarantee <span class="tag">[DEF-S3]</span></p><ul>
+<li>Argument 1: <code>ImageRequestV2</code> <code>request</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>list&lt;RequestGuarantee&gt;</code> <code>guarantees</code> (required; length ..1 entries; refusal <code>bad_value</code>, including zero/false/empty)</li>
+</ul>
 <p>Select an explicit model or a bounded named policy before image admission. A selected route runs one image@1 admission; fallback is limited to a proven unavailable route before admission.</p>
 <h3><code>Start</code></h3><p><code>request-response</code> <code>AdmissionV2</code></p><ul>
 <li>Argument 1: <code>ImageRequestV2</code> <code>request</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Observe an image@2 operation through the shared image lifecycle.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>DeltaPage</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>max_deltas</code> (required, including zero/false/empty)</li>
@@ -195,13 +231,13 @@
 <li>Argument 5: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Cancel an image@2 operation through the shared image lifecycle.</p>
-<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Video">Service <code>Video</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Video generation by a native provider for its designated runtime. Operations are visible only to the program that started them and live in the provider&#39;s memory: a provider or engine restart forgets them, and Observe then answers unknown.</p>
 <p>Wire identity: <code>abstraction.inference/video@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Admit one video for the bound designated runtime after argument, model, extension, rights and input checks, before engine work. A Start whose request_id the provider already holds from the same caller starts nothing, ignores the request&#39;s frame and returns that operation&#39;s admission again, and a runtime whose reply was lost sends the same Start again. Any other Start naming an image_digest the provider&#39;s content store does not hold is refused as invalid with reason content:unknown, and nothing is generated from the prompt alone. A provider holds each request_id until at least 24 hours after its operation ends; a provider that restarted holds none and admits the Start as new work (INF-G5, INF-G7).</p>
@@ -209,34 +245,34 @@
 <li>Argument 1: <code>VideoRequest</code> <code>request</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Return the operation&#39;s current state without waiting.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>VideoObservation</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>VideoObservation</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Stop the operation and its engine job. cancelled means this call stopped it; ended carries how it had already ended; unknown means no such operation is visible.</p>
-<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code></p><ul>
+<h3><code>Cancel</code></h3><p><code>request-response</code> <code>Cancellation</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>operation</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Operator">Service <code>Operator</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Administer the runtime&#39;s inference hosts, the gateway window and its local keys, and read the inference audit. Each call is a rights decision for the bound operator subject; same-account identity alone grants nothing. A decision point that cannot answer reads unavailable.</p>
 <p>Wire identity: <code>abstraction.inference/operator@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Read the configured hosts, their router state and each hosted credential&#39;s spend today, from the registry&#39;s declarations of role host. Gated by abstraction.inference/host.manage on resource account.</p>
-<h3><code>Hosts</code></h3><p><code>request-response</code> <code>HostList</code></p><ul>
+<h3><code>Hosts</code></h3><p><code>request-response</code> <code>HostList</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 </ul>
 <p>Conditionally add one host, kept as a registry declaration of role host. Gated by host.manage. For the bound operator program and the runtime&#39;s other operator programs it also writes the permit rule abstraction.inference/complete on host:&lt;name&gt;, and for a hosted host with a credential it writes the runtime&#39;s own permit rule abstraction.credentials/apply on credential:&lt;name&gt;, which the router&#39;s listing reads need. Existing rules are left as they are.</p>
-<h3><code>AddHost</code></h3><p><code>request-response</code> <code>HostChange</code></p><ul>
+<h3><code>AddHost</code></h3><p><code>request-response</code> <code>HostChange</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>HostEntry</code> <code>host</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. A host the installation or a product declared is disabled by name instead of removed. Rules are left as they are.</p>
-<h3><code>RemoveHost</code></h3><p><code>request-response</code> <code>HostChange</code></p><ul>
+<h3><code>RemoveHost</code></h3><p><code>request-response</code> <code>HostChange</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>string</code> <code>name</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Read the local keys of the receiving account. Gated by abstraction.inference/key.issue on resource account.</p>
-<h3><code>Keys</code></h3><p><code>request-response</code> <code>KeyList</code></p><ul>
+<h3><code>Keys</code></h3><p><code>request-response</code> <code>KeyList</code> · readonly</p><ul>
 </ul>
 <p>Mint a local key for program, an absolute executable path, and hold it in the platform store. credential, when not empty, names the hosted credential the window&#39;s requests for that program may spend under. Gated by key.issue. The key grants nothing: the window still binds the peer, requires that program, and decides abstraction.inference/complete and credentials apply for it.</p>
 <h3><code>IssueKey</code></h3><p><code>request-response</code> <code>KeyIssued</code></p><ul>
@@ -248,41 +284,72 @@
 <li>Argument 1: <code>string</code> <code>program</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Read retained inference decisions from both routes. Gated by abstraction.inference/audit.read on resource account. cursor 0 starts at the oldest retained entry; max_entries is 1..256.</p>
-<h3><code>Audit</code></h3><p><code>request-response</code> <code>AuditPage</code></p><ul>
+<h3><code>Audit</code></h3><p><code>request-response</code> <code>AuditPage</code> · readonly</p><ul>
+<li>Argument 1: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>max_entries</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read retained inference requests from both routes with recorded selection and placement. Uses the Audit journal, cursor and retention. Gated by abstraction.inference/audit.read on resource account. cursor 0 starts at the oldest retained entry; max_entries is 1..256.</p>
+<h3><code>Requests</code></h3><p><code>request-response</code> <code>RequestPage</code> · readonly</p><ul>
 <li>Argument 1: <code>i64</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>max_entries</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Read the gateway window setting and whether the window listens now. Gated by abstraction.inference/host.manage on resource account.</p>
-<h3><code>Gateway</code></h3><p><code>request-response</code> <code>GatewayState</code></p><ul>
+<h3><code>Gateway</code></h3><p><code>request-response</code> <code>GatewayState</code> · readonly</p><ul>
 </ul>
 <p>Conditionally write the gateway window setting to the runtime state and apply it to the running runtime: open listens on address, and closed stops the listener and every window connection. address is 127.0.0.1:&lt;port&gt;; empty keeps the recorded address when opening, and 127.0.0.1:8793 when none is recorded. The setting survives a restart. Gated by host.manage.</p>
-<h3><code>SetGateway</code></h3><p><code>request-response</code> <code>GatewayChange</code></p><ul>
+<h3><code>SetGateway</code></h3><p><code>request-response</code> <code>GatewayChange</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>bool</code> <code>open</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>string</code> <code>address</code> (required, including zero/false/empty)</li>
 </ul>
+<p>Read one credential&#39;s durable per-program budgets and observed usage in the existing ceiling owner. Gated by abstraction.inference/host.manage on resource account for the native bound operator.</p>
+<h3><code>ProgramBudgets</code></h3><p><code>request-response</code> <code>ProgramBudgetPage</code> · readonly</p><ul>
+<li>Argument 1: <code>string</code> <code>credential</code> (required; length ..64 UTF-8 bytes; refusal <code>bad_value</code>, including zero/false/empty)</li>
+</ul>
+<p>Conditionally set one receiving-account native program&#39;s budget for credential in the existing ceiling state. Absent budget removes its configured limit while retaining usage; a present all-zero budget records explicit No limit. Gated by host.manage. The native presenter supplies the question&#39;s bound program; this operation grants no credential use or inference authority.</p>
+<h3><code>SetProgramBudget</code></h3><p><code>request-response</code> <code>ProgramBudgetResult</code> · idempotent</p><ul>
+<li>Argument 1: <code>ProgramBudgetChange</code> <code>request</code> (required, including zero/false/empty)</li>
+</ul>
 <h2 id="service-SelectionOperatorV2">Service <code>SelectionOperatorV2</code> <span class="tag">[DEF-S1]</span></h2>
-<p>Manage policies for this program or an explicit executable in the bound account, with optional logical provider pins. Cross-program management requires selection.manage_for; the target program is a policy namespace, never requesting identity. Reads of the bound program need no grant; edits retain selection.manage.</p>
+<p>Manage program policies and account defaults in the bound native account, with optional logical provider pins. Cross-program management and every account-default method require selection.manage_for; the target program is a policy namespace, never requesting identity. Raw reads of the bound program need no grant; program edits retain selection.manage. Inference applies the same named account default only after proven absence of a program policy.</p>
 <p>Wire identity: <code>abstraction.inference/selection-operator@2</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Read the bound native caller&#39;s effective named policy with no management grant. The caller&#39;s program policy wins; the same named account default applies only after proven absence. Store failure or corruption refuses without fallback. This pure snapshot performs no activation, reservation, inference or permission change and does not promise that a future request is executable.</p>
+<h3><code>ReadEffective</code></h3><p><code>request-response</code> <code>SelectionReadV2</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
+<li>Argument 1: <code>string</code> <code>name</code> (required; length 1..64 UTF-8 bytes; refusal <code>bad_value</code>, including zero/false/empty)</li>
+</ul>
 <p>Read a policy for target_program in the bound account. Empty or the caller&#39;s own normalized executable reads self scope with no grant; another absolute canonical executable needs selection.manage_for on account. target_program names the managed scope, never the caller identity.</p>
-<h3><code>Read</code></h3><p><code>request-response</code> <code>SelectionReadV2</code></p><ul>
+<h3><code>Read</code></h3><p><code>request-response</code> <code>SelectionReadV2</code> · readonly</p><ul>
 <li>Argument 1: <code>string</code> <code>target_program</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>string</code> <code>name</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Conditionally create or replace a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account.</p>
-<h3><code>Put</code></h3><p><code>request-response</code> <code>SelectionChange</code></p><ul>
+<h3><code>Put</code></h3><p><code>request-response</code> <code>SelectionChange</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>target_program</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>SelectionPolicyV2</code> <code>policy</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Conditionally delete a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account.</p>
-<h3><code>DeletePolicy</code></h3><p><code>request-response</code> <code>SelectionChange</code></p><ul>
+<h3><code>DeletePolicy</code></h3><p><code>request-response</code> <code>SelectionChange</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>target_program</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>string</code> <code>expected_revision</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>string</code> <code>name</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Read the account default for this named policy in the bound native account. Requires selection.manage_for. Raw program policies remain separately readable through Read.</p>
+<h3><code>ReadAccountDefault</code></h3><p><code>request-response</code> <code>SelectionReadV2</code> · readonly</p><ul>
+<li>Argument 1: <code>string</code> <code>name</code> (required; length 1..64 UTF-8 bytes; refusal <code>bad_value</code>, including zero/false/empty)</li>
+</ul>
+<p>Conditionally create or replace the account default for this named policy. Requires selection.manage_for on the bound native account. It applies only when the requesting program has no policy of the same name and grants no execution, host or credential authority.</p>
+<h3><code>PutAccountDefault</code></h3><p><code>request-response</code> <code>SelectionChange</code> · idempotent</p><ul>
+<li>Argument 1: <code>string</code> <code>expected_revision</code> (required; length ..256 UTF-8 bytes; refusal <code>bad_value</code>, including zero/false/empty)</li>
+<li>Argument 2: <code>SelectionPolicyV2</code> <code>policy</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Conditionally delete the account default for this named policy. Requires selection.manage_for on the bound native account.</p>
+<h3><code>DeleteAccountDefault</code></h3><p><code>request-response</code> <code>SelectionChange</code> · idempotent</p><ul>
+<li>Argument 1: <code>string</code> <code>expected_revision</code> (required; length ..256 UTF-8 bytes; refusal <code>bad_value</code>, including zero/false/empty)</li>
+<li>Argument 2: <code>string</code> <code>name</code> (required; length 1..64 UTF-8 bytes; refusal <code>bad_value</code>, including zero/false/empty)</li>
 </ul>
 <h2 id="encoding">Encoding <span class="tag">[DEF-E1]</span></h2>
 <div class="wrap"><table>
@@ -301,11 +368,22 @@
 <div class="wrap"><table>
 <thead><tr><th>kind</th><th>types</th></tr></thead>
 <tbody>
-<tr><td>built in</td><td><code>AuditOutcome</code> <code>AuditRoute</code> <code>CancelOutcome</code> <code>CandidatePlacement</code> <code>DeltaKind</code> <code>EditOutcome</code> <code>EmbedOutcome</code> <code>ImageMode</code> <code>KeyState</code> <code>ListOutcome</code> <code>LiveFormat</code> <code>LiveInputOutcome</code> <code>PageOutcome</code> <code>PartKind</code> <code>PreloadOutcome</code> <code>ReplyOutcome</code> <code>Role</code> <code>SelectionReadOutcome</code> <code>SelectionReason</code> <code>SpeechFormat</code> <code>StartOutcome</code> <code>StopReason</code> <code>TimestampMode</code> <code>TranscriptUnitKind</code> <code>VideoState</code> <code>binary</code> <code>bool</code> <code>i64</code> <code>string</code></td></tr>
-<tr><td>declared below</td><td><code>AudioChunk</code> <code>CeilingLimit</code> <code>Cost</code> <code>Delivery</code> <code>HostEntry</code> <code>ImageProgress</code> <code>ImageReply</code> <code>ImageRequestContent</code> <code>ImageResult</code> <code>LiveReply</code> <code>LiveTranscript</code> <code>LocalKey</code> <code>Message</code> <code>Options</code> <code>Part</code> <code>Reply</code> <code>RequestContent</code> <code>SelectionPolicyV2</code> <code>SpeechReply</code> <code>Spend</code> <code>Target</code> <code>Temperature</code> <code>TranscriptSegment</code> <code>TranscriptionReply</code> <code>Usage</code></td></tr>
-<tr><td>container <span class="tag">[DEF-T3]</span></td><td><code>list&lt;RequestGuarantee&gt;</code> <code>list&lt;string&gt;</code></td></tr>
-<tr><td>repeated record <span class="tag">[DEF-A9]</span></td><td><code>list&lt;AuditEntry&gt;</code> <code>list&lt;Delivery&gt;</code> <code>list&lt;Delta&gt;</code> <code>list&lt;HostState&gt;</code> <code>list&lt;LocalKey&gt;</code> <code>list&lt;Message&gt;</code> <code>list&lt;Part&gt;</code> <code>list&lt;SelectionCandidateV2&gt;</code> <code>list&lt;Tool&gt;</code></td></tr>
+<tr><td>built in</td><td><code>AuditOutcome</code> <code>AuditRoute</code> <code>CancelOutcome</code> <code>CandidatePlacement</code> <code>ChatEventKind</code> <code>ChatHistoryOutcome</code> <code>ChatLoad</code> <code>ChatLoadSource</code> <code>ChatPartKind</code> <code>ChatProgressPhase</code> <code>ChatReasoningEffort</code> <code>ChatReasoningSupport</code> <code>ChatResultOutcome</code> <code>ChatStartOutcome</code> <code>ChatToolChoiceKind</code> <code>ChatUse</code> <code>DeltaKind</code> <code>EditOutcome</code> <code>EmbedOutcome</code> <code>FinishReason</code> <code>ImageMode</code> <code>KeyState</code> <code>ListOutcome</code> <code>LiveFormat</code> <code>LiveInputOutcome</code> <code>PageOutcome</code> <code>PartKind</code> <code>PreloadOutcome</code> <code>ProgramBudgetEditOutcome</code> <code>ProgramBudgetReadOutcome</code> <code>ReplyOutcome</code> <code>Role</code> <code>SealOmission</code> <code>SelectionReadOutcome</code> <code>SelectionReason</code> <code>ServedPlace</code> <code>SpeechFormat</code> <code>StartOutcome</code> <code>StopReason</code> <code>TimestampMode</code> <code>TranscriptUnitKind</code> <code>VideoState</code> <code>binary</code> <code>bool</code> <code>i64</code> <code>string</code></td></tr>
+<tr><td>declared below</td><td><code>AudioChunk</code> <code>AuditEntry</code> <code>CeilingLimit</code> <code>ChatBlockEnd</code> <code>ChatContent</code> <code>ChatOptions</code> <code>ChatPart</code> <code>ChatProgress</code> <code>ChatReasoning</code> <code>ChatReasoningApplied</code> <code>ChatResult</code> <code>ChatTarget</code> <code>ChatTiming</code> <code>ChatToolChoice</code> <code>ChatUsage</code> <code>Cost</code> <code>Delivery</code> <code>HostEntry</code> <code>ImageProgress</code> <code>ImageReply</code> <code>ImageRequestContent</code> <code>ImageResult</code> <code>LiveReply</code> <code>LiveTranscript</code> <code>LocalKey</code> <code>Message</code> <code>Options</code> <code>Part</code> <code>ProgramBudget</code> <code>ReasoningSeal</code> <code>Reply</code> <code>RequestContent</code> <code>SelectionPolicyV2</code> <code>ServedBy</code> <code>SpeechReply</code> <code>Spend</code> <code>Target</code> <code>Temperature</code> <code>TranscriptSegment</code> <code>TranscriptionReply</code> <code>Usage</code> <code>acceptance.HistoryWindow</code> <code>acceptance.RequestIdentity</code> <code>rights.RefusalDetail</code></td></tr>
+<tr><td>container <span class="tag">[DEF-T3]</span></td><td><code>list&lt;ChatGuarantee&gt;</code> <code>list&lt;RequestGuarantee&gt;</code> <code>list&lt;string&gt;</code></td></tr>
+<tr><td>repeated record <span class="tag">[DEF-A9]</span></td><td><code>list&lt;AuditEntry&gt;</code> <code>list&lt;ChatEvent&gt;</code> <code>list&lt;ChatInputPart&gt;</code> <code>list&lt;ChatMessage&gt;</code> <code>list&lt;ChatReplay&gt;</code> <code>list&lt;ChatTool&gt;</code> <code>list&lt;Delivery&gt;</code> <code>list&lt;Delta&gt;</code> <code>list&lt;HostState&gt;</code> <code>list&lt;LocalKey&gt;</code> <code>list&lt;Message&gt;</code> <code>list&lt;Part&gt;</code> <code>list&lt;ProgramBudgetEntry&gt;</code> <code>list&lt;RequestEntry&gt;</code> <code>list&lt;SelectionCandidateV2&gt;</code> <code>list&lt;Tool&gt;</code></td></tr>
 <tr><td>string map <span class="tag">[DEF-A10]</span></td><td><code>map&lt;string,string&gt;</code></td></tr>
+</tbody></table></div>
+<h3 id="named-types">Named types <span class="tag">[DEF-T2]</span></h3>
+<p class="meta">One spelling is written <span class="tag">[DEF-G2]</span> and a wider set is read <span class="tag">[DEF-G1]</span>; the width between them is the interoperability guarantee.</p>
+<div class="wrap"><table>
+<thead><tr><th>name</th><th>is</th><th>written</th><th>read</th><th>constraints</th></tr></thead>
+<tbody>
+<tr><td><code>ChatStopSequence</code></td><td><code>string</code></td><td>—</td><td>—</td><td><code>length 0..1048576 UTF-8 bytes</code></td></tr>
+<tr><td><code>ChatExtensionName</code></td><td><code>string</code></td><td>—</td><td>—</td><td><code>length 1..128 UTF-8 bytes</code></td></tr>
+<tr><td><code>ChatExtensionValue</code></td><td><code>string</code></td><td>—</td><td>—</td><td><code>length 0..1048576 UTF-8 bytes</code></td></tr>
+<tr><td><code>RequestHostName</code></td><td><code>string</code></td><td>—</td><td>—</td><td><code>length 1..4096 UTF-8 bytes</code></td></tr>
+<tr><td><code>ProfileIdentifier</code></td><td><code>string</code></td><td>—</td><td>—</td><td><code>length 1..256 UTF-8 bytes</code></td></tr>
 </tbody></table></div>
 <h2 id="structs">Structs <span class="tag">[DEF-T1]</span></h2>
 <p class="meta">A field is required, or says when it is omitted <span class="tag">[DEF-A4]</span>. Each struct says on its own what it does with a field name it has never heard of <span class="tag">[DEF-A7]</span>. A wire name never moves; where a language must spell it differently the field says so <span class="tag">[DEF-A2]</span>.</p>
@@ -430,7 +508,7 @@
 <tr><td>7</td><td><code>model</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
 <tr><td>8</td><td><code>cost</code></td><td><code>Cost</code></td><td>optional · omitted when absent</td><td>—</td></tr>
 </tbody></table></div>
-<h3 id="struct-Delta"><code>Delta</code></h3>
+<h3 id="struct-Delta"><a href="https://openabstractions.github.io/reference.html#concept-inference.operation-delta"><code>Delta</code></a></h3>
 <p class="meta">unknown fields <code>refuse</code></p>
 <div class="wrap"><table>
 <thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
@@ -451,7 +529,7 @@
 <tr><td>14</td><td><code>image_result</code></td><td><code>ImageResult</code></td><td>optional · omitted when absent</td><td>—</td></tr>
 <tr><td>15</td><td><code>image_end</code></td><td><code>ImageReply</code></td><td>optional · omitted when absent</td><td>—</td></tr>
 </tbody></table></div>
-<h3 id="struct-Admission"><code>Admission</code></h3>
+<h3 id="struct-Admission"><a href="https://openabstractions.github.io/reference.html#concept-inference.operation-admission"><code>Admission</code></a></h3>
 <p class="meta">unknown fields <code>refuse</code></p>
 <div class="wrap"><table>
 <thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
@@ -481,7 +559,7 @@
 <tr><td>9</td><td><code>preferred_model</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
 <tr><td>10</td><td><code>selection_reason</code></td><td><code>SelectionReason</code></td><td>optional · omitted when absent</td><td>—</td></tr>
 </tbody></table></div>
-<h3 id="struct-DeltaPage"><code>DeltaPage</code></h3>
+<h3 id="struct-DeltaPage"><a href="https://openabstractions.github.io/reference.html#concept-inference.operation-delta-page"><code>DeltaPage</code></a></h3>
 <p class="meta">unknown fields <code>refuse</code></p>
 <div class="wrap"><table>
 <thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
@@ -498,6 +576,270 @@
 <tbody>
 <tr><td>1</td><td><code>outcome</code></td><td><code>CancelOutcome</code></td><td>required</td><td>—</td></tr>
 <tr><td>2</td><td><code>reply_outcome</code></td><td><code>ReplyOutcome</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatProgress"><code>ChatProgress</code></h3>
+<p class="meta">unknown fields <code>grant</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes <span class="tag">[DEF-A12]</span></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>phase</code></td><td><code>ChatProgressPhase</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>done</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>total</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>unit</code></td><td><code>string</code></td><td>optional · omitted when absent; length 1..1048576 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatUsage"><code>ChatUsage</code></h3>
+<p class="meta">unknown fields <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>input</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>output</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>cache_read</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>cache_write</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>reasoning</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatToolChoice"><code>ChatToolChoice</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>kind</code></td><td><code>ChatToolChoiceKind</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>name</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..64 UTF-8 bytes; pattern ascii_name; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatTool"><code>ChatTool</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>name</code></td><td><code>string</code></td><td>required; length 1..64 UTF-8 bytes; pattern ascii_name; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>description</code></td><td><code>string</code></td><td>required; length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>parameters</code></td><td><code>string</code></td><td>required; length 1..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>strict</code></td><td><code>bool</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatReasoning"><code>ChatReasoning</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>effort</code></td><td><code>ChatReasoningEffort</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>budget</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 1..1048576; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatOptions"><code>ChatOptions</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>max_output</code></td><td><code>i64</code></td><td>optional · omitted when zero; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>temperature</code></td><td><code>Temperature</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>3</td><td><code>stop</code></td><td><code>list&lt;string&gt;</code></td><td>optional · omitted when zero; length ..8 entries; element [] length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>json_schema</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>tool_choice</code></td><td><code>ChatToolChoice</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>6</td><td><code>parallel_tools</code></td><td><code>bool</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>7</td><td><code>reasoning</code></td><td><code>ChatReasoning</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatPart"><code>ChatPart</code></h3>
+<p class="meta">unknown fields <code>grant</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>block</code></td><td><code>i64</code></td><td>required; range 0..4294967295; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>kind</code></td><td><code>ChatPartKind</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>text</code></td><td><code>string</code></td><td>optional · omitted when zero; length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>call_id</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>name</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..64 UTF-8 bytes; pattern ascii_name; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>6</td><td><code>arguments</code></td><td><code>string</code></td><td>optional · omitted when zero; length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>7</td><td><code>seal</code></td><td><code>ReasoningSeal</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatBlockEnd"><code>ChatBlockEnd</code></h3>
+<p class="meta">unknown fields <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>block</code></td><td><code>i64</code></td><td>required; range 0..4294967295; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>seal_omitted</code></td><td><code>SealOmission</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ReasoningSeal"><code>ReasoningSeal</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>origin</code></td><td><code>string</code></td><td>required; length 1..256 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>bytes</code></td><td><code>binary</code></td><td>required; length ..524288 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ServedBy"><code>ServedBy</code></h3>
+<p class="meta">unknown fields <code>grant</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>place</code></td><td><code>ServedPlace</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>server</code></td><td><code>string</code></td><td>required; length 1..1048576 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>machine</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..1048576 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatInputPart"><code>ChatInputPart</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>kind</code></td><td><code>PartKind</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>text</code></td><td><code>string</code></td><td>optional · omitted when zero; length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>digest</code></td><td><code>string</code></td><td>optional · omitted when zero; length 71..135 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>media_type</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..10 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>call_id</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>6</td><td><code>name</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..64 UTF-8 bytes; pattern ascii_name; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>7</td><td><code>arguments</code></td><td><code>string</code></td><td>optional · omitted when zero; length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatReplay"><code>ChatReplay</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>block</code></td><td><code>i64</code></td><td>required; range 0..4294967295; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>seal</code></td><td><code>ReasoningSeal</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatMessage"><code>ChatMessage</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>role</code></td><td><code>Role</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>parts</code></td><td><code>list&lt;ChatInputPart&gt;</code></td><td>required; length 1..64 entries; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>reasoning</code></td><td><code>list&lt;ChatReplay&gt;</code></td><td>optional · omitted when zero; length ..64 entries; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatTarget"><code>ChatTarget</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>model</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..256 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>selection_policy</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..64 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatContent"><code>ChatContent</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>messages</code></td><td><code>list&lt;ChatMessage&gt;</code></td><td>required; length 1..512 entries; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>tools</code></td><td><code>list&lt;ChatTool&gt;</code></td><td>optional · omitted when zero; length ..128 entries; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>options</code></td><td><code>ChatOptions</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>4</td><td><code>extensions</code></td><td><code>map&lt;string,string&gt;</code></td><td>optional · omitted when zero; length ..1048576 entries; element [key] length 1..128 UTF-8 bytes; element [value] length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>required_extensions</code></td><td><code>list&lt;string&gt;</code></td><td>optional · omitted when zero; length ..1048576 entries; element [] length 1..128 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>6</td><td><code>guarantees</code></td><td><code>list&lt;ChatGuarantee&gt;</code></td><td>required; length ..4 entries; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>7</td><td><code>credential</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..64 UTF-8 bytes; pattern ascii_name; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-RequestV3"><code>RequestV3</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>identity</code></td><td><code>acceptance.RequestIdentity</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>target</code></td><td><code>ChatTarget</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>content</code></td><td><code>ChatContent</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>model_ref</code></td><td><code>string</code></td><td>optional · omitted when absent; length 71..135 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>conversation</code></td><td><code>string</code></td><td>optional · omitted when zero; length 1..128 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>6</td><td><code>use</code></td><td><code>ChatUse</code></td><td>optional · omitted when absent</td><td><code>rust</code> <code>chat_use</code></td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatTiming"><code>ChatTiming</code></h3>
+<p class="meta">unknown fields <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>queue_ms</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>load_ms</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>restore_ms</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>prefill_ms</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>decode_ms</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>6</td><td><code>prefill_tokens</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>7</td><td><code>reused_tokens</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>8</td><td><code>load</code></td><td><code>ChatLoad</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>9</td><td><code>load_source</code></td><td><code>ChatLoadSource</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatReasoningApplied"><code>ChatReasoningApplied</code></h3>
+<p class="meta">unknown fields <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>effort</code></td><td><code>ChatReasoningEffort</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>2</td><td><code>budget</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 1..1048576; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>support</code></td><td><code>ChatReasoningSupport</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>budget_support</code></td><td><code>ChatReasoningSupport</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatResult"><code>ChatResult</code></h3>
+<p class="meta">unknown fields <code>grant</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ChatResultOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>cause</code></td><td><code>string</code></td><td>required; length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>finish_reason</code></td><td><code>FinishReason</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>4</td><td><code>stop_sequence</code></td><td><code>string</code></td><td>optional · omitted when absent; length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>usage</code></td><td><code>ChatUsage</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>served_by</code></td><td><code>ServedBy</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>7</td><td><code>cost</code></td><td><code>Cost</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>8</td><td><code>refusal</code></td><td><code>rights.RefusalDetail</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>9</td><td><code>retry_after_ms</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 1..86400000; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>10</td><td><code>timing</code></td><td><code>ChatTiming</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>11</td><td><code>reasoning_applied</code></td><td><code>ChatReasoningApplied</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>12</td><td><code>dropped_extensions</code></td><td><code>list&lt;string&gt;</code></td><td>optional · omitted when zero; length ..64 entries; element [] length 1..128 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatEvent"><code>ChatEvent</code></h3>
+<p class="meta">unknown fields <code>grant</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>sequence</code></td><td><code>i64</code></td><td>required; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>kind</code></td><td><code>ChatEventKind</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>progress</code></td><td><code>ChatProgress</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>4</td><td><code>part</code></td><td><code>ChatPart</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>5</td><td><code>block_end</code></td><td><code>ChatBlockEnd</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>6</td><td><code>usage</code></td><td><code>ChatUsage</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>7</td><td><code>end</code></td><td><code>ChatResult</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatAdmission"><code>ChatAdmission</code></h3>
+<p class="meta">unknown fields <code>grant</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ChatStartOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>reason</code></td><td><code>string</code></td><td>required; length ..1048576 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>request</code></td><td><code>string</code></td><td>required; length ..128 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>server</code></td><td><code>string</code></td><td>required; length ..1048576 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>model</code></td><td><code>string</code></td><td>required; length ..256 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>6</td><td><code>retention_ms</code></td><td><code>i64</code></td><td>required; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>7</td><td><code>idle_ms</code></td><td><code>i64</code></td><td>required; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>8</td><td><code>retained_deltas</code></td><td><code>i64</code></td><td>required; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>9</td><td><code>preferred_model</code></td><td><code>string</code></td><td>optional · omitted when zero; length ..256 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>10</td><td><code>selection_reason</code></td><td><code>SelectionReason</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>11</td><td><code>refusal</code></td><td><code>rights.RefusalDetail</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>12</td><td><code>retry_after_ms</code></td><td><code>i64</code></td><td>optional · omitted when absent; range 1..86400000; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatPage"><code>ChatPage</code></h3>
+<p class="meta">unknown fields <code>grant</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>PageOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>events</code></td><td><code>list&lt;ChatEvent&gt;</code></td><td>required; length ..256 entries; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>next</code></td><td><code>i64</code></td><td>required; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>at_end</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>refusal</code></td><td><code>rights.RefusalDetail</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatCancellation"><code>ChatCancellation</code></h3>
+<p class="meta">unknown fields <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>CancelOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>result_outcome</code></td><td><code>ChatResultOutcome</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>3</td><td><code>refusal</code></td><td><code>rights.RefusalDetail</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChatHistoryRead"><code>ChatHistoryRead</code></h3>
+<p class="meta">unknown fields <code>grant</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ChatHistoryOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>window</code></td><td><code>acceptance.HistoryWindow</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>3</td><td><code>refusal</code></td><td><code>rights.RefusalDetail</code></td><td>optional · omitted when absent</td><td>—</td></tr>
 </tbody></table></div>
 <h3 id="struct-PreloadReply"><code>PreloadReply</code></h3>
 <p class="meta">unknown fields <code>refuse</code></p>
@@ -917,6 +1259,27 @@
 <tr><td>3</td><td><code>next</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
 <tr><td>4</td><td><code>at_end</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
 </tbody></table></div>
+<h3 id="struct-RequestEntry"><code>RequestEntry</code></h3>
+<p class="meta">unknown fields <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>entry</code></td><td><code>AuditEntry</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>preferred_model</code></td><td><code>string</code></td><td>optional · omitted when zero; length ..256 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>unavailable_hosts</code></td><td><code>list&lt;string&gt;</code></td><td>optional · omitted when zero; length ..64 entries; element [] length 1..4096 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>selection</code></td><td><code>string</code></td><td>optional · omitted when zero; length ..64 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>placement</code></td><td><code>ServedPlace</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-RequestPage"><code>RequestPage</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>AuditOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>entries</code></td><td><code>list&lt;RequestEntry&gt;</code></td><td>required; length ..256 entries; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>next</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>at_end</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
 <h3 id="struct-GatewayState"><code>GatewayState</code></h3>
 <p class="meta">unknown fields <code>refuse</code></p>
 <div class="wrap"><table>
@@ -938,6 +1301,57 @@
 <tr><td>1</td><td><code>outcome</code></td><td><code>EditOutcome</code></td><td>required</td><td>—</td></tr>
 <tr><td>2</td><td><code>revision</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
 <tr><td>3</td><td><code>reason</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ProgramBudget"><code>ProgramBudget</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>tokens_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>micros_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>requests_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>images_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>5</td><td><code>audio_seconds_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>6</td><td><code>characters_per_day</code></td><td><code>i64</code></td><td>optional · omitted when zero; range 0..9223372036854775807; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ProgramBudgetEntry"><code>ProgramBudgetEntry</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>program</code></td><td><code>string</code></td><td>required; length 1..4096 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>budget</code></td><td><code>ProgramBudget</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>3</td><td><code>spend</code></td><td><code>Spend</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>cost_unreported</code></td><td><code>bool</code></td><td>optional · omitted when zero</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ProgramBudgetPage"><code>ProgramBudgetPage</code></h3>
+<p class="meta">unknown fields <code>refuse</code> · compact value span at most 1048576 bytes; raw value span at most 1048576 bytes</p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ProgramBudgetReadOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>revision</code></td><td><code>string</code></td><td>required; length ..128 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>entries</code></td><td><code>list&lt;ProgramBudgetEntry&gt;</code></td><td>required; length ..256 entries; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>profiles</code></td><td><code>list&lt;string&gt;</code></td><td>required; length ..16 entries; element [] length 1..256 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ProgramBudgetResult"><code>ProgramBudgetResult</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ProgramBudgetEditOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>revision</code></td><td><code>string</code></td><td>required; length ..128 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>reason</code></td><td><code>string</code></td><td>required; length ..256 UTF-8 bytes; pattern no_control; refusal <code>bad_value</code></td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ProgramBudgetChange"><code>ProgramBudgetChange</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>expected_revision</code></td><td><code>string</code></td><td>required; length ..128 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>2</td><td><code>credential</code></td><td><code>string</code></td><td>required; length ..64 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>3</td><td><code>program</code></td><td><code>string</code></td><td>required; length ..4096 UTF-8 bytes; refusal <code>bad_value</code></td><td>—</td></tr>
+<tr><td>4</td><td><code>budget</code></td><td><code>ProgramBudget</code></td><td>optional · omitted when absent</td><td>—</td></tr>
 </tbody></table></div>
 <h3 id="struct-SelectionChange"><code>SelectionChange</code></h3>
 <p class="meta">unknown fields <code>refuse</code></p>
@@ -1098,6 +1512,170 @@
 <tr><td>5</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
 <tr><td>6</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
 </tbody></table></div>
+<h3 id="enum-ChatProgressPhase"><code>ChatProgressPhase</code></h3>
+<p class="meta">a member this reader does not know is <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>queued</code></td><td><code>queued</code></td></tr>
+<tr><td>2</td><td><code>loading</code></td><td><code>loading</code></td></tr>
+<tr><td>3</td><td><code>warming</code></td><td><code>warming</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatPartKind"><code>ChatPartKind</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>text</code></td><td><code>text</code></td></tr>
+<tr><td>2</td><td><code>reasoning</code></td><td><code>reasoning</code></td></tr>
+<tr><td>3</td><td><code>reasoning_summary</code></td><td><code>reasoning_summary</code></td></tr>
+<tr><td>4</td><td><code>tool_call</code></td><td><code>tool_call</code></td></tr>
+<tr><td>5</td><td><code>model_refusal</code></td><td><code>model_refusal</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-FinishReason"><code>FinishReason</code></h3>
+<p class="meta">a member this reader does not know is <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>stop</code></td><td><code>stop</code></td></tr>
+<tr><td>2</td><td><code>length</code></td><td><code>length</code></td></tr>
+<tr><td>3</td><td><code>tool_calls</code></td><td><code>tool_calls</code></td></tr>
+<tr><td>4</td><td><code>content_filter</code></td><td><code>content_filter</code></td></tr>
+<tr><td>5</td><td><code>model_refusal</code></td><td><code>model_refusal</code></td></tr>
+<tr><td>6</td><td><code>context_window</code></td><td><code>context_window</code></td></tr>
+<tr><td>7</td><td><code>malformed_tool_call</code></td><td><code>malformed_tool_call</code></td></tr>
+<tr><td>8</td><td><code>paused</code></td><td><code>paused</code></td></tr>
+<tr><td>9</td><td><code>other</code></td><td><code>other</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatToolChoiceKind"><code>ChatToolChoiceKind</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>auto</code></td><td><code>auto</code></td></tr>
+<tr><td>2</td><td><code>none</code></td><td><code>none</code></td></tr>
+<tr><td>3</td><td><code>required</code></td><td><code>required</code></td></tr>
+<tr><td>4</td><td><code>named</code></td><td><code>named</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatReasoningEffort"><code>ChatReasoningEffort</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>none</code></td><td><code>none</code></td></tr>
+<tr><td>2</td><td><code>low</code></td><td><code>low</code></td></tr>
+<tr><td>3</td><td><code>medium</code></td><td><code>medium</code></td></tr>
+<tr><td>4</td><td><code>high</code></td><td><code>high</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-SealOmission"><code>SealOmission</code></h3>
+<p class="meta">a member this reader does not know is <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>encoded_size</code></td><td><code>encoded_size</code></td></tr>
+<tr><td>2</td><td><code>incompatible_origin</code></td><td><code>incompatible_origin</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ServedPlace"><code>ServedPlace</code></h3>
+<p class="meta">a member this reader does not know is <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>local</code></td><td><code>local</code></td></tr>
+<tr><td>2</td><td><code>hosted</code></td><td><code>hosted</code></td></tr>
+<tr><td>3</td><td><code>remote</code></td><td><code>remote</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatEventKind"><code>ChatEventKind</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>progress</code></td><td><code>progress</code></td></tr>
+<tr><td>2</td><td><code>part</code></td><td><code>part</code></td></tr>
+<tr><td>3</td><td><code>block_end</code></td><td><code>block_end</code></td></tr>
+<tr><td>4</td><td><code>usage</code></td><td><code>usage</code></td></tr>
+<tr><td>5</td><td><code>end</code></td><td><code>end</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatGuarantee"><code>ChatGuarantee</code></h3>
+<p class="meta">a member this reader does not know is <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>local_only</code></td><td><code>abstraction.inference/local-only@1</code></td></tr>
+<tr><td>2</td><td><code>hosted_allowed</code></td><td><code>abstraction.inference/hosted-allowed@1</code></td></tr>
+<tr><td>3</td><td><code>no_retention</code></td><td><code>abstraction.inference/no-retention@1</code></td></tr>
+<tr><td>4</td><td><code>free_capacity</code></td><td><code>abstraction.inference/free-capacity@1</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatUse"><code>ChatUse</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>title</code></td><td><code>title</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatResultOutcome"><code>ChatResultOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>completed</code></td><td><code>completed</code></td></tr>
+<tr><td>2</td><td><code>failed</code></td><td><code>failed</code></td></tr>
+<tr><td>3</td><td><code>cancelled</code></td><td><code>cancelled</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatLoad"><code>ChatLoad</code></h3>
+<p class="meta">a member this reader does not know is <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>cold</code></td><td><code>cold</code></td></tr>
+<tr><td>2</td><td><code>warm</code></td><td><code>warm</code></td></tr>
+<tr><td>3</td><td><code>loaded</code></td><td><code>loaded</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatLoadSource"><code>ChatLoadSource</code></h3>
+<p class="meta">a member this reader does not know is <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>disk</code></td><td><code>disk</code></td></tr>
+<tr><td>2</td><td><code>adopted</code></td><td><code>adopted</code></td></tr>
+<tr><td>3</td><td><code>lent</code></td><td><code>lent</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatReasoningSupport"><code>ChatReasoningSupport</code></h3>
+<p class="meta">a member this reader does not know is <code>grant</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>applied</code></td><td><code>applied</code></td></tr>
+<tr><td>2</td><td><code>approximated</code></td><td><code>approximated</code></td></tr>
+<tr><td>3</td><td><code>not_supported</code></td><td><code>not_supported</code></td></tr>
+<tr><td>4</td><td><code>overridden</code></td><td><code>overridden</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatStartOutcome"><code>ChatStartOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>accepted</code></td><td><code>accepted</code></td></tr>
+<tr><td>2</td><td><code>not_permitted</code></td><td><code>not_permitted</code></td></tr>
+<tr><td>3</td><td><code>budget_exceeded</code></td><td><code>budget_exceeded</code></td></tr>
+<tr><td>4</td><td><code>unsupported</code></td><td><code>unsupported</code></td></tr>
+<tr><td>5</td><td><code>no_host</code></td><td><code>no_host</code></td></tr>
+<tr><td>6</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+<tr><td>7</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>8</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>9</td><td><code>exhausted</code></td><td><code>exhausted</code></td></tr>
+<tr><td>10</td><td><code>conflict</code></td><td><code>conflict</code></td></tr>
+<tr><td>11</td><td><code>unknown</code></td><td><code>unknown</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChatHistoryOutcome"><code>ChatHistoryOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>available</code></td><td><code>available</code></td></tr>
+<tr><td>2</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>3</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>4</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
 <h3 id="enum-PreloadOutcome"><code>PreloadOutcome</code></h3>
 <p class="meta">a member this reader does not know is <code>refuse</code></p>
 <div class="wrap"><table>
@@ -1256,6 +1834,29 @@
 <tr><td>4</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
 <tr><td>5</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
 </tbody></table></div>
+<h3 id="enum-ProgramBudgetReadOutcome"><code>ProgramBudgetReadOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>page</code></td><td><code>page</code></td></tr>
+<tr><td>2</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>3</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>4</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+<tr><td>5</td><td><code>unsupported</code></td><td><code>unsupported</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ProgramBudgetEditOutcome"><code>ProgramBudgetEditOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>applied</code></td><td><code>applied</code></td></tr>
+<tr><td>2</td><td><code>conflict</code></td><td><code>conflict</code></td></tr>
+<tr><td>3</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>4</td><td><code>forbidden</code></td><td><code>forbidden</code></td></tr>
+<tr><td>5</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+<tr><td>6</td><td><code>unsupported</code></td><td><code>unsupported</code></td></tr>
+</tbody></table></div>
 <h3 id="enum-CandidatePlacement"><code>CandidatePlacement</code></h3>
 <p class="meta">a member this reader does not know is <code>refuse</code></p>
 <div class="wrap"><table>
@@ -1283,9 +1884,9 @@
 <tr><td><code>resource_actions</code></td><td><code>list&lt;string&gt;</code></td><td><code>abstraction.inference/complete, abstraction.inference/host.manage, abstraction.inference/key.issue, abstraction.inference/audit.read, abstraction.inference/selection.manage, abstraction.inference/selection.manage_for</code></td></tr>
 <tr><td><code>local_key_kinds</code></td><td><code>list&lt;string&gt;</code></td><td><code>openabstractions/local-key@1</code></td></tr>
 <tr><td><code>local_host_kinds</code></td><td><code>list&lt;string&gt;</code></td><td><code>ollama, lmstudio, lemonade, whispercpp, piper, comfyui, swarmui, docker-model-runner, foundry-local</code></td></tr>
-<tr><td><code>host_profiles</code></td><td><code>list&lt;string&gt;</code></td><td><code>chat, embed, transcription, speech, image, live</code></td></tr>
+<tr><td><code>host_profiles</code></td><td><code>list&lt;string&gt;</code></td><td><code>chat, embed, transcription, speech, image, live, video</code></td></tr>
 <tr><td><code>host_declarers</code></td><td><code>list&lt;string&gt;</code></td><td><code>operator, ollama, lmstudio, docker-model-runner, foundry-local, installation, default</code></td></tr>
-<tr><td><code>credential_consumers</code></td><td><code>list&lt;string&gt;</code></td><td><code>abstraction.inference/chat@1, abstraction.inference/embed@1, abstraction.inference/transcription@1, abstraction.inference/speech@1, abstraction.inference/live@1</code></td></tr>
+<tr><td><code>credential_consumers</code></td><td><code>list&lt;string&gt;</code></td><td><code>abstraction.inference/chat@1, abstraction.inference/embed@1, abstraction.inference/transcription@1, abstraction.inference/speech@1, abstraction.inference/live@1, abstraction.inference/image@1</code></td></tr>
 <tr><td><code>claim_extensions</code></td><td><code>list&lt;string&gt;</code></td><td><code>openabstractions/claimed-program</code></td></tr>
 </tbody></table></div>
 <h2 id="refusals">Refusal words <span class="tag">[DEF-R1]</span></h2>
@@ -1303,7 +1904,9 @@
 <tr><td>9</td><td><code>unknown_field</code></td><td><code>structure</code></td></tr>
 <tr><td>10</td><td><code>missing_field</code></td><td><code>structure</code></td></tr>
 <tr><td>11</td><td><code>bad_enum</code></td><td><code>structure</code></td></tr>
-<tr><td>12</td><td><code>trailing_bytes</code></td><td><code>document</code></td></tr>
+<tr><td>12</td><td><code>bad_value</code></td><td><code>structure</code></td></tr>
+<tr><td>13</td><td><code>encoded_size</code></td><td><code>structure</code></td></tr>
+<tr><td>14</td><td><code>trailing_bytes</code></td><td><code>document</code></td></tr>
 </tbody></table></div>
 
 <footer>

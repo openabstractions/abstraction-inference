@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstraction-identity/go/privatedir/privatetest"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,14 +32,14 @@ func digestOf(data []byte) string {
 
 func relayFixture(t *testing.T, readPolicy storageservice.Policy) (listen.FrameClient, *storage.ContentStore) {
 	t.Helper()
-	store, err := storage.NewContentStore("fixture", t.TempDir())
+	store, err := storage.NewContentStore("fixture", privatetest.Dir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if readPolicy == nil {
 		readPolicy = func(context.Context, *identity.Peer, string) error { return nil }
 	}
-	endpoint := filepath.Join(t.TempDir(), "content.sock")
+	endpoint := filepath.Join(privatetest.Dir(t), "content.sock")
 	if runtime.GOOS == "windows" {
 		endpoint = fmt.Sprintf(`\\.\pipe\oa-image-content-%d`, time.Now().UnixNano())
 	}
@@ -53,7 +54,7 @@ func relayFixture(t *testing.T, readPolicy storageservice.Policy) (listen.FrameC
 		t.Fatal(err)
 	}
 	writePolicy := func(context.Context, *identity.Peer, string) error { return nil }
-	if err := host.EnableWriter(writePolicy, 1<<20, casapi.BoundedFileStore{MaxBytes: storageservice.MaxRecordFileBytes}, filepath.Join(t.TempDir(), "records.json")); err != nil {
+	if err := host.EnableWriter(writePolicy, 1<<20, casapi.BoundedFileStore{MaxBytes: storageservice.MaxRecordFileBytes}, filepath.Join(privatetest.Dir(t), "records.json")); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -178,7 +179,7 @@ func TestUploadSeparatesLocalRefusalFromTransport(t *testing.T) {
 	digest := digestOf(data)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	unreachable := listen.FrameClient{Endpoint: filepath.Join(t.TempDir(), "absent.sock")}.WithDefaults(time.Second, 1<<20)
+	unreachable := listen.FrameClient{Endpoint: filepath.Join(privatetest.Dir(t), "absent.sock")}.WithDefaults(time.Second, 1<<20)
 	if runtime.GOOS == "windows" {
 		unreachable = listen.FrameClient{Endpoint: fmt.Sprintf(`\\.\pipe\oa-absent-%d`, time.Now().UnixNano())}.WithDefaults(time.Second, 1<<20)
 	}

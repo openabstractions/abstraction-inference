@@ -40,6 +40,10 @@ type fakeVideoProvider struct {
 	media       string
 	script      []wire.VideoObservation
 	forgetAfter int
+	// forgetLimit bounds how many times forgetAfter forgets; zero is no
+	// bound.
+	forgetLimit int
+	forgotten   int
 	refuse      *wire.VideoAdmission
 	starts      []wire.VideoRequest
 	cancels     []string
@@ -137,8 +141,9 @@ func (f *fakeVideoProvider) Observe(operation string) (wire.VideoObservation, er
 		return wire.VideoObservation{Status: wire.VideoStateUnknown}, nil
 	}
 	f.polls[operation] = n + 1
-	if f.forgetAfter > 0 && n+1 >= f.forgetAfter {
+	if f.forgetAfter > 0 && n+1 >= f.forgetAfter && (f.forgetLimit == 0 || f.forgotten < f.forgetLimit) {
 		f.polls, f.byRequest = map[string]int{}, map[string]string{}
+		f.forgotten++
 	}
 	if f.cancelled[operation] {
 		return wire.VideoObservation{Status: wire.VideoStateCancelled}, nil
@@ -237,10 +242,12 @@ func fakeVideoProviderStarter(t *testing.T, f *fakeVideoProvider, endpoint strin
 	if err := content.EnableWriter(f.authorizeWrite, 20<<20, casapi.BoundedFileStore{MaxBytes: storageService.MaxRecordFileBytes}, filepath.Join(t.TempDir(), "uploads.json")); err != nil {
 		t.Fatal(err)
 	}
-	return func() error { return listenFakeVideoProvider(t, f, content, endpoint) }
+	return func() error { return listenFakeProvider(t, &wire.VideoDispatcher{Handler: f}, content, endpoint) }
 }
 
-func listenFakeVideoProvider(t *testing.T, f *fakeVideoProvider, content *storageService.Component, endpoint string) error {
+// listenFakeProvider serves one provider service beside the content reader
+// and writer on a native endpoint with Program proof.
+func listenFakeProvider(t *testing.T, served wire.ServedService, content *storageService.Component, endpoint string) error {
 	l, err := listen.ListenFramed(endpoint, listen.Program)
 	if err != nil {
 		return err
@@ -272,7 +279,7 @@ func listenFakeVideoProvider(t *testing.T, f *fakeVideoProvider, content *storag
 					return
 				}
 				defer call.Close()
-				services := []wire.ServedService{&wire.VideoDispatcher{Handler: f}}
+				services := []wire.ServedService{served}
 				for _, service := range content.Services(call, callCtx) {
 					services = append(services, service)
 				}
@@ -320,6 +327,13 @@ func newVideoRuntime(t *testing.T, endpoint string, input []byte) *videoRuntime 
 // provider's configuration before it is built.
 func newVideoRuntimeWith(t *testing.T, endpoint string, input []byte, adjust func(*Config)) *videoRuntime {
 	t.Helper()
+	return newNativeJobRuntime(t, "video-provider", endpoint, testVideoModel, router.ProfileVideo, input, adjust)
+}
+
+// newNativeJobRuntime is the runtime side for one native host named name
+// that lists model under profile.
+func newNativeJobRuntime(t *testing.T, name, endpoint, model, profile string, input []byte, adjust func(*Config)) *videoRuntime {
+	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -332,8 +346,8 @@ func newVideoRuntimeWith(t *testing.T, endpoint string, input []byte, adjust fun
 	if runtime.GOOS == "windows" {
 		principal = identity.User{Kind: "windows", SID: current.Uid}
 	}
-	native, err := router.NewNative("video-provider", endpoint, listen.ServerExpectation{Principal: principal, Program: identity.CanonicalProgramPath(filepath.Clean(exe))},
-		[]string{testVideoModel}, []string{router.ProfileVideo})
+	native, err := router.NewNative(name, endpoint, listen.ServerExpectation{Principal: principal, Program: identity.CanonicalProgramPath(filepath.Clean(exe))},
+		[]string{model}, []string{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,13 +400,19 @@ func newVideoRuntimeWith(t *testing.T, endpoint string, input []byte, adjust fun
 
 func (v *videoRuntime) submit(t *testing.T, key string, image jobwire.ImageRequest) (acceptance.Submission, acceptance.AcceptanceResult) {
 	t.Helper()
+	image.Model, image.Prompt, image.Size, image.Count = testVideoModel, "a lighthouse at dusk", "832x480", 1
+	image.Guarantees = []jobwire.RequestGuarantee{jobwire.RequestGuaranteeLocalOnly}
+	return v.submitJob(t, key, jobwire.Request{Profile: jobwire.ProfileVideo, DurationMs: 2000, Image: image})
+}
+
+// submitJob submits request under key for the caller scope.
+func (v *videoRuntime) submitJob(t *testing.T, key string, request jobwire.Request) (acceptance.Submission, acceptance.AcceptanceResult) {
+	t.Helper()
 	history, err := v.jobs.Bind("caller-scope").GetHistoryWindow()
 	if err != nil {
 		t.Fatal(err)
 	}
-	image.Model, image.Prompt, image.Size, image.Count = testVideoModel, "a lighthouse at dusk", "832x480", 1
-	image.Guarantees = []jobwire.RequestGuarantee{jobwire.RequestGuaranteeLocalOnly}
-	document := &jobwire.Document{Request: &jobwire.Request{Profile: jobwire.ProfileVideo, DurationMs: 2000, Image: image}}
+	document := &jobwire.Document{Request: &request}
 	submission := acceptance.Submission{Identity: acceptance.RequestIdentity{Key: key, HistoryEpoch: history.HistoryEpoch}, Kind: InferenceJobKind,
 		Spec: jobwire.Encode(document), RequiredGuarantees: []string{RecoverableUpstreamGuarantee}}
 	result, err := v.jobs.Bind("caller-scope").Submit(submission)
@@ -499,9 +519,10 @@ func TestNativeVideoJobCompletesThroughProviderVideoService(t *testing.T) {
 	}
 }
 
-// TestNativeVideoJobLostProviderOperationFailsVisibly: a provider restart
-// forgets the operation; the job fails as provider:lost and the work is never
-// submitted again.
+// TestNativeVideoJobLostProviderOperationFailsVisibly: a provider that
+// forgets the operation each time it runs gets the work once more from the
+// start; the second loss fails the job as provider:lost and nothing is sent
+// a third time.
 func TestNativeVideoJobLostProviderOperationFailsVisibly(t *testing.T) {
 	fake := &fakeVideoProvider{forgetAfter: 1, script: []wire.VideoObservation{{Status: wire.VideoStateQueued}, {Status: wire.VideoStateQueued}}}
 	v := newVideoRuntime(t, serveFakeVideoProvider(t, fake), nil)
@@ -512,8 +533,91 @@ func TestNativeVideoJobLostProviderOperationFailsVisibly(t *testing.T) {
 		t.Fatalf("final %+v failure %+v", final, final.Failure)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if starts, _ := fake.counts(); starts != 1 {
+	if starts, _ := fake.counts(); starts != 2 {
 		t.Fatalf("lost work submitted %d times", starts)
+	}
+}
+
+// TestNativeVideoJobRestartMidRunSendsTheWorkAgain: the runtime stops while
+// the provider generates, the provider restarts and forgets the operation,
+// and the runtime comes back. The job is sent again from the start under the
+// same identity and request_id, carries the loss as a retryable last-attempt
+// failure while it runs, and completes (INF-G7).
+func TestNativeVideoJobRestartMidRunSendsTheWorkAgain(t *testing.T) {
+	fake := &fakeVideoProvider{manual: true, script: []wire.VideoObservation{{Status: wire.VideoStateGenerating, Step: 2, Steps: 10}}}
+	v := newVideoRuntime(t, serveFakeVideoProvider(t, fake), nil)
+	submission, accepted := v.submit(t, "video-restart", jobwire.ImageRequest{Mode: jobwire.ModeGenerate, Extensions: map[string]string{}})
+	if accepted.Receipt == nil {
+		t.Fatalf("submit %+v", accepted)
+	}
+	v.run(t)
+	waitSnapshot(t, v, submission.Identity, func(s *acceptance.OperationSnapshot) bool { return s.Progress.Done == 2 && s.Failure == nil })
+	v.stop()
+	fake.mu.Lock()
+	fake.polls, fake.byRequest = map[string]int{}, map[string]string{}
+	fake.mu.Unlock()
+	v.restart(t)
+	running := waitSnapshot(t, v, submission.Identity, func(s *acceptance.OperationSnapshot) bool {
+		return s.State == acceptance.WorkStateRunning && s.Failure != nil && s.Progress.Done == 2
+	})
+	if running.Failure.Classification != acceptance.FailureClassRetryable || running.Failure.Message != "provider:lost" {
+		t.Fatalf("running after restart %+v failure %+v", running, running.Failure)
+	}
+	fake.mu.Lock()
+	fake.stage = len(fake.script)
+	fake.mu.Unlock()
+	final := v.waitVideo(t, submission.Identity)
+	if final.State != acceptance.WorkStateComplete || final.Failure != nil {
+		t.Fatalf("final %+v failure %+v", final, final.Failure)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.starts) != 2 || fake.created != 2 || fake.starts[0].RequestID == "" || fake.starts[1].RequestID != fake.starts[0].RequestID {
+		t.Fatalf("starts %d created %d", len(fake.starts), fake.created)
+	}
+}
+
+// The published video@1 observation supplies the queue and generation
+// progress reported by the provider (INF-G6).
+func TestNativeVideoJobSnapshotCarriesQueueAndSteps(t *testing.T) {
+	fake := &fakeVideoProvider{manual: true, script: []wire.VideoObservation{
+		{Status: wire.VideoStateQueued},
+		{Status: wire.VideoStateQueued, QueuePosition: 3},
+		{Status: wire.VideoStateQueued, QueuePosition: 1},
+		{Status: wire.VideoStateGenerating, Step: 1, Steps: 8},
+	}}
+	v := newVideoRuntime(t, serveFakeVideoProvider(t, fake), nil)
+	submission, _ := v.submit(t, "video-queue", jobwire.ImageRequest{Mode: jobwire.ModeGenerate, Extensions: map[string]string{}})
+	v.run(t)
+	for stage, want := range []string{"queued", "queue:3", "queue:1", ""} {
+		fake.mu.Lock()
+		fake.stage = stage
+		fake.mu.Unlock()
+		waitSnapshot(t, v, submission.Identity, func(s *acceptance.OperationSnapshot) bool {
+			return s.State == acceptance.WorkStateRunning && s.Waiting == want && (want != "" || s.Progress.Done == 1)
+		})
+	}
+	fake.mu.Lock()
+	fake.stage = len(fake.script)
+	fake.mu.Unlock()
+	if final := v.waitVideo(t, submission.Identity); final.State != acceptance.WorkStateComplete || final.Waiting != "" {
+		t.Fatalf("final %+v", final)
+	}
+}
+
+// waitSnapshot waits up to five seconds for a snapshot of id that ok accepts.
+func waitSnapshot(t *testing.T, v *videoRuntime, id acceptance.RequestIdentity, ok func(*acceptance.OperationSnapshot) bool) acceptance.OperationSnapshot {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		observed, err := v.jobs.BindOperations("caller-scope").ObserveWork(id)
+		if err == nil && observed.Snapshot != nil && ok(observed.Snapshot) {
+			return *observed.Snapshot
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("snapshot %+v (%v) never matched", observed.Snapshot, err)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

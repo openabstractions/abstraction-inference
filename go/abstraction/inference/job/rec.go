@@ -90,64 +90,18 @@ func enumStrs[T any](out []byte, v []T, depth int, word func(T) string) []byte {
 	return append(out, ']')
 }
 
+// raw writes an opaque value's bytes as they are ([DEF-A3]); whitespace
+// around the value is not part of it.
 func raw(out []byte, s string, depth int) []byte {
 	ws := func(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
-	for i := 0; i < len(s); {
-		c := s[i]
-		if ws(c) {
-			i++
-			continue
-		}
-		switch c {
-		case '"':
-			j := i + 1
-			for j < len(s) {
-				if s[j] == '\\' {
-					j += 2
-					continue
-				}
-				if s[j] == '"' {
-					j++
-					break
-				}
-				j++
-			}
-			out = append(out, s[i:j]...)
-			i = j
-		case '{', '[':
-			out = append(out, c)
-			i++
-			j := i
-			for j < len(s) && ws(s[j]) {
-				j++
-			}
-			if j < len(s) && (s[j] == '}' || s[j] == ']') {
-				out = append(out, s[j])
-				i = j + 1
-			} else {
-				depth++
-				out = append(out, '\n')
-				out = pad(out, depth)
-			}
-		case '}', ']':
-			depth--
-			out = append(out, '\n')
-			out = pad(out, depth)
-			out = append(out, c)
-			i++
-		case ',':
-			out = append(out, ',', '\n')
-			out = pad(out, depth)
-			i++
-		case ':':
-			out = append(out, ':', ' ')
-			i++
-		default:
-			out = append(out, c)
-			i++
-		}
+	i, j := 0, len(s)
+	for i < j && ws(s[i]) {
+		i++
 	}
-	return out
+	for j > i && ws(s[j-1]) {
+		j--
+	}
+	return append(out, s[i:j]...)
 }
 
 func byteLess(a, b string) bool {
@@ -334,6 +288,9 @@ func ProfileValues() []Profile {
 	return []Profile{ProfileVideo, ProfileImageBatch}
 }
 
+// IsKnown reports whether v is a declared member of Profile.
+func (v Profile) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of Profile.
 func (v Profile) Known() bool {
 	_, ok := v.WireName()
@@ -433,6 +390,9 @@ func ModeValues() []Mode {
 	return []Mode{ModeGenerate, ModeEdit}
 }
 
+// IsKnown reports whether v is a declared member of Mode.
+func (v Mode) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of Mode.
 func (v Mode) Known() bool {
 	_, ok := v.WireName()
@@ -453,6 +413,9 @@ const (
 func RequestGuaranteeValues() []RequestGuarantee {
 	return []RequestGuarantee{RequestGuaranteeLocalOnly, RequestGuaranteeHostedAllowed}
 }
+
+// IsKnown reports whether v is a declared member of RequestGuarantee.
+func (v RequestGuarantee) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of RequestGuarantee.
 func (v RequestGuarantee) Known() bool {
@@ -777,9 +740,22 @@ func decimal(n int64) string { return string(num(nil, n)) }
 const depthLimit = 64
 
 type reader struct {
-	buf   []byte
-	pos   int
-	depth int
+	buf     []byte
+	pos     int
+	depth   int
+	limit   int
+	ceiling int
+}
+
+func (r *reader) depthLimit() int {
+	ceiling := depthLimit
+	if r.ceiling > 0 {
+		ceiling = r.ceiling
+	}
+	if r.limit > 0 && r.limit < ceiling {
+		return r.limit
+	}
+	return ceiling
 }
 
 func (r *reader) refuse(word string) error { return &Refusal{Word: word, Offset: r.pos} }
@@ -804,7 +780,7 @@ func (r *reader) ws() {
 
 func (r *reader) enter() error {
 	r.depth++
-	if r.depth > depthLimit {
+	if r.depth > r.depthLimit() {
 		return r.refuse("depth_exceeded")
 	}
 	return nil
@@ -1863,6 +1839,139 @@ func Decode(in []byte) (*Document, error) {
 		return nil, r.refuse("trailing_bytes")
 	}
 	return v, nil
+}
+
+// ToJSON writes one record of this package, given as a value or a pointer,
+// as JSON laid out as its documents are and without the document terminator.
+// Anything else, a nil pointer included, is refused with wrong_type.
+func ToJSON(v any) (out []byte, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				out, err = nil, e
+				return
+			}
+			panic(p)
+		}
+	}()
+	switch v := v.(type) {
+	case ImageRequest:
+		return encImageRequest(nil, &v, 0), nil
+	case *ImageRequest:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encImageRequest(nil, v, 0), nil
+	case Delivery:
+		return encDelivery(nil, &v, 0), nil
+	case *Delivery:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encDelivery(nil, v, 0), nil
+	case Request:
+		return encRequest(nil, &v, 0), nil
+	case *Request:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encRequest(nil, v, 0), nil
+	case JobResult:
+		return encJobResult(nil, &v, 0), nil
+	case *JobResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encJobResult(nil, v, 0), nil
+	case Document:
+		return encDocument(nil, &v, 0), nil
+	case *Document:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encDocument(nil, v, 0), nil
+	}
+	return nil, &Refusal{Word: "wrong_type"}
+}
+
+// FromJSON reads one record from data into v, a pointer to a record of this
+// package. A refused input returns *Refusal.
+func FromJSON(data []byte, v any) error {
+	r := &reader{buf: data}
+	r.ws()
+	switch p := v.(type) {
+	case *ImageRequest:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeImageRequest()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Delivery:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeDelivery()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Request:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeRequest()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *JobResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeJobResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Document:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeDocument()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	}
+	return &Refusal{Word: "wrong_type"}
 }
 
 // refusals is in the order two of them are chosen between.

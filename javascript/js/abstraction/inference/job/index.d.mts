@@ -51,6 +51,15 @@ export interface JobResult {
   model: string;
 }
 
+// JsonRecords maps each record name toJson and fromJson take to its type.
+export interface JsonRecords {
+  ImageRequest: ImageRequest;
+  Delivery: Delivery;
+  Request: Request;
+  JobResult: JobResult;
+  Document: Document;
+}
+
 export type Mode = (typeof Mode)[keyof typeof Mode];
 export declare const Mode: Readonly<{ Generate: "generate"; Edit: "edit" }>;
 
@@ -93,6 +102,8 @@ export declare function encode(v: Document): Uint8Array;
 
 export declare const executionGuarantees: readonly ["abstraction.inference/recoverable-upstream@1"];
 
+export declare const fromJson: <K extends keyof JsonRecords>(kind: K, data: Uint8Array) => JsonRecords[K];
+
 export declare const kinds: readonly ["inference"];
 
 export declare function newDelivery(): Delivery;
@@ -104,5 +115,7 @@ export declare function newImageRequest(): ImageRequest;
 export declare function newJobResult(): JobResult;
 
 export declare function newRequest(): Request;
+
+export declare const toJson: <K extends keyof JsonRecords>(kind: K, value: JsonRecords[K]) => Uint8Array;
 
 export {};

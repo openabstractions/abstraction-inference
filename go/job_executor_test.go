@@ -3,6 +3,8 @@ package inference
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -148,11 +150,13 @@ type durableFixture struct {
 	records           []Record
 	recorded          chan struct{}
 	permitted         bool
+	outputSubjects    []Subject
 	policyUnavailable bool
 	consumer          string
 	// decided holds the peer each rights decision carried.
-	decided []*identity.Peer
-	mu      sync.Mutex
+	decided         []*identity.Peer
+	decidedSubjects []Subject
+	mu              sync.Mutex
 }
 
 func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixture {
@@ -163,12 +167,13 @@ func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixtur
 		return map[string]string{"Authorization": "Bearer listing"}, nil
 	})
 	routes.Survey()
-	fixture := &durableFixture{backend: backend, permitted: true, recorded: make(chan struct{}, 16)}
+	fixture := &durableFixture{backend: backend, permitted: true, outputSubjects: []Subject{caller}, recorded: make(chan struct{}, 16)}
 	provider, err := New(Config{Router: routes,
-		Decide: func(ctx context.Context, _ Subject, _, _ string) (string, error) {
+		Decide: func(ctx context.Context, subject Subject, _, _ string) (string, error) {
 			fixture.mu.Lock()
 			defer fixture.mu.Unlock()
 			fixture.decided = append(fixture.decided, PeerFromContext(ctx))
+			fixture.decidedSubjects = append(fixture.decidedSubjects, subject)
 			if fixture.policyUnavailable {
 				return "", errors.New("rights backend unavailable")
 			}
@@ -186,7 +191,7 @@ func newDurableFixture(t *testing.T, backend *fakeDurableBackend) *durableFixtur
 		PrepareContentWrite: func(_ context.Context, subject Subject, profile, media string, _ int64) (ContentCommitter, ContentOutcome) {
 			// An image batch writes under output:image, a video job's clip
 			// under output:video (INF-S7).
-			if subject != caller || !(profile == OutputImage && media == "image/*" || profile == OutputVideo && media == "video/*") {
+			if !slices.Contains(fixture.outputSubjects, subject) || !(profile == OutputImage && media == "image/*" || profile == OutputVideo && media == "video/*") {
 				return nil, ContentForbidden
 			}
 			return func(_ context.Context, _ string, data []byte) ContentOutcome {
@@ -255,9 +260,6 @@ func TestSubmitterPeersOutliveOnlyTheirWork(t *testing.T) {
 func TestInferenceJobDecidesWithTheSubmittersPeer(t *testing.T) {
 	video := []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
 	fixture := newDurableFixture(t, &fakeDurableBackend{poll: durableJobStatus{State: durableJobSucceeded, Outputs: []durableJobOutput{{Data: video, MediaType: "video/mp4"}}}})
-	fixture.execution.SetOperationSubjectResolver(func(context.Context, string, string, string) (Subject, ContentOutcome) {
-		return caller, ContentResolved
-	})
 	p, err := acceptanceprovider.OpenWithExecutor(t.TempDir(), "owner", boundInferenceExecutor{fixture.execution})
 	if err != nil {
 		t.Fatal(err)
@@ -267,22 +269,61 @@ func TestInferenceJobDecidesWithTheSubmittersPeer(t *testing.T) {
 
 	executable := filepath.Join(t.TempDir(), "caller")
 	subject := acceptanceprovider.AuthenticatedSubject{AccountKind: "posix", Account: caller.Account, Executable: executable, Program: caller.Program}
-	scope, err := acceptanceprovider.LocalSubjectScope(subject.AccountKind, subject.Account, executable)
+	scopeLocal, err := acceptanceprovider.LocalSubjectScope(subject.AccountKind, subject.Account, executable)
 	if err != nil {
 		t.Fatal(err)
 	}
 	peer := &identity.Peer{Platform: "fixture"}
-	remoteSubject := acceptanceprovider.AuthenticatedSubject{AccountKind: "posix", Account: caller.Account, Program: caller.Program}
+	key := strings.Repeat("ab", 32)
+	remoteSubject := acceptanceprovider.AuthenticatedSubject{AccountKind: "posix", Account: caller.Account, Program: "remote:" + key}
+	remoteScope, err := acceptanceprovider.RemoteSubjectScope(remoteSubject.AccountKind, remoteSubject.Account, remoteSubject.Program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteCaller := Subject{Account: remoteSubject.Account, Program: remoteSubject.Program}
+	fixture.outputSubjects = append(fixture.outputSubjects, remoteCaller)
+	fixture.execution.SetOperationSubjectResolver(func(_ context.Context, _, scope, _ string) (Subject, ContentOutcome) {
+		switch scope {
+		case remoteScope:
+			return remoteCaller, ContentResolved
+		case scopeLocal:
+			return caller, ContentResolved
+		default:
+			return Subject{}, ContentForbidden
+		}
+	})
+	remoteBinding := acceptanceprovider.Binding{Scope: remoteScope, Subject: &remoteSubject, Origin: "remote", Evidence: key}
+	for _, name := range []string{"wrong-scope", "local-program", "mismatched-evidence"} {
+		invalid := remoteBinding
+		copySubject := remoteSubject
+		invalid.Subject = &copySubject
+		switch name {
+		case "wrong-scope":
+			invalid.Scope = "remote-scope"
+		case "local-program":
+			copySubject.Program = caller.Program
+		case "mismatched-evidence":
+			invalid.Evidence = strings.Repeat("cd", 32)
+		}
+		refused, err := p.BindBinding(invalid).Submit(durableSubmission(t, p, name, jobwire.ProfileVideo))
+		if err != nil || refused.Outcome != acceptance.AcceptanceOutcomeForbidden || refused.Receipt != nil {
+			t.Fatalf("%s binding was not refused: %+v %v", name, refused, err)
+		}
+	}
+	if fixture.backend.submits != 0 || len(fixture.decided) != 0 {
+		t.Fatal("invalid remote binding reached inference admission or backend")
+	}
 	for _, c := range []struct {
 		name    string
 		binding acceptanceprovider.Binding
 		want    *identity.Peer
 	}{
-		{"native", acceptanceprovider.Binding{Scope: scope, Subject: &subject, Origin: "local", Peer: peer}, peer},
-		{"remote", acceptanceprovider.Binding{Scope: "remote-scope", Subject: &remoteSubject, Origin: "remote", Evidence: strings.Repeat("ab", 32)}, nil},
+		{"native", acceptanceprovider.Binding{Scope: scopeLocal, Subject: &subject, Origin: "local", Peer: peer}, peer},
+		{"remote", remoteBinding, nil},
 	} {
 		fixture.mu.Lock()
 		fixture.decided = nil
+		fixture.decidedSubjects = nil
 		fixture.mu.Unlock()
 		submission := durableSubmission(t, p, c.name, jobwire.ProfileVideo)
 		accepted, err := p.BindBinding(c.binding).Submit(submission)
@@ -312,11 +353,16 @@ func TestInferenceJobDecidesWithTheSubmittersPeer(t *testing.T) {
 		deadline.Stop()
 		fixture.mu.Lock()
 		decided := slices.Clone(fixture.decided)
+		decidedSubjects := slices.Clone(fixture.decidedSubjects)
 		fixture.mu.Unlock()
 		// Admission, the execution's plan and each poll's standing decision
 		// (INF-A6) all decide with the submitter's peer.
 		if len(decided) < 3 || slices.ContainsFunc(decided, func(got *identity.Peer) bool { return got != c.want }) {
 			t.Fatalf("%s: admission, execution and polls decided with peers %v, want %v each", c.name, decided, c.want)
+		}
+		wantSubject := Subject{Account: c.binding.Subject.Account, Program: c.binding.Subject.Program}
+		if len(decidedSubjects) != len(decided) || slices.ContainsFunc(decidedSubjects, func(got Subject) bool { return got != wantSubject }) {
+			t.Fatalf("%s: decisions lost originating subject: %v", c.name, decidedSubjects)
 		}
 		if kept := fixture.execution.submitter(accepted.Receipt.OperationID); kept != nil {
 			t.Fatalf("%s: the finished job still keeps peer %v", c.name, kept)
@@ -454,11 +500,20 @@ func TestInferenceJobSurvivesCallerExitAndDuplicateReturnsReceipt(t *testing.T) 
 	if len(fixture.committed) != 1 || !bytes.Equal(fixture.committed[0], video) {
 		t.Fatalf("committed %q", fixture.committed)
 	}
-	if len(fixture.records) != 1 || fixture.records[0].Outcome != "completed" || fixture.records[0].Operation == "" || fixture.records[0].Account != caller.Account {
+	if len(fixture.records) != 1 || fixture.records[0].Outcome != "completed" || fixture.records[0].Operation == "" || fixture.records[0].Account != caller.Account || fixture.records[0].Placement != wire.ServedPlaceHosted {
 		t.Fatalf("audit records %+v", fixture.records)
 	}
 	if fixture.consumer != ImageContract {
 		t.Fatalf("credential consumer %q", fixture.consumer)
+	}
+}
+
+func TestInferenceJobRecordWithoutSelectedHostKeepsPlacementAbsent(t *testing.T) {
+	var got Record
+	e := &JobExecution{provider: &Provider{cfg: Config{Record: func(r Record) { got = r }}}}
+	e.recordJobAttempt(t.Context(), &job.Record{ID: "op"}, inferenceJobWork{}, inferenceJobPlan{subject: caller}, "cancelled", "", 0)
+	if got.Host != "" || got.Placement != "" {
+		t.Fatal(got)
 	}
 }
 
@@ -1061,5 +1116,198 @@ func TestReplicateDurableImageUsesPerOutputBound(t *testing.T) {
 	request := jobwire.Request{Profile: jobwire.ProfileImageBatch, Image: jobwire.ImageRequest{Count: 1}}
 	if _, err := backend.status(context.Background(), replicatePrediction{ID: "prediction", Status: "succeeded", Output: []string{"https://replicate.delivery/result.png"}}, request); err == nil {
 		t.Fatal("image larger than the per-output bound was accepted")
+	}
+}
+
+// TestInferenceJobAdmissionNamesPendingFirstUseQuestions: a bound submission
+// refused for want of complete and of its output profile names each question
+// the decision point gathered that the lookup reports still pending, after
+// its grant words and in admission order (INF-W11).
+func TestInferenceJobAdmissionNamesPendingFirstUseQuestions(t *testing.T) {
+	fixture := newDurableFixture(t, &fakeDurableBackend{})
+	provider, err := acceptanceprovider.OpenWithExecutor(t.TempDir(), "owner", fixture.execution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission := durableSubmission(t, provider, "first-use", jobwire.ProfileImageBatch)
+	fixture.provider.cfg.Decide = func(ctx context.Context, _ Subject, _, _ string) (string, error) {
+		AskedFrom(ctx).Add("q-complete")
+		return "not_granted", nil
+	}
+	fixture.provider.cfg.PrepareContentWrite = func(ctx context.Context, _ Subject, _, _ string, _ int64) (ContentCommitter, ContentOutcome) {
+		AskedFrom(ctx).Add("q-output")
+		return nil, ContentForbidden
+	}
+	var looked []string
+	pending := map[string]bool{"q-complete": true, "q-output": true}
+	fixture.execution.SetPendingQuestions(func(_ context.Context, subject Subject, ids []string) ([]string, error) {
+		if subject != caller {
+			t.Errorf("lookup subject %+v", subject)
+		}
+		looked = ids
+		var out []string
+		for _, id := range ids {
+			if pending[id] {
+				out = append(out, id)
+			}
+		}
+		return out, nil
+	})
+	check := func(want string) {
+		t.Helper()
+		outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller, nil)
+		if outcome != acceptance.AcceptanceOutcomeForbidden || reason != want {
+			t.Fatalf("admission %s %q, want forbidden %q", outcome, reason, want)
+		}
+	}
+	check("rights:not_granted output:forbidden rights:question_pending:q-complete rights:question_pending:q-output")
+	if !slices.Equal(looked, []string{"q-complete", "q-output"}) {
+		t.Fatalf("looked up %v", looked)
+	}
+	// An answered question is left out.
+	pending["q-complete"] = false
+	check("rights:not_granted output:forbidden rights:question_pending:q-output")
+	// A failed lookup names none.
+	fixture.execution.SetPendingQuestions(func(context.Context, Subject, []string) ([]string, error) {
+		return nil, errors.New("asks book unreadable")
+	})
+	fixture.execution.onError = func(error) {}
+	check("rights:not_granted output:forbidden")
+}
+
+// INF-W11: a credential refused by its rights decision stays forbidden when
+// the refusal names the first-use question it raised.
+func TestInferenceJobAdmissionCredentialQuestionStaysForbidden(t *testing.T) {
+	fixture := newDurableFixture(t, &fakeDurableBackend{})
+	provider, err := acceptanceprovider.OpenWithExecutor(t.TempDir(), "owner", fixture.execution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission := durableSubmission(t, provider, "first-use-credential", jobwire.ProfileImageBatch)
+	fixture.provider.cfg.Decide = func(context.Context, Subject, string, string) (string, error) { return "permitted", nil }
+	fixture.provider.cfg.PrepareContentWrite = func(context.Context, Subject, string, string, int64) (ContentCommitter, ContentOutcome) {
+		return func(context.Context, string, []byte) ContentOutcome { return ContentResolved }, ContentResolved
+	}
+	fixture.provider.cfg.Apply = func(ctx context.Context, _ Subject, _, _, _ string) (map[string]string, string) {
+		AskedFrom(ctx).Add("q-cred")
+		return nil, "not_permitted"
+	}
+	fixture.execution.SetPendingQuestions(func(_ context.Context, _ Subject, ids []string) ([]string, error) { return ids, nil })
+	outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller, nil)
+	if want := "credential:not_permitted rights:question_pending:q-cred"; outcome != acceptance.AcceptanceOutcomeForbidden || reason != want {
+		t.Fatalf("admission %s %q, want forbidden %q", outcome, reason, want)
+	}
+}
+
+// INF-W11: an edit whose input read is refused names the input question with
+// the complete and output questions.
+func TestInferenceJobAdmissionEditInputQuestion(t *testing.T) {
+	fixture := newDurableFixture(t, &fakeDurableBackend{})
+	provider, err := acceptanceprovider.OpenWithExecutor(t.TempDir(), "owner", fixture.execution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := provider.Bind("caller-scope").GetHistoryWindow()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(testPNG)
+	document := &jobwire.Document{Request: &jobwire.Request{Profile: jobwire.ProfileImageBatch, Image: jobwire.ImageRequest{
+		Model: "black-forest-labs/flux-schnell", Mode: jobwire.ModeEdit, Prompt: "snow", Size: "1024x1024", Count: 1,
+		ImageDigest: "sha256:" + hex.EncodeToString(sum[:]), ImageMediaType: "image/png",
+		Guarantees: []jobwire.RequestGuarantee{jobwire.RequestGuaranteeHostedAllowed}, Credential: "replicate", Extensions: map[string]string{},
+	}}}
+	submission := acceptance.Submission{Identity: acceptance.RequestIdentity{Key: "first-use-edit", HistoryEpoch: history.HistoryEpoch}, Kind: InferenceJobKind,
+		Spec: jobwire.Encode(document), RequiredGuarantees: []string{RecoverableUpstreamGuarantee}}
+	// Replicate generates only; an OpenAI-compatible host edits.
+	fixture.provider.cfg.Router.Hosts()[0].Wire = router.WireOpenAICompatible
+	fixture.provider.cfg.Decide = func(ctx context.Context, _ Subject, _, _ string) (string, error) {
+		AskedFrom(ctx).Add("q-complete")
+		return "not_granted", nil
+	}
+	fixture.provider.cfg.ResolveContent = func(context.Context, Subject, string, int64) ([]byte, ContentOutcome) {
+		return nil, ContentForbidden
+	}
+	fixture.provider.cfg.AskInput = func(ctx context.Context, _ Subject, _ string) { AskedFrom(ctx).Add("q-input") }
+	fixture.provider.cfg.PrepareContentWrite = func(ctx context.Context, _ Subject, _, _ string, _ int64) (ContentCommitter, ContentOutcome) {
+		AskedFrom(ctx).Add("q-output")
+		return nil, ContentForbidden
+	}
+	fixture.execution.SetPendingQuestions(func(_ context.Context, _ Subject, ids []string) ([]string, error) { return ids, nil })
+	outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller, nil)
+	want := "rights:not_granted content:read:forbidden output:forbidden rights:question_pending:q-complete rights:question_pending:q-input rights:question_pending:q-output"
+	if outcome != acceptance.AcceptanceOutcomeForbidden || reason != want {
+		t.Fatalf("admission %s %q, want forbidden %q", outcome, reason, want)
+	}
+}
+
+// TestInferenceJobQuestionsOnlyAdmissionAnswersQuestionsOnly: questions-only
+// admission (job JOB-A16) decides the same grants and answers the ids of the
+// questions still pending about the caller, in order. A job whose grants all
+// hold stops before the credential, which is never applied, and its
+// credential question and word never appear. A request admission refuses as
+// invalid asks nothing, and a failed lookup names none.
+func TestInferenceJobQuestionsOnlyAdmissionAnswersQuestionsOnly(t *testing.T) {
+	fixture := newDurableFixture(t, &fakeDurableBackend{})
+	provider, err := acceptanceprovider.OpenWithExecutor(t.TempDir(), "owner", fixture.execution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission := durableSubmission(t, provider, "questions-only", jobwire.ProfileImageBatch)
+	granted := false
+	decided := 0
+	fixture.provider.cfg.Decide = func(ctx context.Context, _ Subject, _, _ string) (string, error) {
+		decided++
+		if granted {
+			return "permitted", nil
+		}
+		AskedFrom(ctx).Add("q-complete")
+		return "not_granted", nil
+	}
+	fixture.provider.cfg.PrepareContentWrite = func(ctx context.Context, _ Subject, _, _ string, _ int64) (ContentCommitter, ContentOutcome) {
+		if granted {
+			return func(context.Context, string, []byte) ContentOutcome { return ContentResolved }, ContentResolved
+		}
+		AskedFrom(ctx).Add("q-output")
+		return nil, ContentForbidden
+	}
+	applied := false
+	fixture.provider.cfg.Apply = func(ctx context.Context, _ Subject, _, _, _ string) (map[string]string, string) {
+		applied = true
+		AskedFrom(ctx).Add("q-cred")
+		return nil, "not_permitted"
+	}
+	fixture.execution.SetPendingQuestions(func(_ context.Context, subject Subject, ids []string) ([]string, error) {
+		if subject != caller {
+			t.Errorf("lookup subject %+v", subject)
+		}
+		return ids, nil
+	})
+	questions := func(spec []byte, required []string) []string {
+		return fixture.execution.AdmissionQuestionsForSubject("unmapped-scope", submission.Kind, spec, required, caller, nil)
+	}
+	if got := questions(submission.Spec, []string{RecoverableUpstreamGuarantee}); !slices.Equal(got, []string{"q-complete", "q-output"}) {
+		t.Fatalf("questions %v", got)
+	}
+	granted = true
+	if got := questions(submission.Spec, []string{RecoverableUpstreamGuarantee}); len(got) != 0 || applied {
+		t.Fatalf("granted job named %v (credential applied %v)", got, applied)
+	}
+	if outcome, reason := fixture.execution.CheckAdmissionForSubject("unmapped-scope", submission.Kind, submission.Spec, []string{RecoverableUpstreamGuarantee}, caller, nil); outcome != acceptance.AcceptanceOutcomeForbidden || !strings.HasPrefix(reason, "credential:not_permitted") {
+		t.Fatalf("full admission %s %q", outcome, reason)
+	}
+	granted, decided = false, 0
+	if got := questions([]byte("not a job"), []string{RecoverableUpstreamGuarantee}); len(got) != 0 || decided != 0 {
+		t.Fatalf("an invalid request asked %v (decided %d)", got, decided)
+	}
+	if got := questions(submission.Spec, nil); len(got) != 0 || decided != 0 {
+		t.Fatalf("a missing guarantee asked %v (decided %d)", got, decided)
+	}
+	fixture.execution.SetPendingQuestions(func(context.Context, Subject, []string) ([]string, error) {
+		return nil, errors.New("asks book unreadable")
+	})
+	fixture.execution.onError = func(error) {}
+	if got := questions(submission.Spec, []string{RecoverableUpstreamGuarantee}); len(got) != 0 {
+		t.Fatalf("a failed lookup named %v", got)
 	}
 }

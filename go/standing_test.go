@@ -2,10 +2,13 @@ package inference
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
@@ -13,6 +16,120 @@ import (
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 	router "github.com/openabstractions/abstraction-router/go"
 )
+
+type standingAuthorityKey struct{}
+
+func TestRecheckCheckedPreservesUnavailableAndReportsDeadline(t *testing.T) {
+	for _, deadline := range []bool{false, true} {
+		t.Run(fmt.Sprint(deadline), func(t *testing.T) {
+			unavailable := errors.New("cannot read standing decision")
+			p := &Provider{ops: map[string]*operation{}, cfg: Config{Standing: func(ctx context.Context, _ Subject, _, _ string) (string, error) {
+				if deadline {
+					<-ctx.Done()
+					return "rights:denied", nil
+				}
+				return "", unavailable
+			}}}
+			op := newOperation("live", caller, &router.Host{Name: "owned"}, "model", "", 1, time.Now())
+			op.cancel = func() {}
+			p.ops[op.id] = op
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+			defer cancel()
+			err := p.RecheckChecked(ctx)
+			if err == nil || deadline && !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("checked result: %v", err)
+			}
+			if op.stopped() != "" {
+				t.Fatal("uncertain decision stopped operation")
+			}
+			p.cfg.Standing = func(context.Context, Subject, string, string) (string, error) { return "rights:denied", nil }
+			if err := p.RecheckChecked(t.Context()); err != nil || op.stopped() != "rights:denied" {
+				t.Fatalf("refusal not settled: %q %v", op.stopped(), err)
+			}
+		})
+	}
+}
+
+func TestRemoteOperationStandingRetainsValuesAndCurrentCancellation(t *testing.T) {
+	p := &Provider{}
+	ingress, cancelIngress := context.WithCancel(WithRemote(context.WithValue(context.Background(), standingAuthorityKey{}, "original"), "peer", "tls"))
+	op := newOperation("owned", caller, &router.Host{Name: "owned"}, "model", "", 1, time.Now())
+	p.bindOperation(ingress, op)
+	cancelIngress()
+	current, cancelCurrent := context.WithDeadline(context.WithValue(context.Background(), standingAuthorityKey{}, "foreign"), time.Now().Add(time.Hour))
+	defer cancelCurrent()
+	standing := op.standingContext(current)
+	if standing.Value(standingAuthorityKey{}) != "original" || standing.Err() != nil || standing.Done() != current.Done() {
+		t.Fatal("ingress lifetime or foreign authority retained")
+	}
+	got, ok := standing.Deadline()
+	want, wantOK := current.Deadline()
+	if !ok || !wantOK || !got.Equal(want) {
+		t.Fatal("current deadline lost")
+	}
+	cancelCurrent()
+	if standing.Err() != context.Canceled {
+		t.Fatal("current cancellation lost")
+	}
+	legacy := newOperation("legacy", caller, op.host, "model", "", 1, time.Now())
+	p.bindOperation(WithRemote(context.Background(), "peer", "tls"), legacy)
+	if legacy.standingContext(current).Value(standingAuthorityKey{}) != nil {
+		t.Fatal("legacy operation borrowed current authority")
+	}
+}
+
+func TestRemoteRecheckDoesNotShareDistinctOperationAuthorities(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		t.Run(fmt.Sprint(remote), func(t *testing.T) {
+			calls := map[string]int{}
+			p := &Provider{ops: map[string]*operation{}, cfg: Config{Standing: func(ctx context.Context, _ Subject, _, _ string) (string, error) {
+				value, _ := ctx.Value(standingAuthorityKey{}).(string)
+				calls[value]++
+				if value == "minimum-two" {
+					return "rights:unavailable", nil
+				}
+				return "", nil
+			}}}
+			for _, value := range []string{"minimum-one", "minimum-two"} {
+				op := newOperation(value, caller, &router.Host{Name: "same"}, "model", "", 1, time.Now())
+				op.cancel = func() {}
+				ctx := context.Background()
+				if remote {
+					ctx = WithRemote(context.WithValue(ctx, standingAuthorityKey{}, value), "peer", "tls")
+				}
+				p.bindOperation(ctx, op)
+				p.ops[value] = op
+			}
+			p.Recheck(context.Background())
+			if remote {
+				if calls["minimum-one"] != 1 || calls["minimum-two"] != 1 || p.ops["minimum-one"].stopped() != "" || p.ops["minimum-two"].stopped() != "rights:unavailable" {
+					t.Fatalf("remote decisions=%v", calls)
+				}
+			} else if calls[""] != 1 {
+				t.Fatalf("local dedup changed: %v", calls)
+			}
+		})
+	}
+}
+
+func TestRemoteStandingOfUsesCurrentEvaluationContext(t *testing.T) {
+	p := &Provider{}
+	op := newOperation("owned", caller, &router.Host{Name: "owned"}, "model", "", 1, time.Now())
+	ingress, cancel := context.WithCancel(WithRemote(context.WithValue(context.Background(), standingAuthorityKey{}, "authority"), "peer", "tls"))
+	p.bindOperation(ingress, op)
+	cancel()
+	current, stop := context.WithCancel(context.Background())
+	stop()
+	p.cfg.Standing = func(ctx context.Context, _ Subject, _, _ string) (string, error) {
+		if ctx.Err() != context.Canceled || ctx.Done() != current.Done() || ctx.Value(standingAuthorityKey{}) != "authority" {
+			t.Fatal("standing used ingress lifecycle")
+		}
+		return "", nil
+	}
+	if _, err := p.standingOf(current, op); err == nil {
+		t.Fatal("canceled recheck accepted")
+	}
+}
 
 // INF-A6: a live session is decided again for each input. After its rule is
 // revoked the next Append reads closed, nothing more reaches the upstream

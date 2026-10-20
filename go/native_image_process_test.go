@@ -63,10 +63,14 @@ func TestNativeImageProviderChild(t *testing.T) {
 	}
 	leaf, err := inference.New(inference.Config{Router: router.New(engineHost), ImageEngine: processImageEngine{}, ImageEngineHost: engineHost,
 		Decide: func(context.Context, inference.Subject, string, string) (string, error) {
+			return "permitted", nil
+		},
+		// Count the one admission boundary, independently of standing decisions.
+		Admit: func(context.Context, *router.Host, string) (string, bool) {
 			countFile := os.Getenv("OA_IMAGE_PROCESS_COUNT")
 			f, err := os.OpenFile(countFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 			if err != nil {
-				return "", err
+				return err.Error(), false
 			}
 			_, err = f.WriteString("start\n")
 			if err == nil {
@@ -76,12 +80,12 @@ func TestNativeImageProviderChild(t *testing.T) {
 				err = closeErr
 			}
 			if err != nil {
-				return "", err
+				return err.Error(), false
 			}
 			if os.Getenv("OA_IMAGE_PROCESS_MODE") == "crash-on-start" {
 				os.Exit(42)
 			}
-			return "permitted", nil
+			return "", true
 		},
 		Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
 			return nil, "not_permitted"
@@ -120,15 +124,26 @@ func TestNativeImageProviderChild(t *testing.T) {
 type imageProcess struct {
 	endpoint, root, count string
 	cmd                   *exec.Cmd
-	stderr                bytes.Buffer
 }
 
 func startImageProcess(t *testing.T, mode string) *imageProcess {
 	t.Helper()
 	root := t.TempDir()
-	endpoint := filepath.Join(t.TempDir(), "native-image.sock")
+	var endpoint string
 	if runtime.GOOS == "windows" {
 		endpoint = fmt.Sprintf(`\\.\pipe\oa-image-child-%d`, time.Now().UnixNano())
+	} else {
+		// The listener requires an account-private parent and a short socket path.
+		dir, err := os.MkdirTemp("", "oa-image-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Error(err)
+			}
+		})
+		endpoint = filepath.Join(dir, "native-image.sock")
 	}
 	count := filepath.Join(t.TempDir(), "starts.txt")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -136,12 +151,12 @@ func startImageProcess(t *testing.T, mode string) *imageProcess {
 	cmd.Env = append(os.Environ(), "OA_IMAGE_PROCESS_CHILD=1", "OA_IMAGE_PROCESS_ENDPOINT="+endpoint, "OA_IMAGE_PROCESS_ROOT="+root,
 		"OA_IMAGE_PROCESS_RECORDS="+filepath.Join(t.TempDir(), "uploads.json"), "OA_IMAGE_PROCESS_COUNT="+count, "OA_IMAGE_PROCESS_MODE="+mode)
 	p := &imageProcess{endpoint: endpoint, root: root, count: count, cmd: cmd}
-	cmd.Stderr = &p.stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
 		t.Fatal(err)
 	}
+	cmd.Stderr = cmd.Stdout
 	if err := cmd.Start(); err != nil {
 		cancel()
 		t.Fatal(err)
@@ -153,22 +168,26 @@ func startImageProcess(t *testing.T, mode string) *imageProcess {
 		}
 		_ = cmd.Wait()
 	})
-	ready := make(chan string, 1)
+	ready := make(chan error, 1)
 	go func() {
 		scan := bufio.NewScanner(stdout)
-		if scan.Scan() {
-			ready <- scan.Text()
-		} else {
-			ready <- ""
+		var output strings.Builder
+		for scan.Scan() {
+			if scan.Text() == "OA_IMAGE_PROCESS_READY" {
+				ready <- nil
+				return
+			}
+			output.WriteString(scan.Text() + "\n")
 		}
+		ready <- fmt.Errorf("child output before readiness: %s (scanner: %v)", output.String(), scan.Err())
 	}()
 	select {
-	case line := <-ready:
-		if line != "OA_IMAGE_PROCESS_READY" {
-			t.Fatalf("child readiness %q: %s", line, p.stderr.String())
+	case err := <-ready:
+		if err != nil {
+			t.Fatal(err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatalf("child readiness timed out: %s", p.stderr.String())
+		t.Fatal("child readiness timed out")
 	}
 	return p
 }

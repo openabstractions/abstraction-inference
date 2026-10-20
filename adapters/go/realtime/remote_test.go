@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
 	"net/http"
@@ -23,14 +24,15 @@ import (
 	"testing"
 	"time"
 
-	websocket "github.com/openabstractions/abstraction-inference/adapters/go/transportws"
 	identityremote "github.com/openabstractions/abstraction-identity/remote"
 	"github.com/openabstractions/abstraction-inference/adapters/go/realtime"
+	websocket "github.com/openabstractions/abstraction-inference/adapters/go/transportws"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	infservice "github.com/openabstractions/abstraction-inference/go/service"
 	router "github.com/openabstractions/abstraction-router/go"
 	routerwire "github.com/openabstractions/abstraction-router/go/abstraction/router"
+	routerservice "github.com/openabstractions/abstraction-router/go/service"
 )
 
 type remoteLiveFixture struct {
@@ -114,7 +116,12 @@ func newRemoteLiveFixture(t *testing.T) *remoteLiveFixture {
 	remoteRoutes := router.New(router.NewHosted("voice", upstream.URL, router.WireOpenAIRealtime, "remote-key"))
 	remoteRoutes.UseCredentials(func(context.Context, string, string, string) (map[string]string, error) { return nil, nil })
 	remoteRoutes.Survey()
-	remoteSubject := inference.Subject{Account: "trusted-runtime", Program: "/services/openabstractions"}
+	serverTLS, clientTLS := remoteLiveTLS(t)
+	clientCertificate, err := x509.ParseCertificate(clientTLS.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteSubject := inference.Subject{Account: "trusted-runtime", Program: fmt.Sprintf("remote:%x", sha256.Sum256(clientCertificate.RawSubjectPublicKeyInfo))}
 	remoteProvider, err := inference.New(inference.Config{
 		Router: remoteRoutes, HTTP: upstream.Client(), LiveDialer: realtime.Dial, SurveyAge: time.Hour, Idle: 5 * time.Second, Ceilings: remoteCeilings,
 		Decide: func(_ context.Context, subject inference.Subject, action, resource string) (string, error) {
@@ -159,19 +166,19 @@ func newRemoteLiveFixture(t *testing.T) *remoteLiveFixture {
 	f.remote = remoteProvider
 	t.Cleanup(func() { _ = remoteProvider.Close() })
 
-	serverTLS, clientTLS := remoteLiveTLS(t)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	remoteCtx, stopRemote := context.WithCancel(context.Background())
 	remoteDone := make(chan error, 1)
-	remoteHandler := infservice.RemoteHandler(remoteProvider, remoteRoutes, func(_ context.Context, peer identityremote.Peer) (inference.Subject, string, error) {
-		f.handlerCalls.Add(1)
-		if peer.Key == ([32]byte{}) {
-			return inference.Subject{}, "", errors.New("missing authenticated peer")
-		}
-		return remoteSubject, "local-runtime", nil
+	remoteHandler := infservice.RemoteHandler(remoteProvider, remoteRoutes, infservice.RemoteConfig{
+		Account: "trusted-runtime", Admit: remoteTestPin(t, clientTLS),
+		Domain: func(context.Context, identityremote.Peer) (string, error) {
+			f.handlerCalls.Add(1)
+			return "local-runtime", nil
+		},
+		RouterPolicy: func(context.Context, routerservice.RemoteCaller, string, string) error { return nil },
 	})
 	handler := func(ctx context.Context, peer identityremote.Peer, frame []byte) ([]byte, error) {
 		reply, err := remoteHandler(ctx, peer, frame)
@@ -185,7 +192,7 @@ func newRemoteLiveFixture(t *testing.T) *remoteLiveFixture {
 		return reply, err
 	}
 	go func() {
-		remoteDone <- (identityremote.Server{TLS: serverTLS, Handler: handler, Timeout: 30 * time.Second, MaxFrame: 8 << 20}).Serve(remoteCtx, listener)
+		remoteDone <- (identityremote.Server{TLS: serverTLS, Admit: remoteTestPin(t, clientTLS), Handler: handler, Timeout: 30 * time.Second, MaxFrame: 8 << 20}).Serve(remoteCtx, listener)
 	}()
 	t.Cleanup(func() {
 		stopRemote()
@@ -197,7 +204,7 @@ func newRemoteLiveFixture(t *testing.T) *remoteLiveFixture {
 	// A mismatched server name must fail before the authenticated handler runs.
 	wrongTLS := clientTLS.Clone()
 	wrongTLS.ServerName = "other-runtime.test"
-	wrongHost, err := router.NewRemote("wrong", listener.Addr().String(), wrongTLS, "remote-key")
+	wrongHost, err := router.NewRemote("wrong", listener.Addr().String(), wrongTLS, "remote-key", remoteTestPin(t, serverTLS))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +216,7 @@ func newRemoteLiveFixture(t *testing.T) *remoteLiveFixture {
 		t.Fatal("wrong target identity reached the remote handler")
 	}
 
-	remoteHost, err := router.NewRemote("lab", listener.Addr().String(), clientTLS, "remote-key")
+	remoteHost, err := router.NewRemote("lab", listener.Addr().String(), clientTLS, "remote-key", remoteTestPin(t, serverTLS))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,4 +462,20 @@ func remoteLiveTLS(t *testing.T) (*tls.Config, *tls.Config) {
 func digestBytes(data []byte) string {
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// remoteTestPin admits exactly the isolated fixture certificate's leaf key.
+func remoteTestPin(t *testing.T, config *tls.Config) func(identityremote.Peer) error {
+	t.Helper()
+	cert, err := x509.ParseCertificate(config.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return func(peer identityremote.Peer) error {
+		if peer.Key != key {
+			return identityremote.ErrTrust
+		}
+		return nil
+	}
 }

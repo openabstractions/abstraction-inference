@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -122,6 +123,7 @@ func TestChatV2CloudListingUnavailableSelectsOllama(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer provider.Close()
+	records := collectRecords(provider)
 	got := provider.StartV2(context.Background(), caller, selectionRequest())
 	if got.Outcome != wire.StartOutcomeAccepted || got.Host != "ollama" || got.Model != "local-model" || got.PreferredModel != "cloud-model" ||
 		got.SelectionReason == nil || *got.SelectionReason != wire.SelectionReasonPreferredRouteUnavailable {
@@ -131,6 +133,36 @@ func TestChatV2CloudListingUnavailableSelectsOllama(t *testing.T) {
 	if reply.Host != "ollama" || reply.Model != "local-model" || cloudPosts.Load() != 0 || ollamaPosts.Load() != 1 {
 		t.Fatalf("actual route: reply %+v, cloud posts %d, ollama posts %d", reply, cloudPosts.Load(), ollamaPosts.Load())
 	}
+	// F20: the ended record names the route that ran, the preferred model and
+	// the preferred host known unavailable.
+	record := records.wait(t, 1)[0]
+	if r := record; r.Operation != got.Operation || r.Outcome != "completed" || r.Host != "ollama" || r.Model != "local-model" ||
+		r.Preferred != "cloud-model" || r.PreferredHost != "cloud" || r.Selection != "preferred_route_unavailable" || r.Placement != wire.ServedPlaceLocal {
+		t.Fatalf("fallback record: %+v", r)
+	}
+	journal, err := OpenJournal(filepath.Join(t.TempDir(), "audit.jsonl"), 4, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Append(record); err != nil {
+		t.Fatal(err)
+	}
+	page := journal.Requests(0, 64)
+	if page.Outcome != wire.AuditOutcomePage || len(page.Entries) != 1 {
+		t.Fatal(page)
+	}
+	entry := page.Entries[0]
+	if entry.PreferredModel != "cloud-model" || len(entry.UnavailableHosts) != 1 || entry.UnavailableHosts[0] != "cloud" || entry.Selection != "preferred_route_unavailable" || entry.Placement == nil || *entry.Placement != wire.ServedPlaceLocal {
+		t.Fatal(entry)
+	}
+	provider.cfg.ResolveSelectionV2 = func(context.Context, Subject, string) (wire.SelectionPolicyV2, bool, error) {
+		return wire.SelectionPolicyV2{Name: "offline", Candidates: []wire.SelectionCandidateV2{{Model: "local-model", Placement: wire.CandidatePlacementLocal}}}, true, nil
+	}
+	got = provider.StartV2WithGuarantees(context.Background(), caller, selectionRequest(), []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly})
+	if got.Outcome != wire.StartOutcomeAccepted || got.Host != "ollama" {
+		t.Fatalf("local caller restriction: %+v", got)
+	}
+	drain(t, provider, caller, got.Operation)
 }
 
 func TestChatV2NeverFallsBackOnCredentialOrUnknownListing(t *testing.T) {

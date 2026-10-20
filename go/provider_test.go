@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,9 +18,106 @@ import (
 	"testing"
 	"time"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
 )
+
+func TestEngineUnverifiedReasonUsesEligibleSnapshot(t *testing.T) {
+	for _, mode := range []string{"unverified", "remote placement", "different binding", "different modality", "transport outage", "unrelated filtered host", "verified route"} {
+		t.Run(mode, func(t *testing.T) {
+			host := router.LMStudio("http://127.0.0.1:1")
+			host.Name, host.BindingID = "visible", "binding"
+			ctx := t.Context()
+			if mode == "remote placement" {
+				ctx = WithExecutionPlacement(ctx, ExecutionRemote)
+			}
+			if mode == "different binding" {
+				ctx = WithExecutionBinding(ctx, ExecutionBinding{Host: "other", BindingID: "other"})
+			}
+			if mode == "different modality" || mode == "unrelated filtered host" {
+				host.Profiles = []string{router.ProfileEmbed}
+			}
+			hosts := []*router.Host{host}
+			if mode == "unrelated filtered host" {
+				other := router.LMStudio("http://127.0.0.1:2")
+				other.Name = "other"
+				hosts = append(hosts, other)
+			}
+			transport := imageRoundTrip(func(req *http.Request) (*http.Response, error) {
+				if mode == "verified route" {
+					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"fixture-chat:1b","type":"llm","state":"not-loaded"}]}`))}, nil
+				}
+				if mode == "transport outage" || req.URL.Port() == "2" {
+					return nil, &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("offline")}
+				}
+				return nil, identity.ErrNotProven
+			})
+			p, err := New(Config{Router: router.NewWithHTTPClient(&http.Client{Transport: transport}, hosts...),
+				Decide: func(context.Context, Subject, string, string) (string, error) {
+					t.Fatal("route-only control reached rights")
+					return "unavailable", nil
+				},
+				Apply: func(context.Context, Subject, string, string, string) (map[string]string, string) {
+					t.Fatal("route-only control reached credentials")
+					return nil, "unavailable"
+				}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer p.Close()
+			picked, _, reason := p.pick(ctx, "fixture-chat:1b", nil, "", router.ProfileChat)
+			if mode == "verified route" {
+				if picked != host || reason != "" {
+					t.Fatalf("verified route: %v %s", picked, reason)
+				}
+			} else if mode == "unverified" {
+				if picked != nil || reason != "engine:unverified:visible" {
+					t.Fatalf("unverified route: %v %s", picked, reason)
+				}
+				_, _, reason, unavailable := p.pickCandidate(ctx, wire.SelectionCandidateV2{Model: "fixture-chat:1b", Provider: host.Name, Placement: wire.CandidatePlacementLocal}, router.ProfileChat, false)
+				if reason != "engine:unverified:visible" || len(unavailable) != 0 {
+					t.Fatalf("unverified proof granted fallback: %s %v", reason, unavailable)
+				}
+			} else if picked != nil || strings.HasPrefix(reason, "engine:") || strings.Contains(reason, "visible") {
+				t.Fatalf("unrelated or filtered cause escaped: %v %s", picked, reason)
+			}
+		})
+	}
+}
+
+func TestEngineUnverifiedRefusalRecordsUnavailableHost(t *testing.T) {
+	journal, err := OpenJournal(filepath.Join(t.TempDir(), "audit.jsonl"), 8, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := router.LMStudio("http://127.0.0.1:1")
+	p, err := New(Config{Router: router.NewWithHTTPClient(&http.Client{Transport: refusingTransport{err: identity.ErrNotProven}}, host),
+		Decide: func(context.Context, Subject, string, string) (string, error) {
+			t.Fatal("unverified engine reached rights")
+			return "unavailable", nil
+		},
+		Apply: func(context.Context, Subject, string, string, string) (map[string]string, string) {
+			t.Fatal("unverified engine reached credentials")
+			return nil, "unavailable"
+		},
+		Record: func(record Record) {
+			if err := journal.Append(record); err != nil {
+				t.Error(err)
+			}
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	request := wire.Request{Model: "fixture-chat:1b", Messages: []wire.Message{{Role: wire.RoleUser, Parts: []wire.Part{{Kind: wire.PartKindText, Text: "hello"}}}}}
+	admission := p.Start(t.Context(), caller, request)
+	page := journal.Requests(0, 8)
+	if admission.Outcome != wire.StartOutcomeNoHost || admission.Reason != "engine:unverified:lmstudio" ||
+		page.Outcome != wire.AuditOutcomePage || len(page.Entries) != 1 || len(page.Entries[0].UnavailableHosts) != 1 || page.Entries[0].UnavailableHosts[0] != "lmstudio" {
+		t.Fatalf("refused engine request: %+v %+v", admission, page)
+	}
+}
 
 const secret = "sk-or-UPSTREAM-FIXTURE-5e2b91"
 
@@ -35,6 +133,8 @@ type upstream struct {
 	log    []logged
 	// chunks is the text each streamed reply carries, one event per chunk.
 	chunks []string
+	// reasoning is streamed as reasoning_content events before chunks.
+	reasoning []string
 	// usage reported at the end of each reply.
 	input, output int64
 	cost          string
@@ -173,6 +273,10 @@ func (u *upstream) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, u.chatBody)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/chat/completions":
 		w.Header().Set("Content-Type", "text/event-stream")
+		for _, c := range u.reasoning {
+			raw, _ := json.Marshal(c)
+			send("", `{"choices":[{"delta":{"content":null,"reasoning_content":`+string(raw)+`}}]}`)
+		}
 		for i, c := range u.chunks {
 			raw, _ := json.Marshal(c)
 			send("", `{"choices":[{"delta":{"content":`+string(raw)+`}}]}`)
@@ -207,6 +311,15 @@ func (u *upstream) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/messages":
 		w.Header().Set("Content-Type", "text/event-stream")
 		send("message_start", fmt.Sprintf(`{"type":"message_start","message":{"usage":{"input_tokens":%d,"output_tokens":1}}}`, u.input))
+		// reasoning is sent as a thinking block at index 1 before the text.
+		if len(u.reasoning) > 0 {
+			send("content_block_start", `{"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":""}}`)
+			for _, c := range u.reasoning {
+				raw, _ := json.Marshal(c)
+				send("content_block_delta", `{"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":`+string(raw)+`}}`)
+			}
+			send("content_block_stop", `{"type":"content_block_stop","index":1}`)
+		}
 		send("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
 		for i, c := range u.chunks {
 			raw, _ := json.Marshal(c)
@@ -362,7 +475,7 @@ func setup(t *testing.T, kind string, tune func(*Config)) *fixture {
 	})
 	r.Survey()
 	f.policy.rules[caller.Program+" "+ActionComplete+" host:"+name] = "permitted"
-	cfg := Config{Router: r, Decide: f.policy.decide, Apply: f.applier.apply, SurveyAge: time.Hour, Idle: 2 * time.Second,
+	cfg := Config{ChatLogicalOwner: "fixture-job-owner", Router: r, Decide: f.policy.decide, Apply: f.applier.apply, SurveyAge: time.Hour, Idle: 2 * time.Second,
 		Record: func(rec Record) {
 			f.mu.Lock()
 			f.records = append(f.records, rec)
@@ -574,7 +687,7 @@ func TestASpentCeilingRefusesBeforeTheRequest(t *testing.T) {
 		t.Fatalf("first admission %+v", a)
 	}
 	_, reply, _ := drain(t, f.provider, caller, a.Operation)
-	if reply.Cost == nil || reply.Cost.Micros != 1234 {
+	if reply.Cost == nil || reply.Cost.Micros != 1235 {
 		t.Fatalf("cost %+v", reply.Cost)
 	}
 	posts := len(f.up.posts())
@@ -593,8 +706,11 @@ func TestASpentCeilingRefusesBeforeTheRequest(t *testing.T) {
 	if unit, over := reopened.Exceeded("openrouter"); !over || unit != "tokens" {
 		t.Fatalf("counts did not survive a restart: %s %v", unit, over)
 	}
+	if _, tokens, micros := reopened.Spend("openrouter"); tokens != 10 || micros != 1235 {
+		t.Fatalf("rounded spend did not survive a restart: tokens=%d micros=%d", tokens, micros)
+	}
 	records := f.waitLogged(t, 2)
-	if last := records[len(records)-1]; last.Ceiling != "tokens 10/10 micros 1234/5000000" {
+	if last := records[len(records)-1]; last.Ceiling != "tokens 10/10 micros 1235/5000000" {
 		t.Fatalf("ceiling state %q", last.Ceiling)
 	}
 }
@@ -664,6 +780,7 @@ func TestCallerExitClosesTheUpstreamWithinBudget(t *testing.T) {
 	idle := 400 * time.Millisecond
 	f := setup(t, router.WireOpenAICompatible, func(c *Config) { c.Idle = idle })
 	f.up.hold = true
+	f.up.interval = time.Hour
 	a := f.provider.Start(context.Background(), caller, hostedRequest("openrouter"))
 	if a.Outcome != wire.StartOutcomeAccepted || a.IdleMs != idle.Milliseconds() {
 		t.Fatalf("admission %+v", a)
@@ -672,7 +789,15 @@ func TestCallerExitClosesTheUpstreamWithinBudget(t *testing.T) {
 	if len(page.Deltas) != 1 {
 		t.Fatalf("first page %+v", page)
 	}
-	// The caller is gone: nothing observes from here.
+	// The caller reads what has arrived, then exits in the middle of its
+	// next Observe: its connection closes, and nothing observes from here.
+	cursor := page.Next
+	for page = f.provider.Observe(context.Background(), caller, a.Operation, cursor, 256, 65536, 200); len(page.Deltas) > 0; page = f.provider.Observe(context.Background(), caller, a.Operation, cursor, 256, 65536, 200) {
+		cursor = page.Next
+	}
+	gone, exit := context.WithCancel(context.Background())
+	go func() { time.Sleep(50 * time.Millisecond); exit() }()
+	f.provider.Observe(gone, caller, a.Operation, cursor, 256, 65536, 5000)
 	lastObserve := time.Now()
 	select {
 	case closed := <-f.up.closed:
@@ -809,7 +934,7 @@ func TestIdleCandidateIsRecheckedBeforeCancellation(t *testing.T) {
 	default:
 	}
 
-	op.observeEnd(now)
+	op.observeEnd(now, false)
 	if !op.stopIdle(now.Add(idle), idle) {
 		t.Fatal("an unobserved operation was not cancelled after its idle budget")
 	}
@@ -931,6 +1056,20 @@ func TestGuaranteesAndCredentialsSelectHosts(t *testing.T) {
 	other := hostedRequest("someone-else")
 	if a := f.provider.Start(context.Background(), caller, other); a.Outcome != wire.StartOutcomeNoHost {
 		t.Fatalf("another credential name: %+v", a)
+	}
+	// A request naming no credential reaches a credentialed hosted server
+	// only from a boundary that set the declared credential (the gateway
+	// window's placeholder key, INF-W5); a wire request cannot.
+	if a := f.provider.Start(context.Background(), caller, hostedRequest("")); a.Outcome != wire.StartOutcomeNoHost {
+		t.Fatalf("no credential name: %+v", a)
+	}
+	declared := hostedRequest("")
+	declaredCtx := WithDeclaredCredential(context.Background())
+	if a := f.provider.Start(declaredCtx, Subject{Account: caller.Account, Program: `C:\apps\other.exe`}, declared); a.Outcome != wire.StartOutcomeNotPermitted || a.Reason != "rights:not_granted" {
+		t.Fatalf("declared credential for a program without complete: %+v", a)
+	}
+	if records := f.logged(); len(records) == 0 || records[len(records)-1].Credential != "openrouter" {
+		t.Fatalf("the declared credential's refusal names no credential: %+v", records)
 	}
 	both := hostedRequest("openrouter")
 	both.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly, wire.RequestGuaranteeHostedAllowed}

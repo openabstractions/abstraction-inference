@@ -1,6 +1,7 @@
 package inference
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -15,6 +16,81 @@ import (
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 	router "github.com/openabstractions/abstraction-router/go"
 )
+
+// A reopened application discovers the original identity through the job
+// owner's inventory. Its observation and cancellation bindings carry no local
+// request record and never submit another video.
+func TestNativeVideoJobReopenedCallerKeepsProgressAndControlsOriginalWork(t *testing.T) {
+	for _, cancelWork := range []bool{false, true} {
+		t.Run(map[bool]string{false: "complete", true: "cancel"}[cancelWork], func(t *testing.T) {
+			fake := &fakeVideoProvider{manual: true, script: []wire.VideoObservation{{Status: wire.VideoStateGenerating, Step: 2, Steps: 5}}}
+			v := newVideoRuntime(t, serveFakeVideoProvider(t, fake), nil)
+			submission, accepted := v.submit(t, "comfyui-video-reopen", jobwire.ImageRequest{Mode: jobwire.ModeGenerate, Extensions: map[string]string{}})
+			v.run(t)
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				observed, err := v.jobs.BindOperations("caller-scope").ObserveWork(submission.Identity)
+				if err == nil && observed.Snapshot != nil && observed.Snapshot.Progress.Done == 2 && observed.Snapshot.Progress.Total == 5 {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("progress %+v %v", observed, err)
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			v.stop()
+			v.restart(t)
+			inventory := v.jobs.BindInventory("caller-scope")
+			t.Cleanup(func() { _ = v.jobs.CloseInventory() })
+			page, err := inventory.ListWork("", 64)
+			if err != nil || page.Outcome != acceptance.InventoryOutcomePage || !page.Complete || len(page.Snapshots) != 1 {
+				t.Fatalf("reopened inventory %+v %v", page, err)
+			}
+			retained := page.Snapshots[0]
+			if retained.Receipt.Identity != submission.Identity || retained.Receipt.OperationID != accepted.Receipt.OperationID || retained.Progress.Done != 2 || retained.Progress.Total != 5 {
+				t.Fatalf("reopened snapshot %+v", retained)
+			}
+			if cancelWork {
+				cancelled, err := v.jobs.Bind("caller-scope").CancelWork(retained.Receipt.Identity)
+				if err != nil || cancelled.Outcome != acceptance.CancellationOutcomeRequested {
+					t.Fatalf("cancel %+v %v", cancelled, err)
+				}
+			} else {
+				fake.mu.Lock()
+				fake.stage = len(fake.script)
+				fake.mu.Unlock()
+			}
+			final := v.waitVideo(t, retained.Receipt.Identity)
+			want := acceptance.WorkStateComplete
+			if cancelWork {
+				want = acceptance.WorkStateCancelled
+			}
+			if final.State != want {
+				t.Fatalf("final %+v", final)
+			}
+			assertOneOperation(t, fake, 1, 1, retained.Receipt.OperationID)
+			if !cancelWork {
+				read, err := v.jobs.BindOperations("caller-scope").ReadResult(retained.Receipt.Identity, 0, 65536)
+				if err != nil || read.Chunk == nil || read.Chunk.Receipt.Identity != retained.Receipt.Identity {
+					t.Fatalf("result %+v %v", read, err)
+				}
+				document, err := jobwire.Decode(read.Chunk.Data)
+				if err != nil || document.Result == nil || document.Result.Host != "video-provider" || document.Result.Model != testVideoModel || len(document.Result.Deliveries) != 1 {
+					t.Fatalf("document %+v %v", document, err)
+				}
+				sum := sha256.Sum256(testWebM)
+				if document.Result.Deliveries[0].Digest != "sha256:"+hex.EncodeToString(sum[:]) {
+					t.Fatalf("delivery %+v", document.Result.Deliveries[0])
+				}
+				v.mu.Lock()
+				defer v.mu.Unlock()
+				if len(v.committed) != 1 || !bytes.Equal(v.committed[0], testWebM) {
+					t.Fatalf("committed %q", v.committed)
+				}
+			}
+		})
+	}
+}
 
 func testFrame() ([]byte, string) {
 	frame := append([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), make([]byte, 128)...)

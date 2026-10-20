@@ -35,7 +35,7 @@ const (
 )
 
 // Convert decodes a contract mask and returns it in form, with its width and
-// height. The caller bounds the mask's header first (sdcpp.CheckImageInput),
+// height. The caller bounds the mask's header first (mediationcontent.CheckImageInput),
 // so decoding allocates at most that bound's pixels.
 func Convert(form Form, data []byte) ([]byte, int, int, error) {
 	if form != Alpha && form != Luminance {

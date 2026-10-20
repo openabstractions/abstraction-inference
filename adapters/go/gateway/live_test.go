@@ -35,6 +35,12 @@ type liveGatewayProvider struct {
 	reason string
 	// idleMS is the wait budget the preflight reports to the window.
 	idleMS int64
+	// startRefuse, when set, is what StartLive answers with reason
+	// startReason, after adding startAsked to the call's first-use
+	// collector.
+	startRefuse wire.StartOutcome
+	startReason string
+	startAsked  []string
 }
 
 func (p *liveGatewayProvider) PreflightLive(_ context.Context, subject inference.Subject, request wire.LiveRequest) wire.Admission {
@@ -58,11 +64,18 @@ func (*liveGatewayProvider) Observe(context.Context, inference.Subject, string, 
 func (*liveGatewayProvider) Cancel(inference.Subject, string) wire.Cancellation {
 	return wire.Cancellation{Outcome: wire.CancelOutcomeUnknown}
 }
-func (p *liveGatewayProvider) StartLive(_ context.Context, subject inference.Subject, request wire.LiveRequest) wire.Admission {
+func (p *liveGatewayProvider) StartLive(ctx context.Context, subject inference.Subject, request wire.LiveRequest) wire.Admission {
 	p.mu.Lock()
 	p.subject, p.request = subject, request
+	refuse, reason, asked := p.startRefuse, p.startReason, p.startAsked
 	p.mu.Unlock()
 	p.starts.Add(1)
+	if refuse != 0 {
+		for _, id := range asked {
+			inference.AskedFrom(ctx).Add(id)
+		}
+		return wire.Admission{Outcome: refuse, Reason: reason}
+	}
 	return wire.Admission{Outcome: wire.StartOutcomeAccepted, Operation: "live-operation"}
 }
 func (p *liveGatewayProvider) AppendLive(_ context.Context, _ inference.Subject, _ string, sequence int64, audio []byte) wire.LiveInputResult {
@@ -143,7 +156,18 @@ func newLiveGatewayFixture(t *testing.T) *liveGatewayFixture {
 				return Grant{}, KeyWrongProgram
 			}
 			return Grant{Credential: "hosted-live"}, KeyVerified
-		}, OnError: func(err error) { t.Log(err) }})
+		},
+		// Every question but "answered" is still pending.
+		Pending: func(_ context.Context, _ inference.Subject, ids []string) []string {
+			var pending []string
+			for _, id := range ids {
+				if id != "answered" {
+					pending = append(pending, id)
+				}
+			}
+			return pending
+		},
+		OnError: func(err error) { t.Log(err) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,6 +358,41 @@ func TestRealtimeGatewayBindsTheSessionToTheConnectionModel(t *testing.T) {
 	assertLiveType(t, readLiveEvent(t, conn), "error")
 	if f.provider.starts.Load() != 0 {
 		t.Fatal("a second model reached native StartLive")
+	}
+}
+
+// A StartLive refused on the upgraded socket, for the credential's use after
+// the preflight admitted complete, is one error event whose message names
+// each first-use question the start raised that is still pending (INF-W8,
+// INF-W11), and then the close. A refusal that raised none names none.
+func TestRealtimeGatewayStartRefusalNamesItsPendingQuestions(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		asked   []string
+		message string
+	}{
+		{"pending", []string{"q-apply", "answered"}, "not_permitted: rights:not_granted rights:question_pending:q-apply"},
+		{"none", nil, "not_permitted: rights:not_granted"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newLiveGatewayFixture(t)
+			f.provider.startRefuse, f.provider.startReason, f.provider.startAsked = wire.StartOutcomeNotPermitted, "rights:not_granted", c.asked
+			conn := f.dial(t)
+			defer conn.CloseNow()
+			assertLiveType(t, readLiveEvent(t, conn), "session.created")
+			writeLiveEvent(t, conn, validLiveSession())
+			event := readLiveEvent(t, conn)
+			assertLiveType(t, event, "error")
+			refused, _ := event["error"].(map[string]any)
+			if refused["code"] != "not_permitted" || refused["message"] != c.message {
+				t.Fatalf("error event %#v, want not_permitted %q", event, c.message)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if _, _, err := conn.Read(ctx); err == nil {
+				t.Fatal("the refused session stayed open")
+			}
+		})
 	}
 }
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,6 +25,91 @@ import (
 )
 
 const secret = "sk-SERVICE-FIXTURE-0d44"
+
+func TestNativeAdmissionNilAwaitKeepsImmediateRefusal(t *testing.T) {
+	r := &receiver{ctx: context.Background(), host: &Host{}}
+	attempts := 0
+	reason := "rights:not_granted"
+	err := r.awaitAdmission(inference.Subject{}, "", nil, func(context.Context) (string, *string) {
+		attempts++
+		return "not_permitted", &reason
+	})
+	if err != nil || attempts != 1 {
+		t.Fatalf("nil hook: attempts=%d err=%v", attempts, err)
+	}
+}
+
+func TestNativeAdmissionRetriesOnlyPermissionPreflights(t *testing.T) {
+	for _, v := range []struct {
+		outcome, reason string
+		eligible        bool
+	}{
+		{"not_permitted", "rights:not_granted content:read:forbidden output:forbidden", true},
+		{"not_permitted", "credential:not_permitted:fixture", true},
+		{"not_permitted", "credential:not_permitted", true},
+		{"forbidden", "output:forbidden", true},
+		{"accepted", "rights:not_granted", false},
+		{"unavailable", "rights:not_granted", false},
+		{"not_permitted", "rights:denied", false},
+		{"forbidden", "caller", false},
+		{"not_permitted", "rights:not_granted upstream:forbidden", false},
+		{"exhausted", "capacity", false},
+		{"not_permitted", "rights:not_granted rights:question_pending:q1", true},
+		{"not_permitted", "rights:question_pending:q1", false},
+		{"not_permitted", "rights:not_granted rights:question_pending:", false},
+	} {
+		if got := pendingPermissionRefusal(v.outcome, v.reason); got != v.eligible {
+			t.Errorf("%s/%s: retry=%v", v.outcome, v.reason, got)
+		}
+	}
+}
+
+func TestNativeQuestionHookFailureIsUnavailable(t *testing.T) {
+	if err := identity.CanEver(listen.Program); err != nil || runtime.GOOS == "darwin" {
+		t.Skip("Program proof unavailable")
+	}
+	upstream, auth, mu := fakeUpstream(t, false)
+	routes := router.New(router.NewHosted("openrouter", upstream.URL, router.WireOpenAICompatible, "openrouter"))
+	routes.UseCredentials(func(context.Context, string, string, string) (map[string]string, error) { return nil, nil })
+	provider, err := inference.New(inference.Config{Router: routes,
+		Decide: func(ctx context.Context, _ inference.Subject, _, _ string) (string, error) {
+			if inference.AskedFrom(ctx) == nil {
+				t.Error("hook admission omitted collector")
+			}
+			inference.AskedFrom(ctx).Add("fixture-question")
+			return "not_granted", nil
+		}, Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
+			t.Error("refused preflight applied credential")
+			return nil, "not_permitted"
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := endpointFor(t)
+	host, err := Listen(endpoint, provider)
+	if err != nil {
+		provider.Close()
+		t.Fatal(err)
+	}
+	waits := make(chan struct{}, 2)
+	host.AwaitQuestions = func(context.Context, inference.Subject, []string) (bool, error) {
+		waits <- struct{}{}
+		return true, errors.New("fixture wait unavailable")
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- host.Serve(ctx) }()
+	defer func() { stop(); <-done; provider.Close() }()
+	v, err := wire.NewChatClient(listen.FrameClient{Endpoint: endpoint, Timeout: 3 * time.Second}).Start(request())
+	if err != nil || v.Outcome != wire.StartOutcomeUnavailable || v.Reason != "admission:unavailable" || len(waits) != 1 {
+		t.Fatalf("failed wait: %+v %v waits=%d", v, err, len(waits))
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(*auth) != 0 {
+		t.Fatal("failed wait reached upstream")
+	}
+}
 
 func endpointFor(t *testing.T) string {
 	t.Helper()
@@ -181,6 +267,66 @@ func TestChatV2SharesCallerBoundOperationRegistry(t *testing.T) {
 	}
 }
 
+func TestCallerGuaranteesOverNativeIPC(t *testing.T) {
+	if err := identity.CanEver(listen.Program); err != nil || runtime.GOOS == "darwin" {
+		t.Skip("Program proof unavailable")
+	}
+	cloud := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("hosted effect") }))
+	defer cloud.Close()
+	routes := router.New(router.NewHosted("cloud", cloud.URL, router.WireOpenAICompatible, "cloudcred"))
+	routes.UseCredentials(func(context.Context, string, string, string) (map[string]string, error) {
+		t.Error("survey credentials")
+		return nil, nil
+	})
+	p, err := inference.New(inference.Config{Router: routes,
+		ResolveSelectionV2: func(_ context.Context, subject inference.Subject, name string) (wire.SelectionPolicyV2, bool, error) {
+			if subject.Account == "" || subject.Program == "" {
+				t.Error("unbound caller")
+			}
+			return wire.SelectionPolicyV2{Name: name, Candidates: []wire.SelectionCandidateV2{{Model: "cloud-model", Placement: wire.CandidatePlacementHosted, Credential: "cloudcred"}, {Model: "local-model", Placement: wire.CandidatePlacementLocal}}}, true, nil
+		},
+		Decide: func(context.Context, inference.Subject, string, string) (string, error) {
+			t.Error("admission")
+			return "permitted", nil
+		},
+		Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
+			t.Error("credential")
+			return nil, "applied"
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	endpoint := endpointFor(t)
+	h, err := Listen(endpoint, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.Serve(ctx) }()
+	defer func() { stop(); <-done }()
+	transport := listen.FrameClient{Endpoint: endpoint, Timeout: 3 * time.Second}
+	chat := wire.NewChatV2Client(transport)
+	image := wire.NewImageV2Client(transport)
+	q := wire.RequestV2{Target: wire.Target{SelectionPolicy: "default"}, Content: wire.RequestContent{Messages: request().Messages, Guarantees: []wire.RequestGuarantee{}}}
+	iq := wire.ImageRequestV2{Target: q.Target, Content: wire.ImageRequestContent{Mode: wire.ImageModeGenerate, Prompt: "image", Size: "1024x1024", Count: 1, Guarantees: []wire.RequestGuarantee{}}}
+	local := []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
+	a, err := chat.StartWithGuarantees(q, local)
+	if err != nil || a.Reason != "selection:placement" || a.Outcome != wire.StartOutcomeNoHost {
+		t.Fatalf("chat: %+v %v", a, err)
+	}
+	a, err = image.StartWithGuarantees(iq, local)
+	if err != nil || a.Reason != "selection:placement" || a.Outcome != wire.StartOutcomeNoHost {
+		t.Fatalf("image: %+v %v", a, err)
+	}
+	q.Content.Guarantees = local
+	a, err = chat.Start(q)
+	if err != nil || a.Reason != "selection:override" {
+		t.Fatalf("old Start: %+v %v", a, err)
+	}
+}
+
 func TestStartObserveOverIPCBindsTheCallingProgram(t *testing.T) {
 	s, auth, mu := serve(t, false)
 	a, err := s.client.Start(request())
@@ -224,6 +370,64 @@ func TestStartObserveOverIPCBindsTheCallingProgram(t *testing.T) {
 	}
 	if page, err := s.client.Observe("op-unknown", 0, 1, 1024, 0); err != nil || page.Outcome != wire.PageOutcomeUnknown {
 		t.Fatalf("unknown operation %+v %v", page, err)
+	}
+}
+
+func TestNativeAdmissionCancellationEndsItsDecision(t *testing.T) {
+	if err := identity.CanEver(listen.Program); err != nil || runtime.GOOS == "darwin" {
+		t.Skip("Program proof unavailable")
+	}
+	upstream, _, _ := fakeUpstream(t, false)
+	routes := router.New(router.NewHosted("openrouter", upstream.URL, router.WireOpenAICompatible, "openrouter"))
+	routes.UseCredentials(func(context.Context, string, string, string) (map[string]string, error) { return nil, nil })
+	entered, ended, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	provider, err := inference.New(inference.Config{Router: routes,
+		Decide: func(ctx context.Context, _ inference.Subject, _, _ string) (string, error) {
+			if inference.AskedFrom(ctx) != nil {
+				t.Error("nil native hook changed legacy collector context")
+			}
+			close(entered)
+			select {
+			case <-ctx.Done():
+			case <-release:
+			}
+			close(ended)
+			return "not_granted", nil
+		},
+		Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
+			return nil, "not_permitted"
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := endpointFor(t)
+	host, err := Listen(endpoint, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- host.Serve(ctx) }()
+	defer func() { close(release); stop(); <-done; provider.Close() }()
+	call, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := wire.NewChatClient(listen.FrameClient{Endpoint: endpoint, Timeout: 5 * time.Second}.WithContext(call))
+	returned := make(chan error, 1)
+	go func() { _, err := client.Start(request()); returned <- err }()
+	select {
+	case <-entered:
+	case err := <-returned:
+		t.Fatalf("Start missed its decision: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Start did not enter its decision")
+	}
+	cancel()
+	<-returned
+	select {
+	case <-ended:
+	case <-time.After(time.Second):
+		t.Fatal("caller cancellation left native admission deciding")
 	}
 }
 
@@ -280,7 +484,9 @@ func TestNativeProviderIsMediatedAndForcedToLocalExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	downstreamEndpoint := endpointFor(t)
-	downstreamHost, err := ListenLeaf(downstreamEndpoint, downstream, inference.ExecutionAny)
+	// A production leaf designates its runtime, which forwards the caller's
+	// cache partition.
+	downstreamHost, err := ListenDesignatedLeaf(downstreamEndpoint, downstream, inference.ExecutionAny, program)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +591,7 @@ func TestTwoRuntimeNativeCycleStopsAtTheLeafBeforeCallingBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bHost, err := ListenLeaf(bEndpoint, bProvider, inference.ExecutionLocal)
+	bHost, err := ListenDesignatedLeaf(bEndpoint, bProvider, inference.ExecutionLocal, program)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +628,9 @@ func TestTwoRuntimeNativeCycleStopsAtTheLeafBeforeCallingBack(t *testing.T) {
 	}
 	decisionsMu.Lock()
 	defer decisionsMu.Unlock()
-	if aDecisions != 1 || bDecisions != 0 {
+	// The originating provider repeats authority before admission effects and
+	// after readiness. The leaf makes no decision and never calls back.
+	if aDecisions != 3 || bDecisions != 0 {
 		t.Fatalf("cycle decisions runtime-a=%d runtime-b=%d", aDecisions, bDecisions)
 	}
 }
@@ -552,21 +760,24 @@ func TestADisconnectMidObserveStopsTheWaitAndIdleClosesTheUpstream(t *testing.T)
 	if took := time.Since(started); took > 2*time.Second {
 		t.Fatalf("the abandoned observe took %v", took)
 	}
-	// Nobody observes now: the operation idles out and its end reads cancelled.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		page, err := s.client.Observe(a.Operation, first.Next, 256, 65536, 0)
+	// Nobody observes now: past idle_ms (1 s) the operation is cancelled, and
+	// a later read finds its end cancelled. A read that returned a page
+	// before that would hold the operation as a handle (INF-Q3).
+	time.Sleep(1500 * time.Millisecond)
+	cursor := first.Next
+	for attempts := 0; attempts < 8; attempts++ {
+		page, err := s.client.Observe(a.Operation, cursor, 256, 65536, 2000)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if page.AtEnd {
 			end := page.Deltas[len(page.Deltas)-1].End
-			if end.Outcome != wire.ReplyOutcomeCancelled {
+			if end.Outcome != wire.ReplyOutcomeCancelled || end.Reason != "idle" {
 				t.Fatalf("end %+v", end)
 			}
 			return
 		}
-		time.Sleep(1500 * time.Millisecond)
+		cursor = page.Next
 	}
 	t.Fatal("the unobserved operation did not end")
 }

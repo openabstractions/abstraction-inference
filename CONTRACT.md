@@ -9,6 +9,56 @@ executor. This file states the obligations a provider meets.
 
 Binds: `inference.thrift`
 
+The source also defines the unpublished `chat@3` final-form window. The
+local application endpoint serves chat@3 beside chat@2 and advertises it once
+trusted composition binds the logical owner. A designated one-hop leaf serves
+it to its runtime relay. The application endpoint is ordinary, unbound and
+local; it retains the shared native caller and admission checks.
+Chat@1/@2 receiving is frozen. Chat@3 separates progress,
+public reasoning and answer blocks; optional usage preserves absence versus zero.
+Its opaque reasoning seal is origin-bound and omitted whole with a typed audit
+reason when incompatible or over-bound; it is never truncated into replay data.
+Accepted-work failure is terminal failed/cause, distinct from authority refusal.
+A non-authority exhausted/unavailable capacity hint is optional, positive and at
+most one day; it grants no permission to retry accepted work or duplicate Start.
+
+`RequestV3.conversation` is an optional caller-local label, 1..128 bytes with no
+control characters. It grants no authority. The service MUST derive its cache
+scope as a CONV-T3 digest of the attested account, attested program and label.
+Slot affinity, persisted cache entries and hosted `prompt_cache_key` MUST share
+that derived scope. An absent label retains the account/program partition
+without chat affinity. Request identities retain Job's acceptance meaning;
+Messages `ChatBinding` retains its separate receiving-route meaning.
+
+The private native cache partition separately binds the attested account and
+program. The original ingress derives it; a designated native leaf accepts its
+reserved extension only through the existing current runtime-peer recheck.
+Missing forwarding evidence starts cold. A paired runtime derives its own
+partition from its attested caller. OA669 preserves the conversation digest and
+keeps audit claims separate. Provider-owned resident hit/miss, closed cause and
+one eviction observation reach the existing operation timing record before
+finalization. The operation ignores late reports and keeps its monotonic prefill
+measurement separate from engine timing claims.
+
+The new identity uses unchanged Job RequestIdentity/HistoryWindow semantics with
+the runtime's already-owned persistent Job logical owner, or a designated
+leaf's compiled declared provider name, with ephemeral epochs. Modelhost's
+logical owner is its declaration's `modelhost` name. Trusted composition binds
+that owner once. Before binding, chat@3 is unavailable before reservation or
+effects. A different owner cannot replace it; restart keeps the same logical
+scope with a fresh volatile epoch. Closing epochs fence unseen keys and retain promised
+replay evidence; restart/expired evidence is unknown, never permission to submit
+again. Private source implements lifecycle folds in all five clients, actual
+loading phase projection, host-visible reasoning with clean history, MCP
+opt-in structured reasoning, receiving-side program accounting and GenAI log
+attribute mapping. Paired-remote, hosted-allowed, mediated and HTTP gateway
+chat@3 remain Not Built, together with host-owned final-request persistence.
+Required features whose capability owner has
+no declaration refuse unsupported before effects; no capability is inferred
+from a model name. Upstream Retry-After maps to the new typed hint without retry.
+The existing [reasoning ticket](../../backlog/reasoning-handling-defect-candidate.md)
+retains their complete accepted bundle and qualification limits.
+
 An application names a model family and the behavior it needs. The runtime
 chooses an allowed local engine such as Ollama or Lemonade, or a hosted
 server such as OpenRouter, then applies the named credential inside the
@@ -16,6 +66,8 @@ service. [README.md](README.md) holds the walkthrough: setup, a worked chat
 call, and the gateway.
 
 ## Reading this page
+
+The conventions every OA contract carries are stated once in [CONVENTIONS.md](https://github.com/openabstractions/abstractions/blob/main/idl/CONVENTIONS.md); a rule here that applies one cites its `CONV-` id.
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
 "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this
@@ -56,8 +108,9 @@ either this release.
 | --- | --- |
 | model server, `server:<name>` | `host:<name>` in stored policy, and `Hosts`, `AddHost`, `RemoveHost`, `HostEntry`, `HostChange`, `HostList`, `HostState` on `operator@1`; the dual reader lands with rights' stored policy, and the `Servers`/`AddServer`/`RemoveServer` rename with `operator@2`, neither here |
 | `inference server add`, `inference server list` | `inference host add`, `inference host list` (CLI, `serve/inference.go`); lands with the Panel and command-line step |
-| modality, `modality:<name>` | `profile:<name>` (rights resource), `host_profiles`, `Config.Admit`'s `profile` argument, `--profiles` (CLI); `chat@2`/`registry@2` land in the plan's second and third releases |
-| request | the `operation` field on `Admission`, `Reply`, `AuditEntry` and elsewhere; `chat@2` |
+| modality, `modality:<name>` | `profile:<name>` (rights resource), `host_profiles`, `Config.Admit`'s `profile` argument, `--profiles` (CLI); `chat@3` (P-J5b with W2-06, Train F) and `registry@2` carry the rename; `chat@2` went to selection targets |
+| request | the `operation` field on [`Admission`](https://openabstractions.github.io/reference.html#concept-inference.operation-admission), `Reply`, `AuditEntry` and elsewhere; `chat@3` (P-J5b with W2-06, Train F) |
+| idempotency key | Job's `RequestIdentity`; its wire spelling stays until the owning service's next version (D57, S13) |
 | budget | `CeilingLimit`, `host.ceiling`, `Ceilings`, and reason `ceiling:<unit>:<credential>`; `budget_exceeded` and `budget.manage` are already this word on the wire and need no table entry |
 | the gateway, gateway key | earlier prose said "gateway window", "window" and "local key"; the wire kind `openabstractions/local-key@1` and the `INF-W` letter stay |
 | hosted server | the upstream vendor behind a hosted model server, for example OpenRouter; the rights resource stays `host:<name>` (row 1 above) |
@@ -65,8 +118,19 @@ either this release.
 
 ## Admission
 
+A waiting or slow call never delays another caller, app, service, channel or
+connection. This includes calls sharing one helper, plugin, connector or IPC
+connection. A connection carries concurrent calls without head-of-line
+blocking. The IPC transport multiplexes requests by id, or the client opens
+one connection per in-flight call. Helpers, plugins and connectors serve tool
+calls concurrently. A call may wait for its
+own reply within the caller's wait_ms. No lock is held across a wait, an
+upstream call, disk or network I/O, or a person's answer. A waiter costs no
+CPU while it waits (WATCH-W3). Admission runs once per wake and per call.
+Per-caller limits bound waits and queue use.
+
 **[INF-A1] Peer binding.** Every call binds the receiving peer by native
-Program proof (kernel user and process, bound path). A peer that cannot be
+[Program](https://openabstractions.github.io/reference.html#concept-identity.listener-program-need) proof (kernel user and process, bound path). A peer that cannot be
 bound, or a peer of another account, reads `forbidden` before the request
 is examined further.
 
@@ -74,7 +138,8 @@ is examined further.
 the first refusal:
 1. argument shape and bounds (`invalid`);
 2. guarantees and model-server selection through the router (`no_host`,
-   reason `router:<verdict>`);
+   reason `router:<verdict>` or `engine:unverified:<host>` when the local
+   engine lacks the native program evidence required by its HTTP transport);
 3. the chosen model server's features and required extensions
    (`unsupported_feature`, reason `feature:<name>` or `extension:<key>`);
 4. the rights decision for `abstraction.inference/complete` on
@@ -86,7 +151,9 @@ the first refusal:
    (`budget_exceeded`, reason `ceiling:<unit>:<credential>`);
 7. the caller's concurrent requests (`exhausted`, reason `capacity`);
 8. for a hosted server, `abstraction.credentials/applier@1` `Apply` with
-   consumer `abstraction.inference/chat@1`, the bound subject, the server's
+   consumer the contract of the call (`abstraction.inference/chat@1`,
+   `embed@1`, `transcription@1`, `speech@1`, `live@1` or `image@1`; an image
+   or video job applies as `image@1`), the bound subject, the server's
    credential name and its lowercase host name (`not_permitted` with
    reason `credential:<outcome>:<name>`; `unavailable` with reason
    `credential:unavailable:<name>`).
@@ -102,11 +169,21 @@ with reason family `lease:<outcome>`, `engine:none` or
 `object:unknown:<store>/<id>` (DECISION.md D87); this page carries no
 refusal word of its own for those causes.
 
+The request record for `engine:unverified:<host>` names the refused model
+server in `unavailable_hosts`. This records the verification refusal and
+grants no fallback or permission to send an upstream request.
+
 **[INF-A3] Guarantees select model servers.** A request without
 `abstraction.inference/hosted-allowed@1` is served only by model servers on
 the receiving machine. A request with it may also be served by a hosted
 model server whose credential name equals `Request.credential`, ranked
-after every resident and would-load local server (router `Pick`). A
+after every resident and would-load local server (router `Pick`). A native
+caller's request on an endpoint that may reach hosted servers and names no
+credential reaches each hosted server under the credential its declaration
+names, as INF-W5's placeholder key does. On this machine, a program without
+its own `complete` rule on a hosted server is decided by its
+`abstraction.credentials/apply` on the server's declared credential, so its
+first use asks the one question about that account. A
 request naming both `local-only@1` and `hosted-allowed@1`, or an unknown
 guarantee, is `invalid`.
 
@@ -180,9 +257,14 @@ abstraction-rights RIGHTS-R23):
   sends nothing, and the job waits as `rights:unavailable` until a sweep
   plans it again (INF-G9);
 - on each committed rights change, before the edit returns, and every five
-  seconds on the provider's own clock (`Provider.Recheck`): each operation
+  seconds on the provider's own clock ([`Provider.Recheck`](https://openabstractions.github.io/reference.html#concept-inference.chat-provider)): each operation
   a rule refuses is stopped, and a decision that cannot be obtained stops
   nothing there.
+
+The additive Go `Provider.RecheckChecked` reports unavailable checks to
+checked rights-change composition while preserving those operations. The
+published void `Recheck` remains compatible and its periodic outage behavior
+is unchanged; cancellation supplies no withdrawal.
 
 A stopped operation ends `cancelled` with the refusal as its reason:
 `rights:<word>` for `complete`, `credential:not_permitted` for the
@@ -271,6 +353,26 @@ a refused read `content:read:forbidden`, as in INF-V1. Go:
 `InputProfileOf`, `InputResource`, `WithInputProfile`, `InputProfileFrom`,
 `Provider.NamedInputs`, `JobExecution.NamedInputs`.
 
+**[INF-V5] Generated output is `tmp`.** Content the runtime publishes as
+generated output (`output:image`, `output:speech`, `output:live`,
+`output:video`) is storage class `tmp` (`abstraction-storage` STO-T1,
+STO-T2). Its lifetime rule holds it while the operation or job that
+published it is retained (INF-Q4), while a request or job that has not
+reached its terminal state names it as input (STO-T7's holders), and while
+an exact-digest write marks it. Afterwards `tmp_max_retention` runs from its
+last publication. Removal takes the bytes and the provenance record
+together and leaves one STO-T6 record with kind `generated-output`. A later
+read is `content:unknown` for a reader an exact-digest rule admits; a reader
+that held it only through generated-output provenance reads
+`content:forbidden`, as for any digest it never made, so a read never shows
+whether the bytes existed. A file
+an agent tool saved for the person is the person's and is outside this
+rule. Until the storage collector exists, the runtime's input retention
+loop runs a generated-output pass at most once an hour
+(`backlog/PICTURES-STORAGE.md` ruling 1). Provenance written before that
+pass has no time; the first pass writes the current time and removes
+nothing.
+
 ## Credentials and spend
 
 **[INF-C1] Applied once per outgoing request.** The service applies a
@@ -280,7 +382,8 @@ are sent once and appear in no reply, delta, log record, error or state
 file.
 
 **[INF-C2] Budget.** A budget belongs to a credential name: tokens per UTC
-day, spend in currency millionths per UTC day, requests per UTC day,
+day, spend per UTC day counted in currency millionths, rounded up for each
+reported cost, requests per UTC day,
 images per UTC day, audio seconds per UTC day, or characters per UTC day,
 each independently optional. The provider enforces every unit a budget
 record configures above zero, at admission, before an upstream request is
@@ -299,10 +402,46 @@ refuses `budget_exceeded` at admission once a count has reached its
 configured budget. A request admitted under the budget runs to its end;
 its reply counts.
 
+The same Ceilings owner additionally keeps a per-native-program budget for a
+credential in its existing persisted usage state. `operator@1.ProgramBudgets`
+reads its settings revision and observed usage under `host.manage`;
+`SetProgramBudget` conditionally writes the required `ProgramBudgetChange`
+request under that same native operator authorization. An absent budget removes
+the configured choice and preserves usage. A present all-zero budget records
+the person's explicit No limit choice. Usage updates preserve the settings
+revision. The native presenter takes the beneficiary from the stored question's
+proven account/program target; upstream text and agent arguments supply none.
+Every implemented charged chat version, embed, image, speech, transcription,
+live and durable image/video job checks the credential and program budgets at
+the same admission owner and accounts only its native bound origin program.
+Accepted durable jobs retain their existing once-only accounting and continue
+their original operation. No unavailable modality is claimed as budget-covered.
+An earlier `operator@1` service's typed `unknown_method` is projected by the native client as
+`unsupported`, confirming no configured budget or write.
+
 **[INF-C3] One audit record.** One log record per ended call and per
 admission refusal: program, model server, model, family, tokens in, tokens
 out, wall time, outcome, reason, credential name and budget state. Records
-carry names, never header values or message content.
+carry names, never header values or message content. A request a named
+selection policy routed also records the preferred model, the host that
+served it or the hosts known unavailable for it, and the selection reason;
+model server and model name the route that ran. Placement is captured from the
+admitted host using the same local, hosted or remote classification as
+`ServedBy`. An entry recorded before a host is selected has no placement.
+
+`operator@1 Requests(cursor,max_entries)` reads these decisions from the same
+journal as `Audit`, under the receiving account's `audit.read` authority. Its
+open `RequestEntry` wraps the unchanged published `AuditEntry` and optionally
+carries `preferred_model`, `unavailable_hosts`, `selection` and `placement`.
+The unavailable hosts are the recorded comma-separated preferred hosts when
+the selection reason is `preferred_route_unavailable`; a successful preferred
+host is not an unavailable host. The page shares Audit's sequence, cursor,
+gap and retention rules. `max_entries` is 1..256. A page exceeding its 1 MiB
+encoded bound or the transport's framed reply bound reads `unavailable` with
+no entries, the requested cursor and `at_end` false. It never trims a page.
+Journal lines written without placement retain its absence. Panel and MCP read
+this same service answer; Panel labels absent placement “Not recorded” and
+does not infer historical execution from present caller facts or current settings.
 
 ## Modalities
 
@@ -394,7 +533,9 @@ preloaded is evaluated for another.
 one.** `Preload` admits in `Start`'s order: argument shape, guarantees and
 model-server selection for modality `chat`, server support, the `complete`
 decision on `server:<name>` for the original bound caller, then the
-provider's model load (INF-A5). A server takes a preload when the provider
+provider's model load (INF-A5). Speculative preload authorization MUST NOT
+admit a first-use question. An ungranted caller receives `not_permitted`
+and no engine is loaded. A server takes a preload when the provider
 sends to it itself and composes a prefix evaluator for it
 (`Config.EvaluatePrefix`), or when it is a declared native provider whose
 declaration lists `abstraction.inference/preload@1` beside `chat@1`
@@ -445,9 +586,9 @@ opaque `operation` id within the provider epoch, and is visible only to
 the account and program that started it. Any other caller reads `unknown`
 for `Observe` and `Cancel`.
 
-**[INF-Q2] Delta paging.** Deltas are numbered from 0 without gaps, and the
+**[INF-Q2] [Delta](https://openabstractions.github.io/reference.html#concept-inference.operation-delta) paging.** Deltas are numbered from 0 without gaps, and the
 last is `end`. `Observe` returns deltas from `cursor`; the newest
-`Admission.retained_deltas` deltas are readable, and an older cursor reads
+[`Admission.retained_deltas`](https://openabstractions.github.io/reference.html#concept-inference.operation-admission) deltas are readable, and an older cursor reads
 `gap` with `next` at the oldest retained sequence. `max_bytes` bounds the
 compact JSON encoding of the returned deltas. `at_end` is true when the
 page holds the end delta or `cursor` is already past it.
@@ -455,9 +596,14 @@ page holds the end delta or `cursor` is already past it.
 **[INF-Q3] Idle cancellation.** A request with no `Observe` in flight and
 none received for `Admission.idle_ms` is cancelled with reason `idle`, and
 its upstream request is closed within one second after that. A caller
-that exits therefore stops spend within `idle_ms` plus one second. A
-caller that disconnects in the middle of an `Observe` stops that wait at
-once.
+that disconnects in the middle of an `Observe` stops that wait at once, and
+its request is cancelled `idle_ms` later. A request whose last `Observe`
+returned its page before the end to a connected caller waits five minutes,
+or `idle_ms` when that is longer, and stays observable at least as long
+after it ends. That caller holds the request as a handle: an agent tool
+answers "working" with it and resumes after the agent's turn. A live
+session keeps `idle_ms`. An image operation a durable job owns has the
+longer `idle_ms` of INF-G5.
 
 **[INF-Q4] Retention.** An ended request stays observable for
 `Admission.retention_ms`, then reads `unknown`. `Cancel` of an ended
@@ -474,6 +620,33 @@ starts a request, observes it to its end and folds the deltas into a
 iteration form and cancels the request when the iteration is abandoned. A
 `Start` refusal is a `Reply` with that outcome and no deltas. Clients
 never retry `Start`.
+
+For unpublished `chat@3`, the five language helpers fold typed events into
+ordered blocks and the terminal `ChatResult`. Progress stays separate from
+content. Answer text includes only text blocks; reasoning, reasoning summaries,
+tool calls and model refusals keep their own kinds. Callers explicitly choose
+whether to retain public reasoning text. Opaque seal bytes, origins and whole-seal
+omission observations remain unchanged. Usage preserves unreported counts and
+reported zero. A completed `ChatResult` with an unknown finish reason displays `other`
+and implies no action; raw pages retain the original word.
+
+The caller persists the idempotency key (`RequestIdentity`) and history epoch before an
+explicit Start. Open sends Start once and retains its admission. Resume accepts
+an existing request handle and cursor without sending Start. Session observation
+and completion preserve that handle, cursor and fold on a wait deadline,
+disconnect, page refusal or gap. Cancellation is explicit. A resumed fold
+contains output observed from its supplied cursor; callers retain the preceding
+fold when they need the complete local transcript. An actual terminal may leave
+partial blocks open; the fold preserves explicit block ends and synthesizes no
+closure. A suffix may start with a block end whose content preceded its cursor.
+Only a received terminal event completes a fold. These helpers create no listener
+or advertisement.
+
+| chat@3 client check | Existing owning checks |
+| --- | --- |
+| Typed progress/content separation, stable block identities and explicit closures, reasoning retention, seals/omissions, usage, finish and served-by | Go `TestChat3ManagedFold`, JavaScript client tests, Python `ManagedChat3.test_fold`, Rust `managed_tests`, C++ managed consumer, using the same `chat3_managed.jsonl` corpus |
+| Retained request/cursor after wait errors and gap; explicit cancellation; unknown admission sends once | Go managed session tests and the same JavaScript/Python/Rust/C++ helper checks |
+| Preserve the policy-mode inline local-only narrowing restriction without claiming Facade service scope protects model placement | Native `TestChat3PolicyLocalOnly*` and generated five-language request codecs; authorization and candidate intersection stay server-owned |
 
 **[INF-Q7] Context overflow.** A model server that refuses a request as
 larger than its context window ends it `refused` with reason
@@ -494,6 +667,83 @@ delivered stay delivered. An engine that exits or closes the stream without
 a terminal event remains `unavailable` with `upstream:stream`, a stream
 error of another kind remains `unavailable` with `upstream:error`, and an
 unreachable server remains `upstream:unreachable`.
+
+**[INF-Q8] Reasoning is never answer text.** A model server's reasoning
+trace (`reasoning_content` or `reasoning` on the OpenAI-compatible wire,
+`thinking` on the Anthropic wire) is never delivered as a text part and
+never sent upstream as message `content`. A reply whose only output was
+reasoning, with no text and no tool call, ends `refused` with reason
+`upstream:reasoning_only`, keeping its usage. `chat@1` has no reasoning
+part; clients drop reasoning they hold rather than send it as text.
+Before it ends so, the service asks a model server on this machine once
+more, on the same conversation with the same output limit and
+`reasoning_effort` `none`, when the caller named no reasoning effort. That
+reply's parts follow the first attempt's under new block numbers, the
+reply's usage and cost add both attempts, and its outcome and reason are
+the reply's: only a second failure ends it failed, under its own reason. A
+hosted server is asked once, with no reasoning parameter of the service's
+own. Modelhost reads `reasoning_effort` `none`, and an output limit below
+twice the family's answer reserve, as thinking off
+(`chat_template_kwargs.enable_thinking` false); every other request to a
+thinking family gets a bounded reasoning budget, the family's default
+effort when it names none.
+
+**[INF-Q9] Reasoning echo.** When an OpenAI-compatible model server
+answers a tool call with a reasoning trace, the service keeps that trace
+for the caller's account and program, the model server, the model and the
+call id, and sends it back byte for byte as `reasoning_content` on the
+assistant message carrying that call when a later request of the same
+caller returns it to the same server and model. A client sends its history
+unchanged and needs no field of its own (`deepseek-reasoner` refuses a
+tool-call turn without the trace). A delta that carries both
+`reasoning_content` and `reasoning` counts `reasoning_content` once. The
+service keeps the latest 1024 traces and at most 32 MiB of them in memory;
+a trace it no longer holds, or one longer than that, is not sent.
+
+**[INF-Q10] Reasoning effort (architect ruling 2026-11-12).** `chat@3`
+`ChatOptions.reasoning` names an effort (`none`, `low`, `medium`, `high`;
+`none` turns thinking off) and an optional `budget`, a token cap on
+reasoning that wins over the effort where the model takes one. The service
+maps it onto the chosen model's own control, read from the model server's
+declaration or the hosted catalogue's entry for the model, and never
+refuses a call for it:
+
+- a llama.cpp model behind modelhost gets `reasoning_effort` and, for a
+  named budget, `reasoning_budget_tokens`; modelhost turns `none` into
+  `chat_template_kwargs.enable_thinking` false and bounds every other effort
+  with the family's engine-profile budget, ending the thinking with its
+  `reasoning_budget_message`;
+- a hosted model whose catalogue entry names `reasoning_effort` gets the
+  provider's own word for the effort, and an effort read as another word is
+  `approximated`. DeepSeek (API docs read 2026-11-12) takes `none`, `low`,
+  `high` and `max`, reads `medium` as `high`, defaults to `high` and has no
+  budget;
+- an Anthropic Messages model whose catalogue entry names thinking budgets
+  gets `thinking.budget_tokens` (`none` disables thinking); a budget that
+  cannot fit below the output limit is `approximated`;
+- every other model gets no reasoning parameter, and the answer says
+  `not_supported`.
+
+`ChatResult.reasoning_applied` reports the effort and budget the answer ran
+with and `support` (`applied`, `approximated`, `not_supported`,
+`overridden`); `budget_support` reports a named budget. A request naming
+nothing reasons at the model's catalogue default: bounded on this machine,
+and a hosted server's own default with no parameter sent. A reply that
+would end `upstream:reasoning_only` gets the one further attempt of INF-Q8
+unless the caller chose reasoning itself.
+
+**[INF-Q11] Native extensions are the pass-through.** A model's own
+reasoning switches travel as `ChatContent.extensions`
+(`llama.cpp/enable_thinking`, `llama.cpp/reasoning_budget`, a host's
+`openai/reasoning_effort` with its own words). One the model takes wins over
+`ChatOptions.reasoning`, which then reads `overridden`. An extension the
+chosen model does not take is dropped and named in
+`ChatResult.dropped_extensions`; one named in `required_extensions` refuses
+the call before upstream bytes as `unsupported` with reason
+`extension:<name>`. The extensions a model takes are its alias's
+`capabilities.extensions` (router ROUTE-D15) and the keys its wire maps for
+every model. A model choice, such as DeepSeek's model names, is
+`ChatTarget.model` and never an extension.
 
 ## Speech
 
@@ -584,9 +834,23 @@ source and remote-runtime declarations are governed by the facade registry
 remote runtime stays here, under "Remote runtimes".
 
 **[INF-H1] Product declarations.** A product declaration is read from the
-product's own record of where it listens, and nothing else. A product
-that recorded nothing declares no model server: its documented default
-address is an installation declaration instead. A malformed record is no
+product's own record of where it listens, and nothing else. The record supplies
+an endpoint candidate. One generic provider-kit observer promotes live model
+servers. On supported loopback endpoints it requires a current same-account
+listener program and a listing through the existing process-bound HTTP client.
+Every response is checked against that process generation; matching before/after
+snapshots alone do not qualify. For known unsupported macOS/IPv6 loopback proof,
+a successful live listing may be promoted with presence explicitly unverified
+and no program claim. Malformed or foreign endpoints and failures of supported
+proof never select that path. Registry readback states the observation's
+verified or unverified presence through its existing reason fields.
+A successful empty listing qualifies. Failed or unreachable candidates create
+no registration. The shared product snapshot expires after 30 seconds; reused
+readings retain their original evidence time. Verified readings require current
+listener process provenance. Explicit operator registrations
+remain listed while offline, and installation declarations retain their own
+activation and readiness rules. A product that recorded nothing declares no model server. A documented default address
+alone MUST NOT create an installation registration for a third-party product. A malformed record is no
 declaration, with a logged reason. No probe opens a connection, scans a
 port or listens for multicast. A product's declaration lists
 `declared_by` as the product's name and shadows the installation's
@@ -641,7 +905,11 @@ inference-facade review finding 8).
 The gateway is the runtime's loopback surface for programs that only know a
 base URL and an API key: OpenAI `POST /v1/chat/completions` and `GET
 /v1/models`, and Anthropic `POST /v1/messages`, with server-sent events on
-both. It is the same provider, rights decision and audit as the native
+both. Where the runtime serves the matching contract it also answers
+`POST /v1/embeddings`, `POST /v1/audio/transcriptions`, `POST
+/v1/audio/speech`, `POST /v1/images/generations`, `POST /v1/images/edits`
+(when content storage is configured) and `GET /v1/realtime`
+(`adapters/go/gateway/window.go`). It is the same provider, rights decision and audit as the native
 route.
 
 **[INF-W1] Listening.** The gateway listens on IPv4 loopback only, and it
@@ -673,10 +941,13 @@ that no longer answers for the program that opened it is refused with
 reason `binding:peer_moved`.
 
 **[INF-W4] Key verification.** The gateway key (`Authorization: Bearer` or
-`x-api-key`) is verified against the credential-manager record of kind
-`openabstractions/local-key@1` in constant time before the body is read. A
-missing, unknown or revoked key is 401; a key issued to another program
-than the bound one is 403 with reason `key:wrong_program`. Refusals set
+`x-api-key`) is read before the body. A missing key is 401. A key in the
+minted gateway-key spelling (`oalk_` and its tag) is verified against the
+credential-manager record of kind `openabstractions/local-key@1` in
+constant time: an unknown, damaged or revoked one is 401, and one issued to
+another program than the bound one is 403 with reason `key:wrong_program`.
+Any other non-empty key passes: desktop clients refuse an empty key field,
+and INF-W2 already bound the program from its connection. Refusals set
 `Connection: close` and read no body.
 
 **[INF-W5] What a key admits.** A key grants nothing by itself. A request
@@ -687,7 +958,18 @@ hosted server, `abstraction.credentials/apply` decide it — with consumer
 `/v1/messages`, `embed@1` for `POST /v1/embeddings`, and `live@1` for `GET
 /v1/realtime` (inference-facade review finding 8). A key issued with a
 credential name adds `hosted-allowed@1` and that name to every request; a
-key without one adds `local-only@1`.
+minted key without one adds `local-only@1`. Any other key adds
+`hosted-allowed@1` to chat and messages requests, which then reach a hosted
+model server under the credential that server's registration names; the
+admission, its audit record and INF-C2's budget carry that name, and
+`abstraction.credentials/apply` for the bound program decides each use.
+Its other routes add `local-only@1`. A wire request cannot ask for the
+credential a server's registration names. `GET /v1/models` lists the model
+names of each model server on which the bound program holds `complete`,
+and of each hosted server naming a credential on which `complete` reads
+`not_granted` while first-use questions are asked, so that a client that
+picks its model from the list reaches the call that asks (INF-W10). A
+listed name grants nothing.
 
 **[INF-W6] Audit route and rung.** Every gateway refusal before admission,
 and every admission refusal and ended request of the gateway, is one
@@ -737,6 +1019,41 @@ refuses an address other than `127.0.0.1:<port>` as `invalid` with reason
 `address`. A setting written whose gateway cannot listen reads
 `unavailable` with reason `listen:<detail>`, and `Gateway` reports the
 same reason in `why`.
+
+**[INF-W10] A call held for its question.** A request on any gateway
+route, including a refusal at the window's upload store, refused `not_permitted` whose refusal admitted, or found pending, a
+first-use question (asks ASK-R2) is held open, with nothing written to the
+client, for at most two minutes. Once the person allows and the permit is
+committed, the request is admitted again with its binding rechecked
+(INF-W3); a refuse, a block, an expired question or the end of the wait
+answers the refusal with its reason (INF-W7), naming each question still
+pending (INF-W11). A held request is admitted
+at most four times, one per question it can raise and the retry after it.
+Each refused admission is its own audit record (INF-W6). The decision
+point names the questions to the window in-process. A revoke removes the program's rule, so its next call reads
+`not_granted`, the question is asked again (asks ASK-R2) and the call is
+held on it like a first call; a Block reads `denied` and is answered at
+once, asking nothing.
+
+**[INF-W11] A refusal names its pending questions.** A refusal whose
+grant words a first-use question can lift (`rights:not_granted`,
+`content:read:forbidden`, `content:write:forbidden`, `output:forbidden`,
+`credential:not_permitted`)
+MUST end with one word `rights:question_pending:<id>` for each question it
+admitted or found that is still pending about the bound caller's own
+program, in admission order. A question about another program, an answered
+or expired one, and a question the caller's route cannot name are left
+out, so `rights:not_granted` without such a word means nothing is waiting:
+no rule, and the person refused recently or no question could be asked. A
+native synchronous admission (`Start`, `Preload`, `Embed`) holds for the
+answer at most `ipc_default_call_budget_ms` less 1.5 seconds in all, since a
+frame carries no client deadline and every generated client's default call
+budget is that constant; an Allow within the hold admits the request again
+as INF-W10 does, and the end of the hold answers the refusal with these
+words. A longer wait is the caller's: it passes the id to asks
+`permission@1` `ObserveQuestion` with its own bound and retries the call
+once after an Allow (asks ASK-A14). The words grant nothing; a client that
+does not know them reads the grant words before them unchanged.
 
 ## Operator
 
@@ -792,7 +1109,29 @@ image@2 already apply for it. `Put` and `DeletePolicy` keep
 `selection.manage`. Another canonical
 absolute executable path requires `selection.manage_for` on the bound
 account, for `Read` as for the edits. Installation grants that action only to configured operator programs.
+`ReadAccountDefault`, `PutAccountDefault` and `DeleteAccountDefault` require
+that same action on the bound native account. They share policy records,
+conditional revisions and capacity with program policies. A named policy uses
+the explicit program policy first and the account default of the same name only
+after proven absence. A generic policy name `oa-<profile>-default`, for one of
+the seven modalities, then uses the account default named for its profile
+(`chat`, the one Setup writes) after the same proven absence, returned under
+the requested name with that record's revision. Store failure, corruption, authorization refusal and an
+invalid or unavailable pinned candidate never cause account-default fallback.
+Raw `Read`, `Put` and `DeletePolicy` keep their program scopes. Explicit model
+requests keep their meaning. Choosing a default grants no host, credential,
+budget or execution permission.
 The target is a policy namespace; it never supplies the requesting identity.
+`ReadEffective(name)` reads only the bound native caller's own effective named
+policy with that same grant-free own-read authority. It shares inference's
+effective-policy owner: the program policy wins, then the same named account
+default applies only on proven absence, then a generic name's profile default.
+Store errors and corrupt selected
+records return unavailable, without a fallback. The returned policy and revision
+describe one store snapshot. Reading performs no activation, reservation,
+inference or grant, and proves no future route, provider-pin validity or
+execution permission. Raw `Read` and privileged `ReadAccountDefault` retain
+their existing scopes and authority.
 The service resolves policies under the observed caller program, including for
 applications whose program was configured before launch or registration.
 
@@ -800,7 +1139,7 @@ Version 2 policies add an optional logical provider declaration name to each
 candidate. The service requires that declaration to exist in the current
 eligible host generation and satisfy the requested profile and placement.
 A missing or stale pin refuses selection without trying a different provider.
-The model remains a router family or alias. Adapter installation configuration
+The model remains a router family or alias. Adapter installation settings
 and provenance own exact binary and model artifact hashes. Pinned and unpinned
 policies retain the same stored JSON format and revision checks. The unpublished
 `selection-operator@1` profile is retired; current discovery and clients use
@@ -822,6 +1161,38 @@ advances only when a route is proven unavailable before admission. An
 ambiguous or attempted provider start, rights refusal, feature refusal,
 credential refusal or budget refusal ends that call without fallback.
 
+Both profiles additionally expose `StartWithGuarantees(request, guarantees)`.
+The separate argument is empty or exactly `local-only`; other values and
+duplicates are invalid. This restriction intersects the request and receiving
+endpoint's restrictions. A local-only call with hosted-allowed intent, a
+credential, or a remote-only endpoint is invalid before effects. Policy content
+still leaves inline guarantees and credential empty. A hosted candidate under
+caller local-only refuses before its survey, credential application or admission;
+this privacy refusal never authorizes another candidate. Empty extra guarantees
+retain `Start` behavior. An unsupported method refuses explicitly and callers
+never retry the request through unrestricted `Start`.
+
+Unpublished chat@3 carries that same caller narrowing in its existing
+`ChatContent.guarantees`: for a policy target the list is empty or contains
+distinct `local_only` and `free_capacity` restrictions; credential remains empty.
+Duplicates, hosted-allowed and every other inline policy guarantee are invalid. The service
+strips this caller restriction from `chat@2` policy content and intersects it
+through the existing `callerGuarantees` / `StartV2WithGuarantees` owner. A hosted
+candidate under local-only refuses before survey, credential or admission and
+never falls back to another candidate. Facade scope selects the service's
+placement and alone proves nothing about model placement. Stored policy and
+live authorization retain their authority. Chat@1/@2 receiving is unchanged.
+
+Chat@3 `free_capacity` (`abstraction.inference/free-capacity@1`) requires the
+serving provider to acquire only currently free capacity through RES-L6
+`AcquireFree`, asking no holder to yield. A held answer refuses admission as
+`unavailable`, reason `resource:held`, before an engine starts. The same
+restriction survives accepted execution preparation, a residency loss and
+native or remote forwarding. A direct provider without enforcement answers
+`unsupported` before engine or inference execution bytes. Existing read-only
+inventory surveys remain discovery. A relay retains the guarantee for its
+serving leaf. No published `RequestGuarantee` member or fallback grants this meaning.
+
 ## Remote runtimes
 
 `chat@1` names no base URL, header, key, endpoint or local path. A request
@@ -836,866 +1207,115 @@ applied header or local pipe proof crosses the network.
 A remote runtime is declared in `abstraction.facade/registry@1` (facade
 FAC-R4). A chat@1 request the router picks for it is delegated: the request
 goes unchanged except for the chosen model name and the extension
-`openabstractions/claimed-program` set to the bound program, its deltas are
+`openabstractions/claimed-program` set to the file base name of the bound
+program as its display name. Remote chat and embed carry no local program path;
+native designated-leaf provenance retains its bound program path. Its deltas are
 relayed, and cancelling it cancels the remote request. Local budgets and the
-local applier are not used. The receiving runtime maps the client
-certificate key to its caller, decides and applies for the subject {mapped
-namespace, its own executable}, and records route `remote`, `domain` the
-namespace and `claim` the claimed program. The delegating runtime records
+local applier are not used. The receiving runtime maps the admitted client
+leaf key through shared identity to `remote:<SPKI SHA-256 hex>`, decides and
+applies for that program under its configured receiving account, and records
+route `remote`, `domain` the display label and `claim` the claimed display name.
+The display values grant no authority. The delegating runtime records
 `domain` the remote host. The receiving runtime answers endpoint@1
-`Describe` over the remote transport with chat@1 and router@1.
+`Describe` over the remote transport with chat@1, embed@1,
+transcription@1, speech@1, image@1, live@1 and, when a required receiving router
+policy is configured, router@1. That policy decides each router action through
+native `DecideFor` for the canonical remote subject before reading or routing
+(`go/service/remote.go`).
 
 The gateway is a loopback surface of one machine and never a remote one: a
 peer on another machine has no socket-owner record here, and INF-W1 keeps
-the listener on 127.0.0.1. A remote operator reaches operator@1 the way it
-reaches chat@1, through the remote transport, where the receiving runtime
-maps the client certificate to its own subject and decides the operator
-actions for it. A gateway key minted on one runtime means nothing to
-another.
+the listener on 127.0.0.1. A gateway key minted on one runtime means nothing
+to another. The general listener offers chat, embed and router views under
+RUN-R9; its selected services remain separate from the retained published remote
+handler's modality roster. Incoming execution is leaf: eligible execution
+stays at the receiving model server, with no further OA inference hop. Held
+by: `go/service/peer_test.go`
+(`TestRemoteServicesKeepsSelectedAndLegacySetsSeparate`) and
+`serve/runtime_remote_test.go` (`TestRemoteRuntimeMarksProviderExecutionLeaf`).
+
+An unanswered remote execution submission ends `unavailable` with reason
+`remote:uncertain` when the application-frame write was attempted or delivery
+is unknown. This includes a lost or undecodable Start reply and a local
+cancellation while that reply is unknown. Positive transport proof that the
+request was never sent keeps `remote:unreachable`; an authoritative service
+refusal retains its outcome and a complete transport caller-proof refusal
+keeps its existing error type rather than uncertainty. This applies to chat, image,
+transcription, speech, live and embedding delegation. `remote:uncertain`
+attributes uncertainty to the OA remote hop; it grants neither
+`recoverable-upstream@1` nor permission to retry or choose another route.
+Selection may still fall back on a known-unavailable listing before dispatch.
+Cancelling an uncertain submission reports `ended` with `reply_outcome`
+`unavailable`, preserving its uncertain outcome rather than claiming that the
+remote execution was cancelled.
 
 ## Engine files
 
-A provider that launches an engine it did not build, such as TheNoise or
-Lemonade and its backends, proves the engine's files at launch and holds them
-unchanged while the engine runs (VISION.md, 2026-10-01). The shared provider
-kit `go/providerhost/enginefiles` implements these rules once, and every such
-provider uses it.
+The requirements are owned by the [canonical owner](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#authenticated-program-files).
+Historical identifiers and this section anchor remain forwarding entrypoints.
 
-**[INF-F1] Full hash.** The provider hashes every file of the engine tree
-against its pinned manifest at install, at the first launch of each provider
-process, and at the launch after any refusal. It refuses a tree that holds a
-file or folder the manifest does not list, lacks a listed file, holds a link
-or other special entry, or holds a file whose size or SHA-256 differs. A
-file or folder the provider cannot open, read or identify, such as one
-another program holds open for writing, refuses the launch as unreadable
-and keeps the system error as its cause. The kit names the two refusals
-apart (`ErrMismatch`, `ErrUnreadable`): a changed tree needs a new install,
-and an unreadable one launches once the file is free. An entry that no
-longer exists is missing.
-
-**[INF-F2] Metadata check.** Every other launch compares each file's ID,
-size, last-write time and change time with a record written after the last
-full hash. The record is bound to the manifest pin, the tree's final path and
-its volume, and lives in the provider's private state. The provider process
-keeps the SHA-256 of the record it wrote. A record it did not write, or any
-extra, missing or changed entry, sends the launch to the full hash. A
-metadata launch trusts the account's own processes not to have set file
-timestamps back: SetFileTime restores a last-write time, and
-SetFileInformationByHandle restores a change time as well. The full hash at
-the first launch of each provider process is the guarantee against such a
-writer.
-
-**[INF-F3] Read-only folders.** At install the provider gives every folder
-of the tree a protected DACL: the account may read, execute and list; SYSTEM
-and Administrators have full control. Each launch checks every folder's DACL
-and refuses a folder with any other. Setup installs a replaced tree again,
-and the kit's `Unlock` returns full control of the folders to the account
-for replacement or removal. A remover of a folder that may hold installed
-trees gives them back first through the kit's `UnlockWithin`, and an
-uninstaller runs the provider's `engine unlock` before the provider's
-program goes.
-
-**[INF-F4] Held files.** A launch opens every file and folder of the tree
-with read sharing only before it checks them. The provider keeps them open
-until the exit of the engine's process tree is confirmed; an unconfirmed exit
-keeps them open. Windows refuses writes, renames and deletes of held files
-during the run. A killed provider's handles close with its process, and its
-successor's first launch hashes in full (INF-F1). The first live run of each
-engine confirms that it opens every tree file with read sharing.
-
-**[INF-F5] What is guaranteed.** On Windows the tree equals the manifest when
-the launch starts, and no file changes while the engine runs. The account
-owns the folders and can change their DACL. The DACL stops ordinary software
-and accidents between runs; the held handles stop a swap during the run.
-Between the first launch of a provider process and a later one, the guarantee
-rests on the metadata check, which trusts the account's own processes not to
-have changed a file and set its timestamps back (INF-F2).
-Outside Windows the kit runs the same full hash and metadata check and keeps
-the files open. There the open descriptors block no write, rename or delete,
-and the kit sets and checks no folder ACL.
-
-**[INF-F6] Install from a pinned archive.** A provider that stages an engine
-tree from a publisher's archive, a ZIP or a gzip-compressed tar, uses the
-kit's `InstallFromArchive`. A tar entry's leading `./` is dropped, and a tar
-link, device or any entry other than a folder or regular file is refused. The
-archive is held with read sharing only (on Windows) and its size and SHA-256
-must equal the pin before any entry is read. Each kept entry is chosen by
-its pinned name, created with `O_EXCL` in a stage folder beside the tree,
-read through a reader bounded by its pinned size, and refused unless its
-size and SHA-256 equal the pin; every other file entry must be one the
-review excludes, and is never read. An entry name that is not a plain
-relative path, or names a Windows device, refuses the install, as does a
-second entry of the same name in any letter case. A provider whose pin is
-the digest of a manifest recorded from the archive (TheNoise) takes every
-file entry and checks that manifest before anything is published; such an
-install replaces no folder. An existing folder that proves against the
-manifest is kept. One that differs from it is refused unless the caller
-asks for replacement; one with an unreadable file (INF-F1) is refused. A
-folder a running engine holds (INF-F4) is refused before its ACL changes.
-Otherwise the stage replaces it, the old folder waits as
-`.previous` until the new tree is installed, and it returns with its
-read-only folder ACL when a rename or the install fails. A `.previous` left
-by a killed replacement refuses the next install. The new tree is then
-installed (INF-F1, INF-F3). One Verifier runs one install of a tree folder
-at a time. The folder is keyed as the filesystem names it (VISION.md L623):
-the part of its path that exists by its final path, with links, junctions
-and 8.3 aliases resolved by the volume, and the folders still to be created
-below it by name, compared as the file system compares names
-(`abstraction-identity` `PlaceKey`), so the key is the same before and after
-the install creates the folder. No case is folded off the volume's rule.
-
-**[INF-F7] Files proved where they lie.** A provider that runs an engine on
-model files kept in a store OA does not own, a person's model folder or
-another application's, proves them in place with the kit's `LaunchPlaced`
-and `CheckPlaced` and copies none (VISION.md, 2026-10-01). Each file is named
-by absolute path, size and SHA-256; a relative path, a file named twice and a
-digest that is not lower-case hex are refused before anything is opened.
-Each file is opened with read sharing only, its size checked, and then
-proved as a tree file is: by its full SHA-256 at the first proof in the
-process and after any change (INF-F1), and by its ID, size, last-write and
-change time against the provider's record otherwise (INF-F2). The files stay
-open until the Hold is released, which a provider does when the engine's
-exit is confirmed (INF-F4). No folder is listed and no ACL is set: other
-files beside a placed one are the store's.
-Every folder on a placed file's path, from the volume's root down, is opened
-before the next is resolved through it, refused when it is a reparse point
-(a junction, symbolic link or mount point), and held without delete sharing
-until the Hold is released, so it cannot be renamed, deleted or replaced by
-a junction. `Hold.Paths` is the final path of each held file
-(`GetFinalPathNameByHandleW` on Windows), and a provider passes the engine
-those paths alone. `CheckPlainPath` refuses a path through a link the same
-way, for a provider choosing among candidate files.
-`HoldDirectory` retains this same namespace lifetime for a mutable control
-folder, while its caller separately proves the folder and record authority.
-The metadata shortcut applies to a placed file only when it passes the
-trusted-in-place check for the owners the provider names with it
-(`trustedpath.CheckFile`, identity ID-D2): a trusted owner owns the file and
-every folder above it, no other principal can change or remove the file or
-delete, rename or re-permission what those folders hold, and no reparse point
-is on the path. The check runs while the path is held. A file that fails it,
-or has no owners named, is hashed in full at every launch; `Hold.Hashed`
-counts the files a launch read.
+- Forwarding citation [INF-F1] Full hash. See the [canonical requirement](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#authenticated-program-files).
+- Forwarding citation [INF-F2] Metadata check. See the [canonical requirement](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#authenticated-program-files).
+- Forwarding citation [INF-F3] Read-only folders. See the [canonical requirement](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#authenticated-program-files).
+- Forwarding citation [INF-F4] Held files. See the [canonical requirement](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#authenticated-program-files).
+- Forwarding citation [INF-F5] What is guaranteed. See the [canonical requirement](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#authenticated-program-files).
+- Forwarding citation [INF-F6] Install from a pinned archive. See the [canonical requirement](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#authenticated-program-files).
+- Forwarding citation [INF-F7] Files proved where they lie. See the [canonical requirement](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#authenticated-program-files).
 
 ## Model memory
 
-A provider host places a model's bytes in memory once and lends them,
-read-only, to each engine it launches (VISION.md, 2026-10-01;
-`research/model-locators/MEMORY-LENDING.md`). The shared provider kit
-`go/providerhost/modelfiles` implements these rules once; it lives beside
-`enginefiles` because the provider host is the process that creates engine
-processes. The section is provider-side data: it never reaches an
-application or a contract field, and it never crosses machines.
+The requirements are owned by the [canonical owner](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
+Historical identifiers and this section anchor remain forwarding entrypoints.
 
-**[INF-MS1] Fill without a file.** `Fill` creates an unnamed,
-pagefile-backed section the provider host owns and places the object's
-bytes in it from one source: a whole file, a STORED region of a container,
-or one DEFLATE stream, decoded with Go's `compress/flate` on one core. A
-stored source is read with positioned reads on at most eight handles,
-unbuffered when its offset is a multiple of 4,096. No source is extracted,
-and the fill creates no file, temporary or otherwise. The whole size is
-charged to commit once, at creation.
-
-**[INF-MS2] Proof.** `Fill` takes the object's digest, `sha256:` and 64
-lower-case hex digits, the digest of its uncompressed bytes that storage
-reports. It hashes every byte it places: the whole object, and each
-16 MiB chunk for later checks. A DEFLATE stream must give exactly the
-object's length and match the member's CRC-32. Bytes whose digest differs
-are `ErrDigest`; a source that cannot give them is `ErrSource`; a cancelled
-fill returns the context's error. Each of these frees the section before
-`Fill` returns. A digest that does not decode as 32 bytes of lower-case hex
-is refused before a section exists.
-
-**[INF-MS3] Read-only.** After the proof the provider host unmaps its
-writable view and replaces its own creating handle with a duplicate holding
-`SECTION_MAP_READ` and `SECTION_QUERY` only, closing the source. From then
-on no writable view of the section exists and no handle in any process can
-map one. The section's descriptor is the protected DACL `D:P(A;;0x5;;;OW)`:
-the owner may query and map for reading, and the OWNER RIGHTS entry takes
-away the owner's implicit `READ_CONTROL` and `WRITE_DAC`. Neither the
-provider host nor an engine of the same account holding its loan can map
-the section for writing, raise a view to read-write, or duplicate a handle
-to map-write or `WRITE_DAC`. The proof made at the fill holds for the
-section's lifetime. Every loan is read-only (VISION 2026-10-01); no
-writable loan exists. The account stays the boundary, as for files: an
-engine can copy its read-only handle into another process of the same
-account, and a process holding `PROCESS_DUP_HANDLE` on the provider host
-can duplicate the host's read-only handle.
-
-**[INF-MS4] Loan.** `Lend` gives one engine an inheritable duplicate of the
-section with `SECTION_MAP_READ` and `SECTION_QUERY` only. The engine
-receives it at launch through supervision's handle list (abstraction-facade
-CONTRACT.md FAC-P1), with the handle value and length on its command line,
-and the provider host closes its copy of the duplicate once the engine has
-started. The loan is a lease that ends when the engine's process tree has
-exited, as supervision confirms it, or when the engine reports that it
-released the section. A loan holds the section until it ends: a caller
-whose engine does not start ends the loan at once with `End`.
-
-**[INF-MS5] Free.** Sections have no warm-residency rule: a section is
-freed when its last loan ends, or when its owner closes it with no loan
-open, and lends nothing afterwards. The end that frees the section closes
-it to new loans in the same step, so a `Lend` racing that end is refused
-with `ErrReleased`. The caller passes `Fill` the release of
-the `abstraction.resource` holding it took for the section's memory, and the
-kit calls it exactly once: when the section is freed, or when `Fill`
-refuses.
-
-**[INF-MS6] Platforms and engines.** The kit is built on Windows. On Linux
-the design is a sealed `memfd` (`F_SEAL_SHRINK`, `F_SEAL_GROW`,
-`F_SEAL_WRITE`, `F_SEAL_SEAL`) that an engine maps, or opens as
-`/proc/self/fd/N`; it is not built, and `Fill` there answers
-`ErrUnsupported`. No engine OA launches reads a model from an inherited
-handle at its pinned version, so the model host declares `file` only
-(abstraction-provider-modelhost CONTRACT.md MODELHOST-L1), and no launch
-lends a section yet.
-
-**[INF-MS7] Span record.** OA's own record of an object is its `sha256:`
-digest, its length and the SHA-256 of each `ChunkSize` span of its bytes,
-made only when OA hashed every byte: by a fill that hashed the whole object
-(INF-MS2, INF-MS8) and by the packer, which hashes the object it packs
-(INF-MP6). The kit's `SpanRecords` keeps one record per digest in a folder
-of the provider host's private state, bound to the span size, and is the
-one place OA reads span digests from before it trusts them (INF-MP1). A
-record that does not parse, names another digest or span size, or holds the
-wrong number of spans is no record: the next fill hashes the whole object.
-A record that could not be written leaves no record, and the fill that
-made it reports the failure on its section (`Section.RecordErr`, INF-MS8).
-A record is written to a `.record-` file in the folder and renamed into
-place; opening the folder removes such files a killed writer left. The
-folder is private to this account through OA's one private-folder helper,
-abstraction-identity's `go/privatedir` (identity ID-D1), the same one the
-engine socket root uses (INF-EL2): created with a protected DACL that allows this
-account and SYSTEM, set at CreateDirectory, on Windows and mode 0700
-elsewhere; a folder that is a file or a link, that another principal owns,
-or whose DACL is inherited or admits anyone else (any group or other bit,
-elsewhere) is refused (`privatedir.ErrNotPrivate`). The account stays the
-boundary, as for the section itself (INF-MS3). The record lives with the fill and
-the span size, beside the engine-file records the same host keeps (INF-F2),
-and never crosses machines; `abstraction.storage` keeps the object's
-identity (MEMORY-LENDING.md §2, §3).
-
-**[INF-MS8] Fill through a decoder.** `FillDecoded` creates a section as
-`Fill` does and lets a decoder place the object's bytes in its writable view
-from a STORED region of a file, with no file written. It needs
-`SpanRecords`. The fill owns the proof: after the decoder returns, it
-hashes every span itself. When `SpanRecords` holds the object's record, the
-spans must equal the record's, and the decoder is given them and may refuse
-early. Otherwise the fill hashes the whole object against its digest as
-well and records the spans (INF-MS7). A decoder may leave bytes for the
-hash pass to complete: it returns a function the fill calls once per span,
-on several goroutines at once, and the function that call returns gets the
-span's bytes in order in blocks of 256 KiB, each just before the fill
-hashes it, and completes them in place without writing another span's
-bytes. The hash then reads each block once while it is in cache. After the proof the writable view is dropped and the section
-sealed (INF-MS3). A record of another length, bytes of another digest, a
-decoder's error and a cancelled fill free the section, as INF-MS2 does. A
-proven first fill whose record cannot be written returns its section with
-no error: the section's `RecordErr` wraps `ErrRecord`, the provider host
-logs one line naming the object, and the next fill hashes the whole object
-again (INF-MS7).
-A decoder reads the region through `RegionReader`, one per goroutine: the
-unbuffered reader a stored fill uses (INF-MS1), so the file cache keeps no
-copy of the bytes.
+- Forwarding citation [INF-MS1] Fill without a file. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
+- Forwarding citation [INF-MS2] Proof. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
+- Forwarding citation [INF-MS3] Read-only. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
+- Forwarding citation [INF-MS4] Loan. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
+- Forwarding citation [INF-MS5] Free. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
+- Forwarding citation [INF-MS6] Platforms and engines. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
+- Forwarding citation [INF-MS7] Span record. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
+- Forwarding citation [INF-MS8] Fill through a decoder. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
+- Forwarding citation [INF-MS9] Fill from a storage reference. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-memory).
 
 ## Engine launch
 
-A provider that starts a third-party engine starts it with a clean
-environment and confirms where it listens. The shared provider kit
-`go/providerhost/enginelaunch` implements both, and
-`go/providerhost/enginehttp` is the client that reaches the engine; the
-Lemonade, TheNoise and modelhost providers use them, each with its own
-variable names and values.
+The requirements are owned by the [canonical owner](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#generic-child-environment).
+Historical identifiers and this section anchor remain forwarding entrypoints.
 
-**[INF-EL1] Clean environment.** The engine inherits no variable from the
-provider. On Windows its environment holds `SystemRoot` and `windir` (the
-kernel's Windows folder), `SystemDrive` (that folder's volume), `PATH` of
-System32 alone or of System32, the Windows folder and System32\Wbem,
-`TEMP` and `TMP` naming a private folder of the provider, the further
-Windows variables the provider names, and the provider's own entries.
-Each further variable is computed from the kernel, the process token or the
-registry: profile and program folders from the token, ProfileList, the
-account's User Shell Folders and `CurrentVersion`, `ComSpec`, `OS`,
-`PATHEXT` and the processor identification from the session manager's
-environment key, the processor count and architecture from
-GetNativeSystemInfo, and the computer, account and domain names from the
-system and the token. A registry value is expanded only with variables the
-kit computed. A variable that cannot be computed, or whose value names any
-other variable or no absolute folder, is left out, and the provider reports
-one diagnostic naming the variable, never its value. Elsewhere the
-environment is `PATH=/usr/bin:/bin`, `TMPDIR` and the provider's own entries.
-An empty value or a name given twice refuses the launch.
+- Forwarding citation [INF-EL1] Clean environment. See the [canonical requirement](https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md#generic-child-environment).
 
-**[INF-EL2] No network socket, and the socket's server is the engine.** An
-engine that can serve HTTP on an AF_UNIX socket path is given one in a
-launch directory the provider creates for that launch alone
-(`enginelaunch.NewSocketDir`) under a fixed per-user socket root,
-whatever the provider's state folder (`SocketRoot`):
-`%LOCALAPPDATA%\oa\s` on Windows, the local application data folder read
-from the token's known folder; `$XDG_RUNTIME_DIR/oa` on Linux, or
-`/tmp/oa-<uid>` when the runtime directory is unset or is no 0700
-directory of this account; `$TMPDIR/oa` on macOS with the same fallback.
-On Windows, the kit asks the account profile-view owner whether this
-process sees a packaged app's redirected profile. It refuses the default
-socket root with `ErrSocketRoot` when the view is virtualized or cannot be
-read, before making a launch folder there (VISION 2026-09-17).
-For every Windows launch directory, including one under a provider's
-explicit root, the kit binds and dials a temporary AF_UNIX socket at the
-exact launch path before starting the engine. A connect failure refuses
-the launch with `ErrSocketTransport` and removes the directory. This
-detects a redirected profile path that accepts a bind but cannot connect.
-The kit creates an absent root with the private descriptor below and
-refuses a root that is a file or a link, that another principal owns, or
-that is open beyond this account and SYSTEM (a DACL that is not protected
-or that allows any other principal on Windows; any group or other bit, or
-another mode than 0700, elsewhere) (`ErrSocketRoot`, wrapping the helper's
-`privatedir.ErrNotPrivate`). The root and each
-launch directory are made and checked by OA's one private-folder helper,
-abstraction-identity's `go/privatedir` (identity ID-D1), which the span
-record folder uses as well (INF-MS7). The launch directory
-has a random name, is refused if the path exists, carries a protected
-DACL of two entries (this account and SYSTEM) on Windows and mode 0700
-elsewhere, and holds the socket `e.sock` and a `held` file its provider
-keeps locked (no sharing on Windows, an exclusive `flock` elsewhere) from
-creation until the directory is removed. The socket path is printable
-ASCII of at most 107 bytes (`MaxSocketPath`); a provider refuses a root
-that cannot fit one when it starts (`SocketPathFits`). The engine is given
-no port. The provider's client (`enginehttp.NewUnixTransport`) dials the
-socket and binds the process the kernel names for its server end
-(abstraction-identity ID-T8) before the request's first byte, admits it
-only as a member of the engine's contained tree by process id and creation
-time, or, without a supervised tree, as the process the provider started,
-and rechecks the binding on every read and write; a refused server
-receives no byte. A connect error a starting engine gives (the connection
-refused, the socket file not made yet, a timeout) is returned as it is;
-any other system error, such as the WSAEINVAL a Windows AF_UNIX path in a
-packaged app's redirected folder reads, wraps `ErrEngineUnreachable`. Every
-engine readiness loop ends once its probe's connects have failed with
-`ErrEngineUnreachable` without a break for `UnreachableFor` (3 s), naming the
-system error (`UnreachableRun`); the provider kit's `engineproc.Wait`
-and the Lemonade and TheNoise providers' own loops keep this rule. Once the engine reports ready over that client, and
-again at least every 30 seconds while it runs, the provider reads the
-socket owner tables and confirms the engine's contained tree owns no TCP
-socket in any state (listening, connecting, established or closing,
-outbound connections included) and no bound UDP socket, on any address,
-loopback included (`CheckSocketOnly` over identity's `AllSockets`). An
-engine that fails is stopped by its own process; a check that fails after
-the provider loaded a newer engine for the same model stops only the
-engine it checked. The launch directory is removed once the
-engine's exit is confirmed, after a stop or a crash. A provider removes
-the launch directories under its root that no provider holds and whose
-socket answers no dial (`SweepSocketDirs`); a directory whose engine is
-still starting is held and stays, so providers can share the root.
+The requirements are owned by the [canonical owner](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#engine-launch).
+Historical identifiers and this section anchor remain forwarding entrypoints.
 
-An engine that cannot yet serve a socket path keeps the loopback rule: the
-provider reads the listener and UDP owner tables once the engine reports
-ready, and again while it runs, and confirms the engine's contained tree
-holds its TCP listener on 127.0.0.1 at the port the provider chose and no
-socket beyond loopback (abstraction-identity ID-T7, `CheckLoopback`), and
-every request the provider sends the engine, readiness and work alike,
-goes through a client that binds each connection to the engine's tree by
-the TCP owner table (`enginehttp.NewClient` or `NewClientWithVerifier`,
-ID-T1), so a process that takes the port after the engine exits receives
-no byte. These
-engines are `sd-server` (stable-diffusion.cpp 462d675, launched by the
-Lemonade provider and by the model host's video kind), `whisper-server`
-(whisper.cpp v1.8.4), Kokoros `koko` (b17) and `lemond` with the engines
-it starts (Lemonade 2026.39.1), and TheNoise (0.9.1);
-`research/model-bytes/ENGINE-TRANSPORT.md` records what each needs. A
-provider applies both rules through one call, `CheckEngineSockets`, which
-takes the socket rule for an engine with no port and the loopback rule
-for an engine on a port. An engine that fails either rule, or a platform
-without owner tables, fails readiness and the provider stops the tree.
-
-**[INF-EL3] The GPU library path gate.** Before every launch that loads
-ROCm's hipBLASLt or rocBLAS kernel files on Windows, the provider runs the
-kit's one gate (`enginelaunch.GPUPathGate`) on each library's gfx kernel
-folder. With Windows long paths off, every path the library opens, the
-folder, a separator, the file and the separators the library adds itself
-(one more for hipBLASLt, two for rocBLAS), must fit 259 UTF-16 code units
-(`MaxLibraryPath`, research/adoption/thenoise-gpu-crash/FINDINGS.md). A
-folder too deep runs only through its 8.3 name in the library's
-`*_TENSILE_LIBPATH` variable, and only when that name is shorter, resolves
-under the engine root's own final path to the same folder, passes no
-reparse point from the root down, and fits; otherwise the launch is
-refused (`ErrKernelPathTooLong`). TheNoise's `--device cuda` launch and the
-model host's PyTorch engine apply it.
+- Forwarding citation [INF-EL2] No network socket, and the socket's server is the engine. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#engine-launch).
+- Forwarding citation [INF-EL3] The GPU library path gate. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#engine-launch).
 
 ## Model packs
 
-OA's model packs keep 16-bit float weights in an in-house exponent codec
-where it loads faster than the disk, and every other tensor as it is
-(VISION.md, 2026-10-01; `research/model-locators/GPU-AND-MATRIX-DECOMPRESSION.md`).
-The provider kit `go/providerhost/modelpack` implements these rules once. It
-sits beside `modelfiles` because the provider host decodes a pack into the
-section it lends to the engines it launches (INF-MS1). It moves to
-`abstraction-storage` if packs become a storage object kind. The pack index
-and the codec are provider-side data: they never reach an application or a
-contract field.
+The requirements are owned by the [canonical owner](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+Historical identifiers and this section anchor remain forwarding entrypoints.
 
-**[INF-MP1] Pack index.** An object's packed bytes are a run of encoding
-units. Its index records the object's `digest`, `sha256:` and 64 lower-case
-hex digits, which binds the index to the object; its decoded `length`; for
-each unit in
-order, `offset` and `length` of its decoded bytes in the object,
-`packed_offset` and `packed` of its stored bytes in the object's packed
-bytes, and `encoding`, which is `stored`, `exp-huffman-v1`,
-`exp-fixed3-v1` or `exp-ans-v1`, and for a delta unit `transform` and
-`base_offset`; `base`, the base object of an index holding delta units
-(INF-MP12); and `spans`:
-the SHA-256, as 64 lower-case hex digits, of each `modelfiles.ChunkSize`
-(16 MiB) span of the decoded bytes. These are the digests a section records
-when the same object fills it (INF-MS2); the span size has one owner,
-`modelfiles`. A `stored` unit holds its decoded bytes as they are. Units
-carry no digest of their own: the decoder refuses a unit whose structure is
-broken (INF-MP3), and the span check catches every other change, located to
-16 MiB.
-
-Span digests prove bytes only when they come from OA's own record of the
-object (INF-MS7): the spans OA recorded when it hashed the object (INF-MS2,
-and `Pack`, which hashes the object it packs), or the spans of an index bound
-to the object's whole SHA-256 that OA has verified once. The first fill
-from a pack whose spans OA has not recorded hashes the whole object against
-its digest and then records the spans; later fills trust the recorded
-spans. An index read from a pack alone is never proof.
-
-A reader refuses, before it reads a unit, an index whose units do not cover
-the object in order without gaps, that names another encoding, whose
-`stored` unit has two sizes, whose `exp-huffman-v1` unit decodes to more
-than 2 MiB or stores more than its decoded length plus 2,320 bytes (the
-16-byte header and two planes' tables of 1,152 bytes), whose
-`exp-fixed3-v1` unit decodes to more than 2 MiB or an odd length or stores
-more than its headers, chunks and one escape per eight values (INF-MP8),
-whose `exp-ans-v1` unit decodes to more than 2 MiB or an odd length or
-stores more than its decoded length plus its 16-byte header (INF-MP11),
-or span digests that are malformed or not one per span (`ErrCorrupt`).
-
-**[INF-MP2] Choice per unit.** The packer encodes only the bytes of tensors
-whose type is `BF16` or `F16`, as safetensors and GGUF name them, in the
-encodings whose measured aggregate decode rate for that type exceeds the
-measured read rate of the volume holding the pack: `exp-huffman-v1` for
-`BF16` and `F16`, each judged by its own rate, and `exp-fixed3-v1` for
-`BF16`. With no measured disk rate nothing is encoded. Such a tensor is cut
-into units of 512 KiB from its start. Each unit is tried in every such
-encoding, and an encoding counts only where the encoded unit is at most 97
-percent of its decoded length. The unit takes the encoding with the
-shortest expected load, the larger of its stored bytes over the disk rate
-and its decoded bytes over the encoding's decode rate, against its decoded
-bytes over the disk rate for `stored`; on a tie the smaller encoding. The
-expected load is a heuristic from aggregate rates: it orders the encodings
-of one unit and predicts no fill's time. The fixed code wins where `exp-huffman-v1` would wait on its decode (few
-cores), and `exp-huffman-v1` where its decode keeps up with the disk.
-Quantised tensors, `F32`, every other type and the bytes between tensors
-are `stored`, in units of at most 16 MiB. The codec refuses any other type, an odd byte count, an empty unit
-and a unit over 2 MiB (`ErrDType`). The packer decodes every encoded unit
-before writing it and refuses the pack when the unit does not decode to its
-bytes (`ErrCorrupt`).
-
-A machine makes its packs when it stages a model, with its own measured
-rates. A pack moved to another machine stays valid there and decodes to the
-same bytes; that machine may repack it with its local rates.
-
-**[INF-MP3] The `exp-huffman-v1` unit.** Each little-endian 16-bit value
-is rotated left by one bit. Its high byte is then a BF16 value's exponent,
-or an F16 value's exponent and three highest mantissa bits; its low byte is
-the remaining mantissa bits and the sign. The unit is a 16-byte header and
-two byte planes: high bytes, then low bytes. The header holds the format
-version 1, the type (1 `BF16`, 2 `F16`), each plane's mode (0 raw, 1
-Huffman, 2 constant), the value count and each plane's length, the four
-numbers little-endian 32-bit. A raw plane is one byte per value; a constant
-plane is one byte. A Huffman plane is 128 bytes of code lengths, two 4-bit
-lengths per byte for symbols 0 to 255, then 256 little-endian 32-bit
-substream end offsets, then the substreams. The code is canonical
-(RFC 1951 §3.2.2), complete, of at least two symbols and at most 12 bits
-per code. Substream `t` holds the symbols of value quads `t`, `t+256`,
-`t+512` and so on, four symbols per quad and fewer in the unit's last
-quad. Each substream starts on a byte and holds its codes least
-significant bit first; its recorded end offset follows the byte that holds
-its last bit. A decoder can start at any substream. A plane is coded only
-where its code saves at least 3 percent of the plane. A unit whose bytes
-contradict this layout is refused (`ErrCorrupt`).
-
-**[INF-MP4] Decoding into memory.** `Unpack` reads each unit with one
-positioned read and decodes it straight into its place in the caller's
-memory, the writable view of the section a provider host fills; it creates
-no file, temporary or otherwise. The caller passes the span digests apart
-from the index, taken from OA's record of the object (INF-MP1). Once every
-unit covering a span is decoded, `Unpack` checks that span's SHA-256
-against them. A first fill from a pack whose spans OA has not recorded
-passes the index's spans and counts the bytes as proven only after the
-whole object's SHA-256 matches its digest. A truncated pack, a malformed
-unit, or span digests of the wrong count or form are `ErrCorrupt`, a span
-of other bytes is `modelfiles.ErrDigest`, and a cancelled context returns
-its error; after any refusal the caller discards the memory. Units decode
-on several goroutines, and the bytes equal those of one goroutine.
-
-**[INF-MP5] Built and not built.** The decoders run on the CPU in Go's
-standard library, and an NPU decodes `exp-fixed3-v1` units inside a fill
-(INF-MP10). A GPU decoder of the same bytes follows once the owner
-schedules each GPU run. `Pack` and `WriteZip` take the rates as inputs;
-`MeasureRates` measures them (INF-MP9). No model host or bridge binds an
-archive yet: STORED file entries are regions a container inventory already
-lists, and a binding of the packed kind follows with the first engine that
-reads a section. `exp-ans-v1` units (INF-MP11) decode wherever a pack is
-read; `Pack` writes them as delta units (INF-MP12) and not for plain
-weights, where `exp-huffman-v1` stays the default (`ANS.md`). The NAS
-shared store, which will hold bases for their deltas, is not built
-(`research/model-locators/MODEL-ARCHIVE.md`).
-
-**[INF-MP6] The OA model archive.** A pack and a model archive are one
-format: one zip layer (DECISION.md §7 rule 9;
-`research/model-locators/MODEL-ARCHIVE.md` §4) of STORED entries. The first
-entry is `oa-archive.json`, the index: format `oa-model-archive`, version 1,
-and for each file its slash-separated relative `path`, its zip `entry`, its
-weight `format` (`safetensors` or `gguf`) when it is one, its pack `index`
-(INF-MP1: object digest, length, units, span digests), and for a weight file
-its tensor table: name, dtype, shape, decoded offset and length, the tensor's
-SHA-256, and for BF16 and F16 tensors the dtype-normalised digest. That
-digest is the SHA-256 of the tensor's values widened exactly to
-little-endian F32, a NaN's payload and sign bits carried over unquieted, and
-it compares values bit for bit: `-0` and `+0` differ. It covers the values
-alone; a deduplication by it also matches the shape. It is compared only
-with other dtype-normalised digests, never with a tensor's SHA-256. Then
-one entry per file, in index order, its data on a 64 KiB boundary padded
-through a zipalign extra field (ID `0xD935`) in the local header only. The
-extra field stays under 65,536 bytes: where the padding would pass that,
-the excess, at most the field's 6 to 26 fixed bytes, goes as zero bytes
-before the local header, which readers find through the central directory. A file whose units all stay stored is
-written under its own path, and every zip tool extracts it as the file; a
-file with an encoded unit is written as `<path>.oa-units`. Paths are
-relative, slash-separated UTF-8 that Windows, macOS and Linux extract as
-written: no empty, `.` or `..` element; no backslash, colon, control
-character or any of `<>"|?*`; no element ending in a dot or a space; no
-element named, before its first dot, `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`,
-`CONOUT$`, `COM0` to `COM9`, `LPT0` to `LPT9`, or `COM` or `LPT` followed
-by `¹`, `²` or `³`, in any letter case. Every path and entry name is
-unique in any letter case. The archive's own zip writer writes Zip64 fields where a size,
-an offset or the entry count needs them. `WriteZip` encodes each file twice,
-first to learn its entry's size and CRC-32 and the index that precedes the
-entries, refuses the archive if the two encodings differ, and gives each
-weight file's span record to `SpanRecords` (INF-MS7). `ReadZip` accepts an
-archive whose entries are all STORED and unencrypted, whose index is present,
-at most 64 MiB, of this format and version, parses with no unknown field and
-names every other entry once; whose entry names, and whose paths and entry
-names, are unique in any letter case; whose files have such paths, the entry their
-units call for, data on the 64 KiB boundary, an index whole by INF-MP1 that
-uses exactly the entry's bytes, and tensors inside the file
-(`ErrCorrupt`); it reads no file's data. Go's `archive/zip`, bsdtar (`tar`)
-and PowerShell's `Expand-Archive` list such an archive and extract every
-file entry, Zip64 fields included.
-
-**[INF-MP7] Fill from an archive.** `FillZip` needs OA's span records and
-refuses without them. It reads and checks the whole index (INF-MP6) and
-refuses an archive holding no file of the object's digest
-(`modelfiles.ErrDigest`) before a section exists or a unit is read. It then
-fills a section through `FillDecoded` (INF-MS8): each goroutine reads units
-through its own `RegionReader`, one positioned read per unit, and decodes
-them straight into the section. An `exp-fixed3-v1` unit is decoded with
-each escaped value at exponent `b + 7`, which no value inside its chunk's
-window has, and `FillDecoded`'s hash pass applies the unit's escapes to
-each block just before hashing it; the one value whose two bytes lie in two
-spans takes its escape at decode. The decoder records where it found
-each escape, its value's index within its chunk, in value order, and each
-chunk's first escape, which equals the index the chunk header's bytes 4 to
-7 hold; the pass visits those values alone and writes one only where it
-carries its chunk's mark `b + 7`, so its cost follows the escapes. A wrong
-or altered position list leaves an escape at its mark or a value
-unpatched, and the hash refuses those bytes; the list is never trusted
-beyond what the proof shows. That pass is the one check of the bytes:
-against OA's record of the object when one exists, and against its whole
-digest on a first fill. The fill holds each such unit's window bases,
-escapes and escape positions until every span holding its bytes has been
-passed, then drops them. The bound is the escapes' share: one escape per
-eight values at most, one escape byte and a two-byte position each, so at
-most 3/16 of the decoded size plus 5 bytes per 4,096 values for bases and
-chunk starts. A hostile pack reaches that bound; Qwen2.5-1.5B at 2.94
-percent escapes holds 0.7 bytes per sixteen. It
-writes no file; `release` is called exactly once, as for `Fill`.
-
-**[INF-MP8] The `exp-fixed3-v1` unit.** BF16 only. Each value's exponent
-is coded in 3 fixed bits as an offset into a window of seven exponents
-chosen per 4,096 values, and code 7 escapes it: ZipServ's TBE code
-(https://arxiv.org/html/2603.17435), in the chunk layout measured on the
-NPU in
-`GPU-AND-MATRIX-DECOMPRESSION.md` §12.2. A unit is a 64-byte header
-(format version 1, type 1 `BF16`, then the value count and the escape
-count as little-endian 32-bit numbers at bytes 4 and 8, every other byte
-zero), then one 5,696-byte chunk per 4,096 values, the last one padded,
-then the escapes. A chunk is a 64-byte header whose first byte is the
-window base `b`, at most 248, whose bytes 4 to 7 hold the index of its
-first escape in the unit's escape list, the number of escapes the unit's
-earlier chunks use, as a little-endian 32-bit number, and whose other bytes
-are zero; three 512-byte bit planes; and 4,096 bytes of
-`sign << 7 | mantissa`. A decoder can start at any chunk, and NPU tiles can
-share one unit's chunks. Value
-`v = 512·blk + 64·i + j` of a chunk keeps bit `p` of its code in bit `i` of
-byte `64·blk + j` of plane `p`. The exponent is `b + code` for codes 0 to 6;
-code 7 takes the next escape byte, in value order. The encoder picks per
-chunk the window that covers the most values and refuses a unit with more
-than one escape per eight values, which `Pack` then encodes as
-`exp-huffman-v1` or stores (INF-MP2). A unit whose bytes contradict this
-layout, whose chunk header names another escape index, or whose escapes
-do not match its codes, is refused (`ErrCorrupt`).
-
-**[INF-MP9] The pack command.** `openabstractions models pack` makes and
-reads model archives (INF-MP6) from files on this machine and reaches no
-service. It writes one archive of one model file, or of every file under a
-folder. It reads each weight file's safetensors JSON header or GGUF tensor
-table (`modelpack.ReadTensors`: names, dtypes, shapes and ranges; GGUF
-tensors of type F32, F16 and BF16 by element count, every other byte left to
-stored runs), maps every file read-only, and packs weight files with the
-per-unit choice of INF-MP2 from `--rates` given in GB/s or from rates it
-measures first (`modelpack.MeasureRates`: each encoding's decode rate on
-synthetic weights in memory, and the read rate of the largest weight
-file's volume through the stored fill's unbuffered reader, at most 1 GiB,
-within `--seconds`, its clock started once the file is open, each reader
-reading at least one 16 MiB block, and a file under 16 MiB read whole once
-as one shorter block). Each measurement repeats its decodes, or reads the
-file again from its start, until at least 5 ms, or a quarter of
-`--seconds` when that is shorter, has passed and the clock has moved.
-Every weight file's header is read before any measurement, and an empty or
-invalid one refuses the run first. Weight files under 64 MiB in all, none of them
-16 MiB, are packed without a measurement, every unit stored, and the run
-says so: such an input loads in tens of milliseconds, an encoding would
-save a few, and the measurement takes `--seconds`. A measured rate that is
-not positive and finite fails the run (exit 1). `measure` on a file under
-16 MiB reads it whole once. Every other file is stored as it is. Weight files are
-`.safetensors`, `.sft` and `.gguf`; a pickle (`.pth`, `.pt`, `.ckpt`, `.bin`,
-`.pkl`, `.pickle`) refuses the whole run before anything is written. The
-span record of each weight file is written only into a folder `--records`
-names (INF-MS7); the provider host's own first fill records it otherwise.
-`info` prints each file's digest, size, bytes kept, and units per encoding;
-`verify` decodes every file in memory, checks every span and every file's
-digest against the index, and that the archive holds the object `--digest`
-names, and writes nothing; `restore` writes the original files byte for
-byte, checked as they are written (`modelpack.RestoreFile` and `Restore`):
-one file to the path given, several into a folder that must be absent or
-empty. No command overwrites a file. The archive `pack` writes and each
-file `restore` writes go under a temporary name in the target's folder and
-are renamed to the target at the end without replacing anything: Windows
-`MoveFileW` without replace, Linux `renameat2` with `RENAME_NOREPLACE`,
-macOS `renamex_np` with `RENAME_EXCL`, and on other systems, or where the
-filesystem refuses that flag, a hard link and then removal of the
-temporary name. The target never holds part of a file, and the temporary
-file is removed on any failure. A restore that fails removes every file and folder it made. Exit
-status 0 done, 1 a file could not be read or written, 2 usage, 3 refused (a
-pickle, a weight file that is not safetensors or GGUF, an archive that fails
-verification, an output path where something already stands).
-
-**[INF-MP10] A device beside the CPU.** `FillZipWith` takes an optional
-`modelpack.FixedDevice`, a batch decoder of `exp-fixed3-v1` units such as
-the NPU decoder in `providerhost/npudecode`. A batch is a fixed number of
-slots of `FixedSlot` bytes (397,376, the largest unit of 512 KiB); the
-device decodes each slot's 64 chunks with every value's exponent `b +
-code`, so an escaped value leaves at `b + 7` as the fused CPU decode leaves
-it. A fill uses the device when the archive file holds units of at most
-512 KiB in that encoding, the device reports no error, and no other fill
-holds it; otherwise the CPU decodes every unit. Helpers read each batch's
-units into a free buffer set and check each one on the CPU as the decoder
-checks it, header, window bases, escape indexes and escape count included,
-recording its escape positions as the decoder does, before the device
-runs; a unit that fails is refused (`ErrCorrupt`) as on
-the CPU. While the device decodes one batch the helpers read the next and
-copy the previous one into the section; the CPU workers decode every other
-unit meanwhile. Escapes stay in the hash pass (INF-MP7), and the one value
-split across two spans takes its escape when copied. The proof is the
-fill's, unchanged: every span is hashed against OA's record or the whole
-digest (INF-MS8), and nothing the device writes counts until it passes.
-A device error, a timeout included, hands that batch and every later one
-to the CPU, which reads and decodes them again; the error is reported
-(`FillReport.DeviceErr`) and logged, and the device refuses every later
-run. When the proof refuses a fill the device took part in, the fill runs
-once more on the CPU alone; if that fill is proven the device is
-distrusted for the life of the process. An archive rewritten between the
-two fills can distrust a healthy device that way; that cost is accepted.
-`release` is called once either way. `FillReport` gives units per decoder,
-device runs, the decode phase's time and the time spent in device runs.
-A device is used only after `CheckFixedDevice`, its self-test, decoded
-known units with escapes and a padded chunk in every slot of every buffer
-set bit-exact against the CPU decode. `npudecode.Open` runs it before it
-returns a device. The kit is trusted for code: whatever can write a kit
-file runs code in the provider host. `npudecode` therefore refuses any kit
-file, `kit.json` included, that identity ID-D2 refuses
-(`trustedpath.CheckFile` with `MachineOwners()` and `Account`): a file or
-a folder above it up to the volume root owned by anyone but SYSTEM,
-Administrators, TrustedInstaller or this account; a right for anyone else
-to change, delete or re-permission the file, or to delete, rename or
-re-permission a folder on its path; or a reparse point (link, junction or
-mount point) anywhere on the path. A kit an installer placed under Program
-Files passes, as does one this account built in a folder whose whole path
-passes. ID-D2 covers the link and junction checks; it does not compare the
-path a handle resolves to, so `npudecode` also refuses a kit file whose
-open handle's final path is not its own (a mapped or substituted drive).
-It reads `oa_npu_decode.dll`, the design files and
-`fixed3.json` through handles that deny writes, checks each against the
-SHA-256 `kit.json` pins (and `kit.json` against a pin the caller holds, when
-given), and loads the shim by its absolute path with `LoadLibraryEx` and
-`LOAD_LIBRARY_SEARCH_SYSTEM32` while its handle is still open, so the
-library loaded is the one checked and its imports come from System32. It
-refuses to load anything while `XRT_INI_PATH` or `XILINX_XRT` is set or an
-`xrt.ini` stands in the working directory or beside the executable, since
-XRT reads plugins from that configuration (`ErrXRTConfig`). The shim's four
-calls (query, open, decode, close) catch every exception and reach the NPU
-driver's `xrt_coreutil.dll` (XRT, Apache-2.0) through `syscall`. The
-design's `fixed3.json` must name modelpack's slot and unit sizes. The
-decoder runs one batch at a time with a time limit (500 ms; a batch of 64
-units takes about 1.2 ms), aborts a run that exceeds it, and never frees
-the buffers of a run that timed out. `Close` waits until no fill holds the
-device, then frees it, and no fill can claim it after. It is Windows only;
-elsewhere `Open` reports `errors.ErrUnsupported`. The design's sources and build scripts
-are in `npudecode/native`; built files stay outside OA's trees until the
-owner decides they ship (`research/security-reviews/npu-toolchain-iron-1.4.3.md`
-condition 5). Measured in
-`research/model-locators/GPU-AND-MATRIX-DECOMPRESSION.md` §14. No
-provider host passes a device yet, since none fills from an archive.
-
-**[INF-MP11] The `exp-ans-v1` unit.** OA's own static rANS coder
-(VISION 2026-10-02; `research/model-locators/ANS.md`), after Duda's
-asymmetric numeral systems, Giesen's `ryg_rans` and his interleaved
-coders; no third-party code. A unit cuts its 16-bit values into two byte
-planes. It is a 16-byte header (format version 1; the layout; the high and
-the low plane's modes; then the value count and the two planes' sizes as
-little-endian 32-bit numbers at bytes 4, 8 and 12), the high plane and the
-low plane. Layout 1 (`BF16`) and 2 (`F16`) rotate each value left by one
-bit, as `exp-huffman-v1` does, so the high plane of BF16 is the exponent.
-Layout 3 holds a delta's 16-bit words against a base, high and low bytes
-as they are, and needs the unit's base values to decode. A plane is raw
-(mode 0), one byte for every value (2), rANS with one table (3), or, in
-layout 3 only, rANS with one table per context (4), where a value's context
-is its base value's BF16 exponent minus the plane's window start, clamped to
-the window's contexts, at most 32. A table gives each present byte a
-frequency out of 4,096, written as unsigned varints: for each present byte
-the count of absent bytes before it and its frequency minus one, then the
-count of absent bytes to the end; a context no value falls in has an empty
-table. The stream is little-endian 16-bit words: four 32-bit states, low
-word first, then the words the states read when they fall below 2^16. Value
-i is coded with state i mod 4, each state in [2^16, 2^32), and every state
-returns to 2^16 at the end. A plane is coded only where that saves 3
-percent of it. A unit whose layout, mode, sizes or tables contradict this,
-whose stream runs out or ends with a state other than 2^16 or with words
-left, or a layout-3 unit decoded without a base of its length, is refused
-(`ErrCorrupt`). A changed raw plane decodes to other bytes, which the span
-check refuses as for every unit.
-
-**[INF-MP12] Delta units against a base.** VISION 2026-10-02;
-`research/model-locators/DELTA.md`, `ANS.md`. A fine-tune's unit may be
-stored as a delta against the same values of a base object: the
-`int-diff-v1` transform takes each BF16 value's order-preserving key (the
-sign bit flipped for a positive value, every bit for a negative one) minus
-the base value's key, modulo 2^16, zig-zag coded, and codes the words as an
-`exp-ans-v1` unit in its delta layout, under contexts from the base values'
-exponents (INF-MP11). The decoder undoes the difference as it joins the
-planes. The index names the base once per file, `base` with its `digest` and
-`length`, one level deep, and each delta unit its `transform`
-(`int-diff-v1`) and `base_offset`, the decoded offset of its `length` bytes
-in the base (any byte; tensors need not be aligned). A reader refuses
-(`ErrCorrupt`) a delta unit with another transform or encoding, an odd
-length, bytes outside the base, or no base in its index; an index whose base
-digest is malformed or whose length is not positive; a base offset on a unit
-with no transform; and a base named by an index that holds no delta unit.
-`PackDelta`, and `WriteZip` for a source that names a `DeltaBase`, tries each
-unit of a BF16 tensor the base holds by the same name, dtype and length as a
-delta and keeps it where it is smaller than the unit's other choice and saves
-3 percent; a delta is chosen for disk and download size. Every delta unit is
-decoded against its base before it is written. The base must be a proven
-object before any delta unit decodes. `UnpackWithBase`, `RestoreWithBase` and
-`RestoreFileWithBase` take a `ProvenBase`, which `ProveBase` makes by hashing
-the whole base once and retaining the caller's byte slice without copying it.
-This is a borrowed in-process value, not an owned immutable snapshot: its
-caller must keep the backing storage alive and unchanged through every alias,
-from entry to `ProveBase` until every operation using the result has returned.
-That includes calls using copied `ProvenBase` values concurrently. The digest
-is not rechecked as bytes are read. Mutating the source after proof violates
-this precondition and can stale the identity claim, even when changed bytes
-are outside the delta units' read set and the fine-tune output remains
-correct. `FillZipWith` takes the base's section in
-`FillOptions.Base`, proved when it was filled (INF-MS2, INF-MS8). Before a
-section is made or a unit read, a delta object with no base is refused
-(`ErrBase`), and one whose base is another object by digest or length is
-refused (`modelfiles.ErrDigest`). The fill reads the base section through a
-loan of its own, mapped read-only, so the base stays in memory until the last
-delta unit is read; the loan's end frees a base no engine holds, as any
-section is freed at its last loan's end (INF-MS5). A caller that uses the
-base section after a fill, or fills further deltas from it, therefore keeps a
-loan of its own on that section for as long as it does; nothing else keeps it
-until the residency broker owns base residency. The fine-tune is proved as
-every fill is: span by span against OA's record of it, or whole against its
-digest on a first fill. A base matching the index's digest but differing from
-the base used when packing can still produce the same fine-tune when those
-differences are outside the delta units' read set. When referenced bytes
-change decoded output, the trusted fine-tune proof refuses it; changed base
-exponent contexts may cause `DecodeDelta` to refuse earlier with `ErrCorrupt`
-naming both causes ("or not the base this delta was made from").
-`openabstractions models pack --base <file or archive>` packs one
-weight file against a base, given as a safetensors file or as an archive
-holding one weight file that is not itself a delta. `verify` and `restore`
-take the same `--base`, refuse a delta without it and refuse another base
-(exit 3). `info` names each file's base. A CLI base stays unchanged and
-available through the last operation that reads it; on Windows its source
-file stays open with writes and deletes denied, and on Unix it is read into a
-private copy. The CLI releases that mapping or buffer only after the last
-use. The fill path takes an explicit section loan and a read-only mapping
-until the last delta unit has been decoded. The decoded fine-tune still has
-its own proof: recorded 16 MiB spans, or its whole digest on a first fill.
-Restore checks the whole digest at completion against the index; as with any
-pack, that alone verifies the pack's claimed bytes, and the caller compares
-an independently known digest when identity matters (INF-MP1). A wrong
-immutable base whose digest is supplied by a caller is rejected by the
-fine-tune's trusted span or digest proof if it changes decoded output. On a
-failed restore, output may be partial and the caller must discard it; the CLI
-restores to a temporary file and removes it on failure.
-
-`ModelArchive.Bases()` reports base dependencies, but no archive store or
-inventory consumes it today; modelpack only builds and reads archives. The
-future shared archive-store removal/retention path is the single meeting
-point that must retain a base while a stored delta names it and release the
-dependency when that archive is removed. A delta whose base is absent is
-fetched as the whole fine-tune (VISION 2026-10-02 (3)); there is no current
-store-level retention behavior to qualify. The independent caller that uses
-a base section across fills keeps its own loan until done. Costs are bounded
-per unit (2 MiB decoded; for exp-ans-v1 at most 16 bytes of packed overhead)
-and Restore decodes in a 256 MiB window (INF-MP1, INF-MP9); there is no
-contract total-object-size cap. ProveBase's one full SHA-256 pass is O(base
-length), but it adds no base-sized copy and no per-unit whole-base hash.
+- Forwarding citation [INF-MP1] Pack index. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP2] Choice per unit. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP3] The `exp-huffman-v1` unit. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP4] Decoding into memory. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP5] Built and not built. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP6] The OA model archive. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP7] Fill from an archive. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP8] The `exp-fixed3-v1` unit. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP9] The pack command. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP10] A device beside the CPU. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP11] The `exp-ans-v1` unit. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
+- Forwarding citation [INF-MP12] Delta units against a base. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#model-packs).
 
 ## llama.cpp
 
-A provider that starts llama-server enforces the conditions of the llama.cpp
-b10825 security review
-(`research/security-reviews/llama.cpp-b10825-win-vulkan-x64.md`) that concern
-its options, its environment and the media it is sent. The shared provider
-kit `go/providerhost/llamacpp` holds them once; the Lemonade and modelhost
-providers use it, and each may refuse more on top.
+The provider-binding requirements are owned by the [provider kit](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#llamacpp).
+These historical identifiers and this section anchor remain forwarding entrypoints.
 
-**[INF-LC1] Forbidden options.** The provider never passes, and refuses in
-any configured or requested argument, the options of review condition 2 in
-every spelling b10825 accepts, alone or as `--option=value`:
-`--sleep-idle-seconds`, `--host`, `--rpc`, `--tools`, `--tools-runtime`,
-`--agent`, the MCP options, `-hf` and its `--hf-*` forms, `--model-url`,
-`--mmproj-url`, `--docker-repo`, `--spec-draft-hf`, `--models-dir`,
-`--models-preset`, `--media-path`, `--path`, `--ui-config-file`,
-`--slot-save-path`, `--log-file`, `--log-prompts-dir`, `--video-ffmpeg-dir`
-and `--cors-origins`. A provider's own allowlist of options a person may add
-admits none of these spellings.
-
-**[INF-LC2] Forbidden environment names.** llama-server never receives a
-variable named `GGML_*`, `MTMD_*`, `LLAMA_*`, `HF_*`, `HTTP_PROXY`,
-`HTTPS_PROXY`, `ALL_PROXY` or `NO_PROXY`, in any letter case, whatever the
-provider's allowlist says. `LLAMA_API_KEY` is the one exception: a provider
-that makes a per-launch key passes it under that name, and a provider that
-makes none refuses it.
-
-**[INF-LC3] Chat media.** A chat content part reaches llama-server only as
-text, as an image the provider decoded and encoded itself, or, where the
-provider admits audio, as audio it recognised. An image URL must be a
-base64 data URL declaring `image/png` or `image/jpeg` whose bytes are that
-format, at most 16 MP by its header before any pixel is decoded; it is
-replaced by the provider's own 8-bit NRGBA PNG data URL. Audio data must be
-WAV, MP3 or FLAC by its leading bytes, given as OpenAI's raw base64 in
-`input_audio.data` or as a base64 data URL declaring `audio/*`; it is
-replaced by the provider's own standard base64 of the same bytes, raw in
-`data` and as a data URL naming the detected type in `url`. An http(s) URL,
-a `file:` URL, video, WebP, GIF, BMP, any other image or part type, and data
-that does not decode are refused before the request leaves the provider.
+- Forwarding citation [INF-LC1] Forbidden options. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#llamacpp).
+- Forwarding citation [INF-LC2] Forbidden environment names. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#llamacpp).
+- Forwarding citation [INF-LC3] Chat media. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#llamacpp).
 
 ## Video generation
 
@@ -1730,7 +1350,24 @@ declares router profile `video`, with its models as `video:<model>` entries
 submit video as a job. The executor tries its backends in order and
 takes the first whose profile selects a host: a video job for a model a
 native video provider lists goes to that provider, and any other video job or
-image batch goes to an image host as before. Admission decides
+image batch goes to an image host as before. An image batch on a native image
+provider runs through its `image@1` service: the executor stages an edit's
+image and mask, sends `Start` with the job's model, prompt, size and count,
+reads the operation's deltas from the start on each poll, reports the latest
+progress percent as progress of 100, and copies the end's deliveries into the
+caller's store under INF-S7. That `Start` carries the reserved extension
+`openabstractions/job`, set to the job's operation id. A provider honours it
+from its designated runtime or a mapped remote runtime and discards it from
+any other caller. It gives the operation an `idle_ms` of 10 minutes, and keeps
+the operation observable for at least 10 minutes after it ends; the
+admission reports both. A runtime restart shorter than 10 minutes finds the
+operation running or ended, and the job completes. A runtime that never
+returns leaves the engine busy for at most 10 minutes. A runtime removes every
+reserved key from a request it forwards before setting its own. A repeated
+`Start` with the same caller and job mark returns the existing unended
+operation. `image@1` carries no `request_id`: a lost `Start` reply to a
+provider on this machine is sent again and reaches that operation, and one to
+a hosted native server stays `upstream:uncertain`. Admission decides
 `abstraction.inference/complete` on `host:<name>`, as image work does. The
 runtime forwards model, prompt, size, `duration_ms`, the caller's claimed
 program and `request_id`, the job's operation id; it stages an initial frame
@@ -1752,22 +1389,32 @@ other profiles and content services when the provider assigns a
 `forbidden` itself for a caller other than the designated runtime, and for
 every caller on an endpoint that designates none.
 
-**[INF-G6] Progress reaches the job snapshot.** While the provider generates,
+**[INF-G6] [Progress](https://openabstractions.github.io/reference.html#concept-job.progress) reaches the job snapshot.** While the provider generates,
 `OperationSnapshot.progress` is its step of steps; a provider that knows only
 a fraction reports it in its own steps. The runtime reads a provider that
 reports steps under way every second, and queued or silent work every five
-seconds, since `video@1`'s `Observe` has no wait for a change. While the engine holds the clip
-behind other work, the snapshot's waiting word (JOB-A15) is `queue:<n>`, `1`
-for next, or `queued` when the position is unknown. A job this runtime holds
-back because its server is busy with the runtime's other jobs shows
+seconds, since `video@1`'s `Observe` has no wait for a change. For a queued
+observation, the snapshot's waiting word (JOB-A15) is `queue:<n>`, `1` for
+next, or `queued` when the position is unknown. The runtime reports its own
+on-demand provider activation as `activating:<name>`. The gateway can show
+that the video engine is being prepared during activation and that the work
+is waiting for the engine once queued. The published observation reports
+queue position or progress in steps. A job this runtime holds back because its
+server is busy with the runtime's other jobs shows
 `host:busy` before it is sent (INF-G9). A generating or ended job carries no
 waiting word. A completed job reads progress 1 of 1.
 
-**[INF-G7] A lost video fails visibly; a lost `Start` reply is
+**[INF-G7] A lost video is sent again once; a lost `Start` reply is
 reconciled.** A provider's video operations live in its memory. When
 `Observe` answers `unknown` for an operation the job recorded, because the
-provider or its engine restarted, the job fails with `provider:lost` and the
-work is never sent again.
+provider or its engine restarted, the executor sends the work again from the
+start with the same `request_id`, once, for a job that spends no credential.
+Its progress starts again from zero, its waiting word is
+`provider:restarting` until the provider answers, and until the job ends its
+snapshot carries the retryable last-attempt failure `provider:lost`. A second
+loss, or a loss of a job that spends a credential, fails the job with
+`provider:lost`. A native image operation the provider no longer knows is
+handled the same way.
 
 Submission and its reconciliation record `upstream:uncertain`. A `Start`
 whose reply was lost, or a first-frame transfer that failed after a call
@@ -1818,7 +1465,7 @@ shutdown a waiting or running job lets its lease go with the waiting word
 against its server at once without waiting, and can take the count past the
 limit. A job whose lease renewal has not succeeded within the lease's
 duration stops, gives its server turn to the next job and lets its lease
-go, and another runtime may then claim it. Every wait on a renewal ends by
+go, and another runtime may then acquire it. Every wait on a renewal ends by
 that deadline, at shutdown too; a renewal that hangs in the job store is
 left to return in the background, one store call per job at a time. The limit counts this runtime's executions. A job that let its lease go
 can still run upstream, a native video provider queues work of its own
@@ -1841,7 +1488,7 @@ input and output decided again. When none serves it, the plan fails it with
 the router's own reason. A job already planned afresh whose server changes
 again, and a job that spends a credential, whose resend could be charged
 twice, fail as `host:replaced` or `host:gone` and are never sent again. A
-legacy record without a binding keeps waiting as `host:unbound`. A local
+record written before binding support keeps waiting as `host:unbound`. A local
 provider that was not stopped when its declaration changed may still run
 the first attempt, which is local compute only; the job delivers the second.
 
@@ -1849,7 +1496,7 @@ the first attempt, which is local compute only; the job delivers the second.
 
 **[INF-IO1] An engine's raw pixels become the provider's own PNG.** A
 provider whose engine returns raw pixels writes the image with the kit's
-`providerhost/rgbpng`, Go's standard library encoder, never with an encoder
+the provider kit's `rgbpng`, Go's standard library encoder, never with an encoder
 the engine bundles. Pixels are RGB24 rows, top to bottom with no padding, of
 1 to 8,192 on each side; a buffer of any other length is refused before
 anything is written (`ErrPixels`). The PNG is 8-bit truecolour without
@@ -1894,231 +1541,44 @@ this one.
 
 ## stable-diffusion.cpp
 
-Image work may reach stable-diffusion.cpp's `sd-server` through any
-OpenAI-compatible model server: Lemonade runs it for its image routes, and
-`sd-server` serves the OpenAI routes itself. The conditions of the
-stable-diffusion.cpp master-843-462d675 review and its video addendum
-(`research/security-reviews/stable-diffusion.cpp-master-843-462d675*.md`)
-that concern request text and size are held once in the provider kit
-`go/providerhost/sdcpp`. Inference applies them to every image request, and
-the Lemonade provider applies them again to each body it forwards.
+The provider-binding requirements are owned by the [provider kit](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#stable-diffusioncpp).
+These historical identifiers and this section anchor remain forwarding entrypoints.
 
-**[INF-SD1] Engine directive.** `sd-server`'s `/v1/images/*` and
-`/sdapi/v1/*` routes read generation parameters, LoRA file paths included,
-from a JSON block between `<sd_cpp_extra_args>` and its closing tag in the
-prompt. An image request whose prompt or any extension value carries the
-opening tag `<sd_cpp_extra_args` is `invalid` with reason
-`prompt:engine-directive` at step 1 of INF-A2, whichever model server would
-serve it. The match ignores letter case and folds full-width forms
-(U+FF01..U+FF5E), the small less-than sign and low lines (U+FE64,
-U+FE4D..U+FE4F), the long s, dotless i and Kelvin sign, and drops format
-characters (category Cf) and non-spacing marks (Mn) before comparing. A
-provider forwarding image work toward `sd-server` refuses the same tag in
-every text value of the body; that refusal ends the request `invalid` with
-the same reason.
-
-**[INF-SD2] Image size.** `sd-server` decodes request images against the
-request's width and height and allocates their product in C `int`
-arithmetic; with size `auto` it takes the size from the input image. An
-OpenAI-compatible model server receives a size of 64..4096 on each side and
-at most 4,194,304 pixels (2048 × 2048); a larger size is
-`unsupported_feature` with reason `size:<width>x<height>` at step 3. Each
-edit input sent to such a server is a PNG, JPEG or WebP whose header, read
-before any pixel is decoded, names at most 4096 on each side and 4,194,304
-pixels. A larger input is `unsupported_feature` with reason
-`size:engine-bound` at step 5, and a header that does not parse as the
-declared type is `invalid` with `content:media-type`. A provider's
-forwarding refusal of a size or input beyond that bound ends the request
-`unsupported_feature` with reason `size:engine-bound`.
-
-**[INF-SD3] Request form.** A provider forwarding image work toward
-`sd-server` forwards only the fields inference's OpenAI-compatible adapter
-sends (`model`, `prompt`, `n`, `size`, `response_format`, the `seed` its
-`Config.ImageFields` writes as an integer 0..2147483647 (INF-A4), and the
-edit files `image` and `mask`), each once, as its own encoding of the checked
-values. `sd-server` reads a mask's luminance, white marking the area to
-change, and ignores alpha; the Lemonade provider converts an INF-I1 mask to
-that form.
-Any other field or part, a repeated or transfer-encoded part, and a body
-that does not parse end the request `invalid` with reason
-`request:engine-form`. It reads a body only while it holds its request slot,
-bounded by two input images of `Config.MaxImageBytes` and the text fields.
-It serves no model that resolves to a Lemonade collection: an Omni
-collection's tool calls send `generate_image` and `edit_image` to
-`sd-server` past these checks.
-
-A provider that launches `sd-server` itself with a video model applies the
-video addendum's launch and request conditions, also held in
-`go/providerhost/sdcpp`:
-
-**[INF-SD4] Command line.** The provider builds `sd-server`'s arguments from
-typed fields (`sdcpp.Args`): `--listen-ip 127.0.0.1` always, the port it
-chose, `--diffusion-model`, `--t5xxl` and `--tae` naming its pinned files,
-and only the reviewed device, memory and logging options (`--fa`,
-`--diffusion-fa`, `--diffusion-conv-direct`, `--vae-conv-direct`,
-`--offload-to-cpu`, `--auto-fit`, `--max-vram` with one number,
-`--backend` with `cpu`, `vulkan0`..`vulkan7` or module assignments of them,
-`-t`, `--vae-tiling`, `--temporal-tiling`, `--vae-tile-size`, `-v`,
-`--color`). `sdcpp.CheckFlag` refuses the addendum's condition 4 options by
-name in every spelling, `-M`/`--mode`, `--rpc-servers`, `--serve-html-path`,
-the directory options, every other model path, `--vae`, `--mmap`, every
-default-image and prompt-file option, `--hires*`, `--sigmas`, the cache
-options and `-l`/`--listen-ip` other than `127.0.0.1` among them, before any
-reviewed option is read.
-
-**[INF-SD5] Environment.** The engine starts from the provider kit's clean
-environment (INF-EL1), and `sdcpp.ForbiddenEnvironment` refuses names
-starting `GGML_`, `SD_`, `VK_` or `HF_` and the proxy variables in any letter
-case even if one were added to the provider's allowlist.
-
-**[INF-SD6] Video request.** Every body sent to `/sdcpp/v1/vid_gen` is built
-by `sdcpp.BuildVideoRequest` from the provider's preset and checked by
-`sdcpp.CheckVideoRequest` before it leaves: one JSON object with only
-`prompt`, `negative_prompt`, `width`, `height`, `video_frames`, `fps`,
-`seed`, `sample_params` (`sample_steps`, `sample_method`, `scheduler`,
-`flow_shift`, `guidance.txt_cfg`, and `custom_sigmas` when the preset sets
-its own table), `init_image`, `output_format` and `output_compression`,
-each once. The size is one of 832×480, 480×832, 1280×704, 704×1280 and
-512×512, and a provider's model set may narrow it; `video_frames` is 4n+1
-in 5..121; `fps` 1..30; `sample_steps` 1..8; `txt_cfg` 0..10;
-`flow_shift` 0..20; `custom_sigmas` is `sample_steps`+1 values in 0..1,
-strictly decreasing and ending at 0, set by the preset alone; each prompt at
-most 2,048 bytes of UTF-8 with no control character or line break (the
-engine echoes it into its log); `output_format` `webm` or `avi`. Any other key is
-refused by name. A refusal ends the request with reason
-`video:engine-bound`, or `size:engine-bound` for a size.
-
-**[INF-SD7] Video result.** A job answer is read with a cap of 100 MiB. A
-completed result whose format or `mime_type` differs from the request's
-(`video/webm`, `video/x-msvideo`), whose `frame_count` or `fps` differs from
-the values sent, whose decoded container exceeds 64 MiB, or whose leading
-bytes are not EBML `1A 45 DF A3` or `RIFF…AVI ` is refused, and the engine's
-error text is never read.
-
-**[INF-SD8] First frame.** A caller's first frame reaches `sd-server` only as
-the provider's own PNG: `sdcpp.FirstFrame` admits PNG or JPEG whose bytes
-are the declared type, at most 16 MiB and 4096 on each side by its header,
-crops its centre to the request's aspect, scales it to exactly the request's
-width and height, flattens transparency onto black and encodes it again. Any
-other frame is refused with reason `frame:engine-bound`.
+- Forwarding citation [INF-SD1] Engine directive. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#stable-diffusioncpp).
+- Forwarding citation [INF-SD2] Image size. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#stable-diffusioncpp).
+- Forwarding citation [INF-SD3] Request form. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#stable-diffusioncpp).
+- Forwarding citation [INF-SD4] Command line. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#stable-diffusioncpp).
+- Forwarding citation [INF-SD5] Environment. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#stable-diffusioncpp).
+- Forwarding citation [INF-SD6] Video request. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#stable-diffusioncpp).
+- Forwarding citation [INF-SD7] Video result. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#stable-diffusioncpp).
+- Forwarding citation [INF-SD8] First frame. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#stable-diffusioncpp).
 
 ## Video encoding
 
-**[INF-VE1] Raw frames become H.264 in MP4 with the platform's encoder.** A
-provider whose engine returns raw frames encodes them with the kit's
-`providerhost/videoenc`, never with an encoder it bundles. Frames are RGB24
-or RGBA rows, top to bottom, of one size with even sides from 32 to 4096,
-at 1 to 240 fps; anything else is refused before an encoder starts
-(`ErrOptions`). On Windows the kit drives Media Foundation's Sink Writer,
-which ships with Windows, through OA's own COM binding: an MP4 container
-(`MF_TRANSCODE_CONTAINERTYPE` MPEG-4) holding one H.264 High-profile
-progressive video track at the frames' rate and size, at the caller's
-average bit rate (at most 2^32 - 1 bit/s, the attribute's width) or 0.4
-bits per pixel per frame and at least 1 Mbit/s, each frame lasting exactly
-1/fps in 100 ns units. Writes are safe from several goroutines at once;
-each frame takes the next index on the encoder's own thread, in arrival
-order. The hardware H.264 encoder runs when the machine has one and the
-caller did not ask for software; Microsoft's software encoder runs
-otherwise, and the result names which ran (an encoder transform that names
-a hardware URL is hardware). The MP4 is fast start: `moov` comes before
-`mdat`, moved there by the kit with every chunk offset (`stco`, `co64`)
-moved with the data, so a browser plays it while it downloads. When a
-32-bit offset would pass 4 GiB once moved, every `stco` becomes a `co64` of
-the same offsets; `moov` grows by 4 bytes per chunk, and every offset grows
-by that final size. A fast start that fails after the encoder finished
-never discards the video: the encoder's own file, `moov` last, is placed,
-and the result reads `FastStart` false. The writer
-writes a temporary name in the destination's folder, and Close moves the
-finished file to the destination without replacing anything there
-(`providerhost/noreplace`, the rename `models pack` uses); a destination
-that already exists is refused at Create, and one that appears before
-Close is refused then and left as it is. A video of no frame, a writer
-that cannot finish and an aborted encoder leave no file of theirs. Every
-other platform answers `ErrNoSystemEncoder`; no fallback encoder exists.
-The delivery's media type is `video/mp4`.
+The provider-binding requirements are owned by the [provider kit](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#video-encoding).
+These historical identifiers and this section anchor remain forwarding entrypoints.
+
+- Forwarding citation [INF-VE1] Raw frames become H.264 in MP4 with the platform's encoder. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#video-encoding).
 
 ## whisper.cpp
 
-A provider that forwards transcription toward `whisper-server` enforces the
-conditions of the whisper.cpp v1.8.4 security review
-(`research/security-reviews/whisper.cpp-v1.8.4-win.md`) that concern its
-options, its environment, the request and the answer. The shared provider
-kit `go/providerhost/whispercpp` holds them once, with the WAV reader and
-writer of `go/providerhost/wavfile`; the Lemonade provider uses them, and a
-provider may refuse more on top.
+The provider-binding requirements are owned by the [provider kit](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#whispercpp).
+These historical identifiers and this section anchor remain forwarding entrypoints.
 
-**[INF-WC1] Options.** `whisper-server`'s command line is exactly
-`-m <pinned model> --port <port>`. The provider never passes, and refuses
-alone or as `--option=value`, `--host`, `--public`, `--request-path`,
-`--inference-path`, `--convert`, `--tmp-dir`, `-vm`, `--vad-model`, `-oved`
-and `--ov-e-device` (review condition 3).
-
-**[INF-WC2] Environment.** `whisper-server` never receives a variable named
-`WHISPER_*`, `OVERRIDE_VITISAI_*`, `KMP_*`, `GGML_*`, `HF_*`, `HTTP_PROXY`,
-`HTTPS_PROXY`, `ALL_PROXY` or `NO_PROXY`, in any letter case (condition 4).
-
-**[INF-WC3] The request.** The provider builds the multipart body itself.
-`model` is `Whisper-Large-v3-Turbo`. `file`, named `audio.wav` of type
-`audio/wav`, is the provider's own WAV of the caller's samples: the input
-must be RIFF/WAVE with format tag 1, 16-bit, one or two channels at
-8000..48000 Hz, a RIFF size equal to its length minus 8, one fmt chunk and
-one data chunk of whole sample frames, at most 16 MiB; the provider writes
-its own 44-byte header and the samples, so the bytes begin `RIFF` and a size
-below 2^24. Every other input format is `unsupported_feature` with reason
-`format:<media type>`, and malformed WAV ends the request `invalid` with
-reason `audio:wav`. `language` is `auto` or
-the primary subtag of the request's language in whisper's table, `prompt`
-at most 1024 bytes of UTF-8 without NUL, `temperature` a finite number in
-0..1, `response_format` one of `json`, `verbose_json`, `text`. No other
-field reaches the engine (condition 7).
-
-**[INF-WC4] The answer.** The provider reads at most 4 MiB with status 200,
-of type `application/json` for `json` and `verbose_json` and `text/plain`
-for `text`, and refuses anything else `unavailable` (condition 8).
+- Forwarding citation [INF-WC1] Options. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#whispercpp).
+- Forwarding citation [INF-WC2] Environment. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#whispercpp).
+- Forwarding citation [INF-WC3] The request. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#whispercpp).
+- Forwarding citation [INF-WC4] The answer. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#whispercpp).
 
 ## Kokoros
 
-A provider that forwards speech toward Kokoros' `koko` enforces the
-conditions of the Kokoros b17 security review
-(`research/security-reviews/kokoros-b17-win.md`) that concern its command
-line, its environment, the request and the answer. The shared provider kit
-`go/providerhost/kokoro` holds them once; the Lemonade provider uses it.
+The provider-binding requirements are owned by the [provider kit](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#kokoros).
+These historical identifiers and this section anchor remain forwarding entrypoints.
 
-**[INF-KO1] Command line.** `koko`'s command line is exactly
-`-m <pinned model> -d <pinned voices> openai --ip 127.0.0.1 --port <port>`,
-optionally with `--instances 1` or `2`; the `text`, `file` and `stream`
-modes and any other address are refused (review condition 3).
-
-**[INF-KO2] Environment.** `koko` never receives a variable named
-`PIPER_*`, `ESPEAK*`, `ORT_*`, `SSL_CERT_*`, `HTTP_PROXY`, `HTTPS_PROXY`,
-`ALL_PROXY` or `NO_PROXY`, in any letter case (condition 4).
-
-**[INF-KO3] The request.** The provider builds the JSON body itself and
-sends only `model` `kokoro-v1`, `input`, `voice`, `response_format` `pcm`,
-`speed` and `stream` false. `input` holds 1..4096 characters of NFC text:
-carriage returns become line feeds, tabs spaces, format characters and
-variation selectors are dropped, and NUL, every other control character
-except line feed, combining marks and characters NFC would change are
-`unsupported_feature` with reason `text`. `voice` is one American or
-British voice of the pinned voices file (`af_*`, `am_*`, `bf_*`, `bm_*`),
-never a mix; another
-voice is `unsupported_feature` with reason `voice:<name>`. `speed` is a
-finite number in 0.5..2.0. The provider writes the WAV header of a `wav`
-delivery itself; every format but `wav` and `pcm` is `unsupported_feature`
-with reason `format:<word>`. It never sends `initial_silence`, `lang_code`,
-`stream_format`, normalization, download or volume fields, or load options
-(condition 6).
-
-**[INF-KO4] The answer and a crash.** The provider reads at most 64 MiB
-less the 44-byte header, with status 200, of type `audio/pcm` or `audio/l16`
-at 24000 Hz, little-endian, one channel, and an even, non-zero byte count
-(condition 7). A dropped connection or engine exit ends the request
-`unavailable` with reason `engine:crashed`; the provider never resubmits
-the text, names it in its log by SHA-256 only and admits the next speech
-request only after a backoff (condition 8). The backoff refuses speech
-alone. A provider whose engine process also serves other profiles stops it
-only when no other model has admitted or running work, and its idle stop
-(condition 9) likewise waits for work of every profile to end.
+- Forwarding citation [INF-KO1] Command line. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#kokoros).
+- Forwarding citation [INF-KO2] Environment. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#kokoros).
+- Forwarding citation [INF-KO3] The request. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#kokoros).
+- Forwarding citation [INF-KO4] The answer and a crash. See the [canonical requirement](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#kokoros).
 
 ## The model name
 
@@ -2134,7 +1594,7 @@ local names. A later `model_ref` field can carry a `Ref` as a base change.
 |---|---|---|
 | `Start`, `Embed`, `Speech`, `Live.Append`/`Commit` (as `StartOutcome`) | `accepted` | Every admission step passed; the request runs (INF-A2, M1, M4). |
 | `Start`, `Embed`, live and speech admission | `invalid` | Argument shape or a bound is wrong, or a required-extension key is listed but absent (INF-A2 step 1, A4). |
-| `Start`, `Embed` | `no_host` | The router found no model server serving the request's model and modality (INF-A2 step 2, H2); reason `router:<verdict>`. |
+| `Start`, `Embed` | `no_host` | The router found no model server serving the request's model and modality (INF-A2 step 2, H2); reason `router:<verdict>`, or `engine:unverified:<host>` for a local engine whose required native program evidence is absent. |
 | `Start`, `Embed` | `unsupported_feature` | The picked model server lacks a used feature, or (embed) speaks another wire (INF-A2 step 3, A4, M1). |
 | `Start`, `Embed`, `Speech`, `Live`, the operator actions | `not_permitted` | The rights decision for `complete`, a credentials `Apply`, or a provider hook read anything but `permitted` (INF-A2 steps 4 and 8, A5). |
 | `Start`, `Embed`, `Speech`, `Live`, `Transcribe` and the operator actions | `unavailable` | A decision point, a provider hook, the platform's credential store or an upstream provider could not answer; also a provider's own refusal under `lease:<outcome>`, `engine:none` or `object:unknown:<store>/<id>` (INF-A2). |
@@ -2147,9 +1607,9 @@ local names. A later `model_ref` field can carry a `Ref` as a base change.
 | `Cancel` | `ended` | The request had already ended; `reply_outcome` says how (INF-Q4). |
 | `Video.Observe` (`VideoState`) | `queued`, `generating` | The video runs; `queue_position`, or `step` of `steps`, when the engine reports it (INF-G6). |
 | `Video.Observe` | `completed`, `failed`, `cancelled` | The video ended; only `completed` carries a delivery (INF-G3). |
-| `Video.Observe` | `unknown` | No video of that id is visible, including one a provider or engine restart forgot; the job fails as `provider:lost` (INF-G7). |
+| `Video.Observe` | `unknown` | No video of that id is visible, including one a provider or engine restart forgot; the executor sends the work again once, and a second loss fails the job as `provider:lost` (INF-G7). |
 | `Reply` (`ReplyOutcome`) | `completed` | The assistant message and `stop_reason` are present. |
-| `Reply` | `refused` | The model server itself refused the request; reason `upstream:<status>`, or `upstream:context_length_exceeded:<window>:<input>` for a context-window refusal (INF-Q7). INF-W7 maps this to HTTP 502, and a context-window refusal to HTTP 400 with code `context_length_exceeded`. |
+| `Reply` | `refused` | The model server itself refused the request; reason `upstream:<status>`, or `upstream:context_length_exceeded:<window>:<input>` for a context-window refusal (INF-Q7), or `upstream:reasoning_only` for a reply whose only output was reasoning (INF-Q8). INF-W7 maps this to HTTP 502, and a context-window refusal to HTTP 400 with code `context_length_exceeded`. |
 | `Reply` | `cancelled` | Reason `cancel`, `idle` (INF-Q3) or `caller`. |
 | `Live.Append` | `duplicate` | A retry of the most recently acknowledged frame; no bytes sent upstream (INF-L2). |
 | `Live.Append` | `out_of_order` | A repeated or skipped sequence other than the last acknowledged one (INF-L2). |
@@ -2183,6 +1643,14 @@ before routing. OA routes and checks rights first: "no byte leaves the
 service before every step passes" holds for spend as much as for content,
 and a local `Pick` answering `no_host` is cheaper than a
 spend check against a server the caller could never reach anyway.
+- **INF-V1** reads a denied content grant as `forbidden`. The decided
+outcome word for a rights refusal is `not_permitted` (D86), and
+`research/vocabulary/RENAME-PLAN.md` step 17 moves INF-V1 to it with
+`chat@3` (P-J5b with W2-06, Train F).
+- **INF-Q5** offers no idempotency key for `Start`. `ARCHITECTURE.md`
+requires one, with reconciliation before fresh selection, after a lost
+reply. The optional `idempotency_key` that closes this is planned for
+`chat@3` (P-J5b with W2-06, Train F).
 - **INF-W8** serves one turn per Realtime connection; OpenAI's own Realtime
 API keeps a session across turns. The gateway's one-turn shape matches
 `live@1`'s own session model (INF-L1) instead of the upstream wire it
@@ -2190,9 +1658,12 @@ imitates.
 
 ## Not built
 
-Automatic content transfer to a remote runtime, and gateway image uploads,
-remain future work: INF-V3 requires the caller's own authorized store, and
-the gateway currently refuses image input. No typed `abstraction.model`
+Automatic content transfer to a remote runtime, and image parts in gateway
+chat requests, remain future work: INF-V3 requires the caller's own
+authorized store, and the gateway's chat routes refuse image input.
+`POST /v1/images/edits` takes uploads when content storage is configured.
+`inference.thrift`'s `host_profiles` lacks `video`; that IDL repair is a
+TODO row. No typed `abstraction.model`
 `Ref` exists on `Request.model` (see "The model name"); a caller names a
 family or alias string only. `IssueKey` mints a key for one program at a
 time.

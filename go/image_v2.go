@@ -18,11 +18,16 @@ func ImageRequestFromContent(model string, content wire.ImageRequestContent) wir
 // StartImageV2 chooses a route before invoking the image@1 admission path.
 // Once that path begins, its refusal or accepted operation is terminal.
 func (p *Provider) StartImageV2(ctx context.Context, subject Subject, request wire.ImageRequestV2) wire.AdmissionV2 {
-	refuse := func(outcome wire.StartOutcome, reason string) wire.AdmissionV2 {
-		return wire.AdmissionV2{Outcome: outcome, Reason: reason}
-	}
 	if subject.Account == "" || subject.Program == "" {
-		return refuse(wire.StartOutcomeForbidden, "caller")
+		return wire.AdmissionV2{Outcome: wire.StartOutcomeForbidden, Reason: "caller"}
+	}
+	// Every refusal of a proven caller is recorded, so the caller can read
+	// why its request failed (logging LOG-P9).
+	var tried string
+	var last selectionNote
+	refuse := func(outcome wire.StartOutcome, reason string) wire.AdmissionV2 {
+		p.recordSelectionRefusal(ctx, subject, router.ProfileImage, tried, last, outcome, reason)
+		return wire.AdmissionV2{Outcome: outcome, Reason: reason}
 	}
 	if !ValidateTarget(request.Target) {
 		return refuse(wire.StartOutcomeInvalid, "target")
@@ -51,8 +56,9 @@ func (p *Provider) StartImageV2(ctx context.Context, subject Subject, request wi
 	if policy.Name != request.Target.SelectionPolicy || len(policy.Candidates) < 1 || len(policy.Candidates) > 8 {
 		return refuse(wire.StartOutcomeUnavailable, "selection:invalid")
 	}
-	preferred := policy.Candidates[0].Model
+	preferred := selectionNote{preferred: policy.Candidates[0].Model}
 	for i, candidate := range policy.Candidates {
+		tried = candidate.Model
 		if selectionCtx.Err() != nil {
 			return refuse(wire.StartOutcomeUnavailable, "selection:unavailable")
 		}
@@ -73,18 +79,18 @@ func (p *Provider) StartImageV2(ctx context.Context, subject Subject, request wi
 		if selectionCtx.Err() != nil {
 			return refuse(wire.StartOutcomeUnavailable, "selection:unavailable")
 		}
+		note := preferred.candidate(i, host, unavailable)
 		if host == nil {
-			if unavailable && i+1 < len(policy.Candidates) {
+			if len(unavailable) != 0 && i+1 < len(policy.Candidates) {
+				preferred = note
+				// A refusal before picking the next candidate is already a fallback.
+				last = note.candidate(i+1, nil, nil)
 				continue
 			}
-			p.recordSelectionRefusal(ctx, subject, preferred, routeReason)
+			last = note
 			return refuse(wire.StartOutcomeNoHost, routeReason)
 		}
-		selectedReason := wire.SelectionReasonPreferred
-		if i > 0 {
-			selectedReason = wire.SelectionReasonPreferredRouteUnavailable
-		}
-		return admissionV2(p.startImage(selectionCtx, subject, req, &selectedRoute{host: host, model: model, bindingID: host.BindingID}), preferred, selectedReason)
+		return admissionV2(p.startImage(selectionCtx, subject, req, &selectedRoute{host: host, model: model, bindingID: host.BindingID, note: note}), preferred.preferred, note.reason)
 	}
 	return refuse(wire.StartOutcomeNoHost, "selection:no_route")
 }

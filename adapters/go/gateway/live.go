@@ -165,7 +165,9 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 	}
 	preflight := wire.LiveRequest{Model: model, Format: wire.LiveFormatPcm1624000}
 	liveGuarantees(&preflight, grant)
-	decision := provider.PreflightLive(routed(r.Context(), bound), subject, preflight)
+	decision := w.startHeld(r, routed(r.Context(), bound), bound, model, "live", func(ctx context.Context) wire.Admission {
+		return provider.PreflightLive(ctx, subject, preflight)
+	})
 	if decision.Outcome != wire.StartOutcomeAccepted {
 		word := decision.Outcome.String()
 		rw.Header().Set("Connection", "close")
@@ -314,8 +316,16 @@ func (w *Window) openAIRealtime(rw http.ResponseWriter, r *http.Request, bound B
 				}
 				req := wire.LiveRequest{Model: model, Voice: update.Session.Audio.Output.Voice, Format: wire.LiveFormatPcm1624000}
 				liveGuarantees(&req, grant)
-				admission := provider.StartLive(routed(ctx, bound), bound.Subject(), req)
+				// The socket is upgraded: a refusal is one error event (INF-W8),
+				// whose message names each first-use question the start
+				// raised or joined that is still pending (INF-W11). Only the
+				// preflight holds for an answer.
+				asked := &inference.Asked{}
+				admission := provider.StartLive(inference.WithAsked(routed(ctx, bound), asked), bound.Subject(), req)
 				if admission.Outcome != wire.StartOutcomeAccepted {
+					if admission.Outcome == wire.StartOutcomeNotPermitted || admission.Outcome == wire.StartOutcomeForbidden {
+						admission.Reason = w.namePending(ctx, bound.Subject(), asked.IDs(), admission.Reason)
+					}
 					refused := refusalOf(admission.Outcome.String(), admission.Reason)
 					fail(refused.code, refused.message)
 					return

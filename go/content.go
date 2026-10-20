@@ -3,10 +3,10 @@ package inference
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"net/http"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 // resolveImages resolves every distinct digest once. Request parts remain
@@ -47,7 +47,7 @@ func (p *Provider) resolveImages(ctx context.Context, subject Subject, req wire.
 					return nil, wire.StartOutcomeInvalid, "content:too-large"
 				}
 				sum := sha256.Sum256(data)
-				if "sha256:"+hex.EncodeToString(sum[:]) != part.Digest {
+				if contentdigest.Hex(sum[:]) != part.Digest {
 					return nil, wire.StartOutcomeInvalid, "content:digest"
 				}
 				if http.DetectContentType(data) != part.MediaType {

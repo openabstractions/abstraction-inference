@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +18,113 @@ import (
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
 )
+
+func TestPreloadRechecksAuthorityAfterTheProviderWait(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		for _, change := range []string{"complete", "unavailable", "caller", "provider closed"} {
+			t.Run(fmt.Sprint(native)+"/"+change, func(t *testing.T) {
+				var changed atomic.Bool
+				var effects atomic.Int32
+				host := router.OpenAICompatible("engine", "http://engine0.modelhost.invalid", "/v1", []string{"tiny:1b"})
+				model := "tiny:1b"
+				if native {
+					host = nativePreloadFixture(t, true, func(wire.Request) (wire.PreloadReply, error) {
+						effects.Add(1)
+						return wire.PreloadReply{Outcome: wire.PreloadOutcomeEvaluated}, nil
+					})
+					model = "fixture-model"
+				}
+				entered, release := make(chan struct{}), make(chan struct{})
+				p, err := New(Config{Router: router.New(host),
+					Decide: func(context.Context, Subject, string, string) (string, error) { return "permitted", nil },
+					Apply: func(context.Context, Subject, string, string, string) (map[string]string, string) {
+						t.Error("preload applied credential")
+						return nil, "not_permitted"
+					},
+					Standing: func(_ context.Context, subject Subject, name, credential string) (string, error) {
+						if subject != caller || name != host.Name || credential != "" {
+							t.Errorf("preload authority: %+v %s %s", subject, name, credential)
+						}
+						if changed.Load() {
+							if change == "complete" {
+								return "rights:denied", nil
+							}
+							if change == "unavailable" {
+								return "", errors.New("fixture policy unavailable")
+							}
+						}
+						return "", nil
+					},
+					Admit: func(ctx context.Context, _ *router.Host, _ string) (string, bool) {
+						if !PreloadAdmission(ctx) {
+							t.Error("preload lost lowest-standing marker")
+						}
+						close(entered)
+						select {
+						case <-release:
+						case <-ctx.Done():
+						}
+						return "", true
+					},
+					EvaluatePrefix: func(context.Context, *router.Host, string, []byte) (wire.PreloadOutcome, string, int64) {
+						effects.Add(1)
+						return wire.PreloadOutcomeEvaluated, "", 1
+					},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer p.Close()
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				returned := make(chan wire.PreloadReply, 1)
+				go func() { returned <- p.Preload(ctx, caller, preloadRequest(model)) }()
+				select {
+				case <-entered:
+				case <-time.After(time.Second):
+					t.Fatal("preload did not reach readiness hook")
+				}
+				if p.ActiveForModel(model) {
+					t.Error("preload reserved model activity")
+				}
+				changed.Store(true)
+				if change == "caller" {
+					cancel()
+				}
+				if change == "provider closed" {
+					p.Close()
+				}
+				close(release)
+				want, reason := wire.PreloadOutcomeNotPermitted, "rights:denied"
+				switch change {
+				case "unavailable":
+					want, reason = wire.PreloadOutcomeUnavailable, "rights:unavailable"
+				case "caller":
+					want, reason = wire.PreloadOutcomeUnavailable, "caller"
+				case "provider closed":
+					want, reason = wire.PreloadOutcomeUnavailable, "provider:closed"
+				}
+				select {
+				case got := <-returned:
+					if got.Outcome != want || got.Reason != reason {
+						t.Errorf("post-hook preload: %+v want %s %s", got, want, reason)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("preload did not finish")
+				}
+				if effects.Load() != 0 {
+					t.Errorf("refused preload dispatched %d prefix/native effects", effects.Load())
+				}
+				p.mu.Lock()
+				ops, models, subjects := len(p.ops), len(p.pendingModels), len(p.pendingSubjects)
+				p.mu.Unlock()
+				if ops != 0 || models != 0 || subjects != 0 {
+					t.Errorf("preload retained state: ops=%d models=%d subjects=%d", ops, models, subjects)
+				}
+			})
+		}
+	}
+}
 
 func preloadRequest(model string) wire.Request {
 	return wire.Request{Model: model,
@@ -43,7 +153,9 @@ func (r *preloadRig) provider(t *testing.T, host *router.Host, evaluate bool) *P
 			}
 			return r.decision, nil
 		},
-		Apply: func(context.Context, Subject, string, string, string) (map[string]string, string) { return nil, "not_permitted" },
+		Apply: func(context.Context, Subject, string, string, string) (map[string]string, string) {
+			return nil, "not_permitted"
+		},
 		Admit: func(_ context.Context, _ *router.Host, model string) (string, bool) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
@@ -90,7 +202,7 @@ func TestPreloadHandsTheEvaluatorTheChatPathsEngineRequest(t *testing.T) {
 	if len(rig.admitted) != 1 || len(rig.evaluated) != 1 || !bytes.Equal(rig.evaluated[0], want) {
 		t.Fatalf("admitted %v; evaluated %q, want %q", rig.admitted, rig.evaluated, want)
 	}
-	if len(rig.records) != 1 || rig.records[0].Profile != "preload" || rig.records[0].Outcome != "evaluated" || rig.records[0].TokensIn != 1234 {
+	if len(rig.records) != 1 || rig.records[0].Profile != "preload" || rig.records[0].Outcome != "evaluated" || rig.records[0].TokensIn != 1234 || rig.records[0].Placement != wire.ServedPlaceLocal {
 		t.Fatalf("records %+v", rig.records)
 	}
 }
@@ -225,7 +337,9 @@ func TestAPreloadHoldsTheLowestStanding(t *testing.T) {
 	activeDuring, activeLoading := true, true
 	config := Config{Router: router.New(host),
 		Decide: func(context.Context, Subject, string, string) (string, error) { return "permitted", nil },
-		Apply:  func(context.Context, Subject, string, string, string) (map[string]string, string) { return nil, "not_permitted" },
+		Apply: func(context.Context, Subject, string, string, string) (map[string]string, string) {
+			return nil, "not_permitted"
+		},
 		Admit: func(ctx context.Context, _ *router.Host, _ string) (string, bool) {
 			marked = PreloadAdmission(ctx)
 			activeLoading = p.ActiveForModel("tiny:1b")

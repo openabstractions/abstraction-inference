@@ -45,7 +45,7 @@ func dialRemoteLiveBackend(ctx context.Context, op *operation, req wire.LiveRequ
 	forwarded.Extensions[ClaimExtension] = op.subject.Program
 	admission, err := wire.NewLiveClient(transport.WithContext(ctx)).Start(forwarded)
 	if err != nil {
-		return nil, &remoteLiveError{outcome: wire.ReplyOutcomeUnavailable, reason: "remote:unreachable"}
+		return nil, &remoteLiveError{outcome: wire.ReplyOutcomeUnavailable, reason: remoteRequestReason(err)}
 	}
 	if admission.Outcome != wire.StartOutcomeAccepted {
 		outcome := replyFromStart(admission.Outcome)

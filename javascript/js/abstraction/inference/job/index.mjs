@@ -9,10 +9,12 @@ export {
   decode,
   encode,
   executionGuarantees,
+  fromJson,
   kinds,
   newDelivery,
   newDocument,
   newImageRequest,
   newJobResult,
   newRequest,
+  toJson,
 } from "./internal.mjs";

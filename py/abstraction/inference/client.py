@@ -5,8 +5,154 @@ generator of typed deltas; closing it before the end cancels the operation.
 start() is never retried.
 """
 import time
+import copy
 
 import abstraction.inference.api as api
+
+# chat@3 raw types remain available through the convenience module.
+from abstraction.inference.api import (RequestV3, ChatAdmission, ChatPage, ChatEvent,
+    ChatEventKind, ChatPart, ChatPartKind, ChatResult, ChatTiming, ChatLoad, ChatLoadSource, ChatUsage, ChatProgress,
+    ChatBlockEnd, ReasoningSeal, ChatHistoryRead, ChatHistoryOutcome,
+    ChatStartOutcome, ChatResultOutcome, FinishReason, SealOmission, ServedBy,
+    ServedPlace, ChatTarget, ChatContent, ChatMessage, ChatInputPart, ChatTool,
+    ChatOptions, ChatToolChoice, ChatToolChoiceKind, ChatGuarantee, ChatReplay,
+    ChatProgressPhase, ChatCancellation)
+
+
+class FoldV3:
+    """Fold ordered chat@3 events; retain public reasoning by explicit choice."""
+
+    def __init__(self, retain_reasoning=False, cursor=0):
+        self.retain_reasoning = retain_reasoning
+        self.cursor = cursor
+        self._partial = cursor > 0
+        self.progress = None
+        self.usage = None
+        self._parts = {}
+        self._closed = {}
+        self._end = None
+
+    def add(self, event):
+        _require(self._end is None and event.sequence == self.cursor, "inconsistent event sequence")
+        if event.kind == api.ChatEventKind.PROGRESS:
+            _require(event.progress is not None, "missing progress")
+            self.progress = copy.deepcopy(event.progress)
+        elif event.kind == api.ChatEventKind.USAGE:
+            _require(event.usage is not None, "missing usage")
+            self.usage = copy.deepcopy(event.usage)
+        elif event.kind == api.ChatEventKind.PART:
+            _require(event.part is not None, "missing part")
+            d = copy.deepcopy(event.part)
+            _require(d.block not in self._closed, "closed block")
+            p = self._parts.get(d.block)
+            _require(p is None or (p.kind == d.kind and (not d.call_id or d.call_id == p.call_id)
+                                     and (not d.name or d.name == p.name)), "changed block identity")
+            if not self.retain_reasoning and d.kind in (api.ChatPartKind.REASONING, api.ChatPartKind.REASONING_SUMMARY):
+                d.text = ""
+            if p is None:
+                self._parts[d.block] = d
+            else:
+                p.text += d.text
+                p.arguments += d.arguments
+                if d.seal is not None:
+                    p.seal = d.seal
+        elif event.kind == api.ChatEventKind.BLOCK_END:
+            _require(event.block_end is not None, "missing block end")
+            b = event.block_end
+            _require((b.block in self._parts or self._partial) and b.block not in self._closed, "invalid block end")
+            self._closed[b.block] = copy.deepcopy(b)
+        elif event.kind == api.ChatEventKind.END:
+            _require(event.end is not None, "missing terminal")
+            self._end = copy.deepcopy(event.end)
+        else:
+            raise InconsistentReply("unknown event kind")
+        self.cursor += 1
+
+    def reply(self):
+        """Actual terminal plus typed blocks; progress and reasoning never enter text."""
+        if self._end is None:
+            return None
+        blocks = [copy.deepcopy(self._parts[k]) for k in sorted(self._parts)]
+        result = copy.deepcopy(self._end)
+        if result.outcome == api.ChatResultOutcome.COMPLETED and result.finish_reason is not None and result.finish_reason not in tuple(api.FinishReason):
+            result.finish_reason = api.FinishReason.OTHER
+        return {"result": result, "blocks": blocks,
+                "block_ends": [copy.deepcopy(self._closed[k]) for k in sorted(self._closed)],
+                "text": "".join(p.text for p in blocks if p.kind == api.ChatPartKind.TEXT)}
+
+
+class ChatV3:
+    """Explicit chat@3 calls. Start is sent once; observation errors preserve work."""
+
+    def __init__(self, transport):
+        self._transport = transport
+
+    def _client(self, wait_ms=0):
+        transport = self._transport
+        if wait_ms and transport.deadline is None:
+            transport = transport.with_waiting(deadline=time.monotonic() + transport.timeout + wait_ms / 1000,
+                                               cancellation=transport.cancellation)
+        return api.ChatV3Client(transport)
+
+    def start(self, request):
+        return self._client().start(request)
+
+    def get_history_window(self):
+        return self._client().get_history_window()
+
+    def cancel(self, request):
+        return self._client().cancel(request)
+
+    def observe(self, request, cursor, max_deltas=256, max_bytes=65536, wait_ms=25000):
+        _require(cursor >= 0 and 1 <= max_deltas <= 256 and 1 <= max_bytes <= 65536 and 0 <= wait_ms <= 30000, "invalid page bounds")
+        page = self._client(wait_ms).observe(request, cursor, max_deltas, max_bytes, wait_ms)
+        if page.outcome == api.PageOutcome.PAGE:
+            _require(len(page.events) <= max_deltas and page.next == cursor + len(page.events), "invalid page cursor")
+            for i, event in enumerate(page.events):
+                _require(event.sequence == cursor + i and (event.kind != api.ChatEventKind.END or (i == len(page.events)-1 and page.at_end)), "invalid page sequence")
+            _require(not page.at_end or not page.events or page.events[-1].kind == api.ChatEventKind.END, "missing page terminal")
+        else:
+            _require(not page.events and not page.at_end and (page.next > cursor if page.outcome == api.PageOutcome.GAP else page.next == cursor), "invalid page refusal")
+        return page
+
+    def resume(self, request, cursor=0, retain_reasoning=False):
+        return ChatV3Session(self, request, cursor, retain_reasoning)
+
+    def open(self, request, retain_reasoning=False):
+        admission = self.start(request)
+        session = self.resume(admission.request, retain_reasoning=retain_reasoning)
+        session.admission = admission
+        return session
+
+
+class ChatV3Session:
+    """Resumable observation; cancel is explicit and never performed by next."""
+
+    def __init__(self, chat, request, cursor=0, retain_reasoning=False):
+        self.chat, self.request, self.cursor = chat, request, cursor
+        self.admission = None
+        self.fold = FoldV3(retain_reasoning, cursor)
+
+    def next(self):
+        page = self.chat.observe(self.request, self.cursor)
+        if page.outcome != api.PageOutcome.PAGE:
+            raise ObserveRefused(page.outcome)
+        fold = copy.deepcopy(self.fold)
+        for event in page.events:
+            fold.add(event)
+        self.fold = fold
+        self.cursor = page.next
+        return page
+
+    def cancel(self):
+        return self.chat.cancel(self.request)
+
+    def complete(self):
+        """Drain this handle; errors preserve it for explicit continuation."""
+        while self.fold.reply() is None:
+            page = self.next()
+            _require(not page.at_end or self.fold.reply() is not None, "missing terminal")
+        return self.fold.reply()
 
 PAGE_DELTAS = 256
 PAGE_BYTES = 65536

@@ -10,6 +10,7 @@ import (
 	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
 	"github.com/openabstractions/abstraction-inference/go/mediationcontent"
 	router "github.com/openabstractions/abstraction-router/go"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 // VideoContract names abstraction.inference/video@1. A native provider that
@@ -70,19 +71,8 @@ func (b nativeVideoJobBackend) start(ctx context.Context, submission durableJobS
 	forwarded.Extensions, forwarded.RequiredExtensions = forwardedNativeExtensions(image.Extensions, image.RequiredExtensions, submission.program)
 	if image.Mode == jobwire.ModeEdit {
 		forwarded.ImageDigest, forwarded.ImageMediaType = image.ImageDigest, image.ImageMediaType
-		input, resolved := submission.inputs[image.ImageDigest]
-		if !resolved && !reconciling {
-			return durableJobStatus{State: durableJobFailed, Reason: "native:input"}, nil
-		}
-		if resolved {
-			err := mediationcontent.Upload(ctx, transport, submission.operation+"-"+image.ImageDigest[7:19], image.ImageDigest, input.mediaType, input.data, b.maxInput)
-			switch {
-			case err == nil:
-			case !errors.Is(err, mediationcontent.ErrRefusedLocally):
-				return durableJobStatus{}, err
-			case !reconciling:
-				return durableJobStatus{State: durableJobFailed, Reason: "native:input"}, nil
-			}
+		if reason, err := stageNativeInputs(ctx, transport, submission, b.maxInput, reconciling, image.ImageDigest); err != nil || reason != "" {
+			return durableJobStatus{State: durableJobFailed, Reason: reason}, err
 		}
 	}
 	admission, err := wire.NewVideoClient(transport.WithContext(ctx)).Start(forwarded)
@@ -99,8 +89,9 @@ func (b nativeVideoJobBackend) start(ctx context.Context, submission durableJobS
 }
 
 // Poll reads the provider's view. An operation the provider no longer knows,
-// because it or its engine restarted, fails the job as provider:lost: the
-// executor never submits the work again.
+// because it or its engine restarted, reads as provider:lost: the executor
+// sends the work again from the start once, and a second loss fails the job
+// (INF-G7).
 func (b nativeVideoJobBackend) Poll(ctx context.Context, host *router.Host, handle string, request jobwire.Request, _ map[string]string) (durableJobStatus, error) {
 	transport, ok := host.NativeTransport()
 	if !ok {
@@ -122,7 +113,7 @@ func (b nativeVideoJobBackend) Poll(ctx context.Context, host *router.Host, hand
 		}
 	case wire.VideoStateCompleted:
 		delivery := observed.Delivery
-		if delivery == nil || delivery.Location != "local" || !canonicalSHA256(delivery.Digest) || delivery.Size < 1 || delivery.Size > b.maxOutput {
+		if delivery == nil || delivery.Location != "local" || !contentdigest.Valid(delivery.Digest) || delivery.Size < 1 || delivery.Size > b.maxOutput {
 			return durableJobStatus{State: durableJobFailed, Handle: handle, Reason: "native:delivery"}, nil
 		}
 		media := mediationcontent.SniffedMedia(delivery.MediaType)
@@ -142,7 +133,7 @@ func (b nativeVideoJobBackend) Poll(ctx context.Context, host *router.Host, hand
 	case wire.VideoStateCancelled:
 		status.State = durableJobCancelled
 	case wire.VideoStateUnknown:
-		status.State, status.Reason = durableJobFailed, "provider:lost"
+		status.State, status.Reason = durableJobFailed, providerLost
 	case wire.VideoStateInvalid:
 		status.State, status.Reason = durableJobFailed, "native:invalid"
 	case wire.VideoStateForbidden:
@@ -159,15 +150,7 @@ func (nativeVideoJobBackend) Cancel(ctx context.Context, host *router.Host, hand
 	if !ok {
 		return errors.New("native transport unavailable")
 	}
-	cancelled, err := wire.NewVideoClient(transport.WithContext(ctx)).Cancel(handle)
-	if err != nil {
-		return err
-	}
-	switch cancelled.Outcome {
-	case wire.CancelOutcomeCancelled, wire.CancelOutcomeEnded, wire.CancelOutcomeUnknown:
-		return nil
-	}
-	return errors.New("native video cancel " + cancelled.Outcome.String())
+	return nativeCancelled(wire.NewVideoClient(transport.WithContext(ctx)).Cancel(handle))
 }
 
 // nativeVideoReason is the failure word a provider's reason becomes: native:

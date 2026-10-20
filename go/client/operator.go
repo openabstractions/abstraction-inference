@@ -100,6 +100,23 @@ func (o *Operator) Audit(ctx context.Context, cursor, maxEntries int64) (AuditPa
 	return page, err
 }
 
+// Requests reads the audit journal with recorded selection and placement.
+func (o *Operator) Requests(ctx context.Context, cursor, maxEntries int64) (RequestPage, error) {
+	c, err := o.client(ctx)
+	if err != nil {
+		return RequestPage{}, err
+	}
+	page, err := c.Requests(cursor, maxEntries)
+	if err == nil && page.Outcome == wire.AuditOutcomePage {
+		ok := int64(len(page.Entries)) <= maxEntries
+		for i, e := range page.Entries {
+			ok = ok && e.Entry.Sequence == cursor+int64(i)
+		}
+		err = check(ok && page.Next == cursor+int64(len(page.Entries)))
+	}
+	return page, err
+}
+
 // Gateway reads the gateway window setting and whether the window listens.
 func (o *Operator) Gateway(ctx context.Context) (GatewayState, error) {
 	c, err := o.client(ctx)

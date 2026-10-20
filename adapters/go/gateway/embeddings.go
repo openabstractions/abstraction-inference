@@ -63,7 +63,15 @@ func (w *Window) openAIEmbeddings(rw http.ResponseWriter, r *http.Request, b Bou
 	} else {
 		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
 	}
-	reply := embedder.Embed(routed(r.Context(), b), b.Subject(), req)
+	var reply wire.Embeddings
+	reason, bound := w.holdForQuestions(r, routed(r.Context(), b), b, in.Model, "embed", func(ctx context.Context) (bool, string) {
+		reply = embedder.Embed(ctx, b.Subject(), req)
+		return reply.Outcome == wire.EmbedOutcomeNotPermitted || reply.Outcome == wire.EmbedOutcomeForbidden, reply.Reason
+	})
+	if !bound {
+		reply = wire.Embeddings{Outcome: wire.EmbedOutcomeForbidden}
+	}
+	reply.Reason = reason
 	if reply.Outcome != wire.EmbedOutcomeCompleted {
 		refusalOf(reply.Outcome.String(), reply.Reason).write(rw)
 		return

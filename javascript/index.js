@@ -5,6 +5,105 @@
 // typed deltas; leaving a for-await loop early cancels the operation. start()
 // is never retried.
 import {ChatClient, ChatV2Client, DeltaKind, PageOutcome, PreloaderClient, ReplyOutcome, Role, StartOutcome, StopReason} from './js/abstraction/inference/api/index.mjs';
+import {ipcDefaultCallBudgetMs} from './js/abstraction/ipc/constants/index.mjs';
+import {ChatV3Client, ChatEventKind, ChatPartKind, ChatResultOutcome, FinishReason} from './js/abstraction/inference/api/index.mjs';
+export {ChatV3Client, ChatEventKind, ChatPartKind, ChatStartOutcome, ChatResultOutcome,
+  ChatHistoryOutcome, ChatProgressPhase, FinishReason, SealOmission, ServedPlace,
+  newRequestV3, newChatTarget, newChatContent, newChatMessage, newChatInputPart,
+  newChatTool, newChatOptions, newChatUsage, newChatProgress, newReasoningSeal,
+  ChatGuarantee, ChatToolChoiceKind, newChatToolChoice, newChatReplay, newChatPart,
+  newChatBlockEnd, newChatEvent, newChatResult, newChatAdmission, newChatPage,
+  newChatCancellation, newChatHistoryRead, newServedBy,
+} from './js/abstraction/inference/api/index.mjs';
+
+export const chatV3Contract = 'abstraction.inference/chat@3';
+
+/** Ordered chat@3 output. Retaining public reasoning is an explicit choice. */
+export class FoldV3 {
+  constructor({retainReasoning = false, cursor = 0n} = {}) {
+    this.retainReasoning = retainReasoning; this.cursor = cursor;
+    this.partial = cursor > 0n;
+    this.progress = null; this.usage = null; this.parts = new Map(); this.closed = new Map(); this.end = null;
+  }
+  add(event) {
+    requireV3(this.end === null && event.sequence === this.cursor, 'event sequence');
+    switch (event.kind) {
+      case ChatEventKind.Progress:
+        requireV3(event.progress != null, 'progress'); this.progress = structuredClone(event.progress); break;
+      case ChatEventKind.Usage:
+        requireV3(event.usage != null, 'usage'); this.usage = structuredClone(event.usage); break;
+      case ChatEventKind.Part: {
+        requireV3(event.part != null, 'part'); const d = structuredClone(event.part);
+        requireV3(!this.closed.has(d.block), 'closed block'); const p = this.parts.get(d.block);
+        requireV3(!p || (p.kind === d.kind && (!d.callId || d.callId === p.callId) && (!d.name || d.name === p.name)), 'block identity');
+        if (!this.retainReasoning && [ChatPartKind.Reasoning, ChatPartKind.ReasoningSummary].includes(d.kind)) d.text = '';
+        if (!p) this.parts.set(d.block, d);
+        else { p.text += d.text; p.arguments += d.arguments; if (d.seal != null) p.seal = d.seal; }
+        break;
+      }
+      case ChatEventKind.BlockEnd: {
+        requireV3(event.blockEnd != null, 'block end'); const b = event.blockEnd;
+        requireV3((this.parts.has(b.block) || this.partial) && !this.closed.has(b.block), 'block end identity'); this.closed.set(b.block, structuredClone(b)); break;
+      }
+      case ChatEventKind.End:
+        requireV3(event.end != null, 'terminal'); this.end = structuredClone(event.end); break;
+      default: throw new Error('inconsistent chat@3 event kind');
+    }
+    this.cursor++;
+  }
+  reply() {
+    if (this.end === null) return null;
+    const ordered = map => [...map.keys()].sort((a,b) => a < b ? -1 : a > b ? 1 : 0).map(k => structuredClone(map.get(k)));
+    const blocks = ordered(this.parts);
+    const result = structuredClone(this.end);
+    if (result.outcome === ChatResultOutcome.Completed && result.finishReason != null && !Object.values(FinishReason).includes(result.finishReason)) result.finishReason = FinishReason.Other;
+    return {result, blocks, blockEnds: ordered(this.closed), text: blocks.filter(p => p.kind === ChatPartKind.Text).map(p => p.text).join('')};
+  }
+}
+function requireV3(ok, field) { if (!ok) throw new Error(`inconsistent chat@3 ${field}`); }
+
+/** Explicit Start and resumable observation. Calls never retry or implicitly cancel. */
+export class ChatV3 {
+  constructor(transport) { this.transport = transport; }
+  client(waitMs = 0n) {
+    return new ChatV3Client(this.transport.withCallDeadline(performance.now() + ipcDefaultCallBudgetMs + Number(waitMs)));
+  }
+  start(request) { return this.client().start(request); }
+  cancel(request) { return this.client().cancel(request); }
+  getHistoryWindow() { return this.client().getHistoryWindow(); }
+  async observe(request, cursor, maxDeltas = 256n, maxBytes = 65536n, waitMs = 25000n) {
+    requireV3(cursor >= 0n && maxDeltas >= 1n && maxDeltas <= 256n && maxBytes >= 1n && maxBytes <= 65536n && waitMs >= 0n && waitMs <= 30000n, 'bounds');
+    const p = await this.client(waitMs).observe(request, cursor, maxDeltas, maxBytes, waitMs);
+    if (p.outcome === PageOutcome.Page) {
+      requireV3(BigInt(p.events.length) <= maxDeltas && p.next === cursor + BigInt(p.events.length), 'page cursor');
+      p.events.forEach((e,i) => requireV3(e.sequence === cursor + BigInt(i) && (e.kind !== ChatEventKind.End || (i === p.events.length-1 && p.atEnd)), 'page sequence'));
+      requireV3(!p.atEnd || !p.events.length || p.events.at(-1).kind === ChatEventKind.End, 'page terminal');
+    } else requireV3(!p.events.length && !p.atEnd && (p.outcome === PageOutcome.Gap ? p.next > cursor : p.next === cursor), 'page refusal');
+    return p;
+  }
+  resume(request, cursor = 0n, options = {}) { return new ChatV3Session(this, request, cursor, options); }
+  async open(request, options = {}) { const a = await this.start(request); const s = this.resume(a.request, 0n, options); s.admission = a; return s; }
+}
+export class ChatV3Session {
+  constructor(chat, request, cursor = 0n, options = {}) { this.chat = chat; this.request = request; this.cursor = cursor; this.admission = null; this.fold = new FoldV3({...options, cursor}); }
+  async next() {
+    const p = await this.chat.observe(this.request, this.cursor);
+    if (p.outcome !== PageOutcome.Page) throw new ObserveRefused(p.outcome);
+    const fold = Object.assign(Object.create(FoldV3.prototype), structuredClone(this.fold));
+    for (const e of p.events) fold.add(e);
+    this.fold = fold;
+    this.cursor = p.next; return p;
+  }
+  cancel() { return this.chat.cancel(this.request); }
+  async complete() {
+    while (this.fold.reply() === null) {
+      const page = await this.next();
+      requireV3(!page.atEnd || this.fold.reply() !== null, 'missing terminal');
+    }
+    return this.fold.reply();
+  }
+}
+export async function resolveInferenceV3(machine, {scope = 'any'} = {}) { return new ChatV3(await machine.resolveService(chatV3Contract, {scope})); }
 
 export {
   CancelOutcome, ChatClient, ChatV2Client, DeltaKind, DispatchError, ImageClient, ImageV2Client, ImageMode, PageOutcome, PartKind, PreloadOutcome,
@@ -21,7 +120,8 @@ export const preloadContract = 'abstraction.inference/preload@1';
 export const pageDeltas = 256n;
 export const pageBytes = 65536n;
 export const pageWaitMs = 25000n;
-const callMarginMs = 5000;
+// A call that waits gets the transport's call budget on top of its wait (IPC-D1).
+const callMarginMs = ipcDefaultCallBudgetMs;
 
 /** A reply whose outcome and fields contradict the contract. */
 export class InconsistentReply extends Error {
@@ -80,15 +180,21 @@ export class Chat {
   #binding;
   #Client;
   constructor(binding, Client = ChatClient) { this.#binding = binding; this.#Client = Client; }
-  #client(waitMs = 0n, cancellation = this.#binding.waiting?.cancellation ?? null) {
-    const binding = this.#binding.withWaiting({
-      deadline: performance.now() + callMarginMs + Number(waitMs),
-      cancellation,
-    });
+  #client(waitMs = 0n, cancellation = undefined) {
+    const deadline = performance.now() + callMarginMs + Number(waitMs);
+    const binding = cancellation === undefined ? this.#binding.withCallDeadline(deadline)
+      : this.#binding.withWaiting({deadline, cancellation});
     return new this.#Client(binding);
   }
   async start(request) {
     const admission = await this.#client().start(request);
+    require((admission.outcome === StartOutcome.Accepted) === (admission.operation !== ''), 'inconsistent admission');
+    return admission;
+  }
+  async startWithGuarantees(request, guarantees) {
+    const client = this.#client();
+    if (typeof client.startWithGuarantees !== 'function') throw Object.assign(new Error('Caller guarantees are unsupported by this inference service'), {code: 'unknown_method'});
+    const admission = await client.startWithGuarantees(request, guarantees);
     require((admission.outcome === StartOutcome.Accepted) === (admission.operation !== ''), 'inconsistent admission');
     return admission;
   }
@@ -111,8 +217,8 @@ export class Chat {
   async cancel(operation) { return this.#client().cancel(operation); }
 
   /** Start once and return its admission beside the managed delta stream. */
-  async startStream(request) {
-    const admission = await this.start(request);
+  async startStream(request, guarantees = undefined) {
+    const admission = guarantees === undefined ? await this.start(request) : await this.startWithGuarantees(request, guarantees);
     const accepted = admission.outcome === StartOutcome.Accepted;
     let ended = !accepted;
     let cancelPromise;

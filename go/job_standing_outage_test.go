@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -115,6 +116,26 @@ func (j *standingJob) finish(t *testing.T) acceptance.OperationSnapshot {
 	return waitDurable(t, j.p.BindOperationsBinding(j.binding), j.identity, true)
 }
 
+type initialStandingClaim struct {
+	job.Store
+	ttl time.Duration
+}
+
+func (s *initialStandingClaim) Claim(_ string, _ string, ttl time.Duration) (*job.Record, error) {
+	s.ttl = ttl
+	return nil, errors.New("fixture stops after the first claim")
+}
+
+func TestInferenceJobInitialClaimUsesKeeperLeaseDuration(t *testing.T) {
+	const ttl = 600 * time.Millisecond
+	e := &JobExecution{leaseTTL: ttl}
+	store := new(initialStandingClaim)
+	e.dispatch(t.Context(), store, &job.Record{ID: "standing-outage"}, new(sync.WaitGroup))
+	if store.ttl != ttl {
+		t.Fatalf("initial claim TTL was %v, want keeper TTL %v", store.ttl, ttl)
+	}
+}
+
 // JOB-A18 with the inference executor: a standing decision that cannot be
 // obtained for less than the lease's lifetime ends no upstream work. The job
 // keeps polling its one submission through the outage and completes once the
@@ -159,11 +180,16 @@ func TestALongStandingOutageLapsesAnInferenceJobsLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		if r, err := store.Load(j.op); err == nil && !r.Lease.Held(time.Now()) {
+		r, err := store.Load(j.op)
+		if err == nil && !r.Lease.Held(time.Now()) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the lease did not lapse")
+			if err != nil {
+				t.Fatalf("read the lease during the outage: %v", err)
+			}
+			t.Fatalf("lease epoch %d did not lapse; %v remains after %d unanswered renewals",
+				r.Lease.Epoch, time.Until(r.Lease.ExpiresAt.Time), j.unansweredRenewals.Load())
 		}
 	}
 	time.Sleep(100 * time.Millisecond)

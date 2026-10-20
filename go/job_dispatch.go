@@ -231,7 +231,7 @@ func (e *JobExecution) dispatch(ctx context.Context, store job.Store, record *jo
 	if !e.startExecuting(record.ID) {
 		return
 	}
-	held, err := store.Claim(record.ID, "inference-service-"+job.NewID(), 30*time.Second)
+	held, err := store.Claim(record.ID, "inference-service-"+job.NewID(), e.leaseDuration())
 	if err != nil {
 		e.stopExecuting(record.ID)
 		return

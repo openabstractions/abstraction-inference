@@ -7,31 +7,18 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/openabstractions/abstraction-identity/listen"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
 	storageclient "github.com/openabstractions/abstraction-storage/go/client"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 const chunkBytes = 65536
-
-func validDigest(digest string) bool {
-	if len(digest) != 71 || !strings.HasPrefix(digest, "sha256:") {
-		return false
-	}
-	for _, c := range digest[7:] {
-		if c < '0' || c > '9' && c < 'a' || c > 'f' {
-			return false
-		}
-	}
-	return true
-}
 
 // audioMedia reports the audio types transcription input and speech output
 // carry.
@@ -114,7 +101,7 @@ func uploadMedia(media string) bool {
 
 func verify(data []byte, digest, media string) error {
 	sum := sha256.Sum256(data)
-	if digest != "sha256:"+hex.EncodeToString(sum[:]) {
+	if digest != contentdigest.Hex(sum[:]) {
 		return errors.New("content: digest mismatch")
 	}
 	if !MediaMatches(data, media) {
@@ -128,7 +115,7 @@ func verify(data []byte, digest, media string) error {
 // maxBytes must be the smaller of the per-image and remaining total budget.
 // The returned bytes are safe for a separate caller-authorized content commit.
 func Download(ctx context.Context, transport listen.FrameClient, digest, media string, size, maxBytes int64) ([]byte, error) {
-	if ctx == nil || !validDigest(digest) || !validMedia(media) || size < 1 || maxBytes < 1 || size > maxBytes || size > int64(int(^uint(0)>>1)) {
+	if ctx == nil || !contentdigest.Valid(digest) || !validMedia(media) || size < 1 || maxBytes < 1 || size > maxBytes || size > int64(int(^uint(0)>>1)) {
 		return nil, errors.New("content: invalid download bounds")
 	}
 	reader := storageclient.NewWithTransport(transport)
@@ -173,7 +160,7 @@ func Download(ctx context.Context, transport listen.FrameClient, digest, media s
 // each sent once per step; an uncertain result is returned for explicit caller
 // reconciliation and never causes an automatic retry or image execution.
 func Upload(ctx context.Context, transport listen.FrameClient, requestID, digest, media string, data []byte, maxBytes int64) error {
-	if ctx == nil || !validDigest(digest) || !uploadMedia(media) || len(data) < 1 || maxBytes < 1 || int64(len(data)) > maxBytes {
+	if ctx == nil || !contentdigest.Valid(digest) || !uploadMedia(media) || len(data) < 1 || maxBytes < 1 || int64(len(data)) > maxBytes {
 		return fmt.Errorf("%w: invalid upload bounds", ErrRefusedLocally)
 	}
 	if err := verify(data, digest, media); err != nil {

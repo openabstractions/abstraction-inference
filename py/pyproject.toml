@@ -7,6 +7,7 @@ name = "abstraction-inference-protocol"
 version = "0.0.0"
 description = "Generated OpenAbstractions inference chat protocol types and service client, with the complete and stream client"
 requires-python = ">=3.10"
+dependencies = ["abstraction-rights-protocol==0.0.0", "abstraction-job-protocol==0.0.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]

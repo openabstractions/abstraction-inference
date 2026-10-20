@@ -1,0 +1,375 @@
+{
+  "methods": [
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/chat@1",
+      "idempotency_key": "",
+      "method": "Start",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/chat@1",
+      "idempotency_key": "",
+      "method": "Observe",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/chat@1",
+      "idempotency_key": "",
+      "method": "Cancel",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/chat@2",
+      "idempotency_key": "",
+      "method": "StartWithGuarantees",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/chat@2",
+      "idempotency_key": "",
+      "method": "Start",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/chat@2",
+      "idempotency_key": "",
+      "method": "Observe",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/chat@2",
+      "idempotency_key": "",
+      "method": "Cancel",
+      "trait": "idempotent"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/chat@3",
+      "idempotency_key": "",
+      "method": "GetHistoryWindow",
+      "trait": "readonly"
+    },
+    {
+      "class": "submit",
+      "contract": "abstraction.inference/chat@3",
+      "idempotency_key": "request.identity.key",
+      "method": "Start",
+      "trait": "keyed"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/chat@3",
+      "idempotency_key": "",
+      "method": "Observe",
+      "trait": "readonly"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/chat@3",
+      "idempotency_key": "",
+      "method": "Cancel",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/preload@1",
+      "idempotency_key": "",
+      "method": "Preload",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/embed@1",
+      "idempotency_key": "",
+      "method": "Embed",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/transcription@1",
+      "idempotency_key": "",
+      "method": "Start",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/transcription@1",
+      "idempotency_key": "",
+      "method": "Observe",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/transcription@1",
+      "idempotency_key": "",
+      "method": "Cancel",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/speech@1",
+      "idempotency_key": "",
+      "method": "Start",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/speech@1",
+      "idempotency_key": "",
+      "method": "Observe",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/speech@1",
+      "idempotency_key": "",
+      "method": "Cancel",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/live@1",
+      "idempotency_key": "",
+      "method": "Start",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/live@1",
+      "idempotency_key": "",
+      "method": "Append",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/live@1",
+      "idempotency_key": "",
+      "method": "Observe",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/live@1",
+      "idempotency_key": "",
+      "method": "Commit",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/live@1",
+      "idempotency_key": "",
+      "method": "Cancel",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/image@1",
+      "idempotency_key": "",
+      "method": "Start",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/image@1",
+      "idempotency_key": "",
+      "method": "Observe",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/image@1",
+      "idempotency_key": "",
+      "method": "Cancel",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/image@2",
+      "idempotency_key": "",
+      "method": "StartWithGuarantees",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/image@2",
+      "idempotency_key": "",
+      "method": "Start",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/image@2",
+      "idempotency_key": "",
+      "method": "Observe",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/image@2",
+      "idempotency_key": "",
+      "method": "Cancel",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/video@1",
+      "idempotency_key": "",
+      "method": "Start",
+      "trait": ""
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/video@1",
+      "idempotency_key": "",
+      "method": "Observe",
+      "trait": "readonly"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/video@1",
+      "idempotency_key": "",
+      "method": "Cancel",
+      "trait": "idempotent"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "Hosts",
+      "trait": "readonly"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "AddHost",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "RemoveHost",
+      "trait": "idempotent"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "Keys",
+      "trait": "readonly"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "IssueKey",
+      "trait": ""
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "RevokeKey",
+      "trait": ""
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "Audit",
+      "trait": "readonly"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "Requests",
+      "trait": "readonly"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "Gateway",
+      "trait": "readonly"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "SetGateway",
+      "trait": "idempotent"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "ProgramBudgets",
+      "trait": "readonly"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/operator@1",
+      "idempotency_key": "",
+      "method": "SetProgramBudget",
+      "trait": "idempotent"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/selection-operator@2",
+      "idempotency_key": "",
+      "method": "ReadEffective",
+      "trait": "readonly"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/selection-operator@2",
+      "idempotency_key": "",
+      "method": "Read",
+      "trait": "readonly"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/selection-operator@2",
+      "idempotency_key": "",
+      "method": "Put",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/selection-operator@2",
+      "idempotency_key": "",
+      "method": "DeletePolicy",
+      "trait": "idempotent"
+    },
+    {
+      "class": "read",
+      "contract": "abstraction.inference/selection-operator@2",
+      "idempotency_key": "",
+      "method": "ReadAccountDefault",
+      "trait": "readonly"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/selection-operator@2",
+      "idempotency_key": "",
+      "method": "PutAccountDefault",
+      "trait": "idempotent"
+    },
+    {
+      "class": "effect",
+      "contract": "abstraction.inference/selection-operator@2",
+      "idempotency_key": "",
+      "method": "DeleteAccountDefault",
+      "trait": "idempotent"
+    }
+  ]
+}

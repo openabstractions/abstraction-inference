@@ -1,11 +1,12 @@
 package gateway
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	digestfmt "github.com/openabstractions/abstraction-storage/go/digest"
 	"io"
 	"net/http"
 	"strconv"
@@ -47,7 +48,7 @@ func (w *Window) openAIImageGeneration(rw http.ResponseWriter, r *http.Request, 
 		w.badRequest(rw, b, input.Model, errField("response_format"))
 		return
 	}
-	w.finishOpenAIImage(rw, r, b, imageDefaults(input.Model, input.Prompt, input.Size, input.N, grant))
+	w.finishOpenAIImage(rw, r, b, imageDefaults(input.Model, input.Prompt, input.Size, input.N, grant), nil)
 }
 
 func gatewayImageMedia(data []byte) string {
@@ -58,26 +59,26 @@ func gatewayImageMedia(data []byte) string {
 	return ""
 }
 
-func storeGatewayImage(w *Window, ctx *http.Request, b Bound, data []byte) (string, string, inference.ContentOutcome) {
-	media := gatewayImageMedia(data)
-	if media == "" {
-		return "", "", inference.ContentUnknown
-	}
+func gatewayDigest(data []byte) string {
 	sum := sha256.Sum256(data)
-	digest := "sha256:" + hex.EncodeToString(sum[:])
-	outcome := w.cfg.StoreContent(ctx.Context(), b.Subject(), digest, data)
-	if outcome != inference.ContentResolved {
-		return "", "", outcome
-	}
-	return digest, media, inference.ContentResolved
+	return digestfmt.Hex(sum[:])
 }
 
-func (w *Window) imageWriteFailure(rw http.ResponseWriter, b Bound, model string, outcome inference.ContentOutcome) {
+// storeGatewayImage stores one upload for the bound subject on ctx, which
+// carries the hold's first-use collector.
+func storeGatewayImage(w *Window, ctx context.Context, b Bound, data []byte) inference.ContentOutcome {
+	return w.cfg.StoreContent(ctx, b.Subject(), gatewayDigest(data), data)
+}
+
+// imageWriteFailure answers an upload the store did not take. reason is the
+// refusal's reason for ContentForbidden: content:write:forbidden and the
+// questions still pending (INF-W11).
+func (w *Window) imageWriteFailure(rw http.ResponseWriter, b Bound, model string, outcome inference.ContentOutcome, reason string) {
 	s := b.Subject()
 	switch outcome {
 	case inference.ContentForbidden:
-		w.record(inference.Record{Profile: "image", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "forbidden", Reason: "content:write:forbidden"})
-		writeError(rw, http.StatusForbidden, "forbidden", "content write is not permitted")
+		w.record(inference.Record{Profile: "image", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "forbidden", Reason: storeRefusedReason})
+		refusalOf("forbidden", reason).write(rw)
 	case inference.ContentTooLarge, inference.ContentUnknown:
 		w.record(inference.Record{Profile: "image", Rung: b.Rung(), Account: s.Account, Program: s.Program, Model: model, Outcome: "invalid", Reason: "content:invalid"})
 		writeError(rw, http.StatusBadRequest, "invalid", "image content is invalid or too large")
@@ -144,32 +145,47 @@ func (w *Window) openAIImageEdit(rw http.ResponseWriter, r *http.Request, b Boun
 		writeError(rw, http.StatusForbidden, "forbidden", "the connection no longer answers for the program that opened it")
 		return
 	}
-	imageDigest, imageMedia, outcome := storeGatewayImage(w, r, b, image)
-	if outcome != inference.ContentResolved {
-		w.imageWriteFailure(rw, b, fields["model"], outcome)
+	imageMedia := gatewayImageMedia(image)
+	if imageMedia == "" {
+		w.imageWriteFailure(rw, b, fields["model"], inference.ContentUnknown, "")
 		return
 	}
 	req := imageDefaults(fields["model"], fields["prompt"], fields["size"], count, grant)
-	req.Mode, req.ImageDigest, req.ImageMediaType = wire.ImageModeEdit, imageDigest, imageMedia
+	req.Mode, req.ImageDigest, req.ImageMediaType = wire.ImageModeEdit, gatewayDigest(image), imageMedia
 	if len(mask) > 0 {
-		maskDigest, maskMedia, outcome := storeGatewayImage(w, r, b, mask)
-		if outcome != inference.ContentResolved {
-			w.imageWriteFailure(rw, b, fields["model"], outcome)
+		maskMedia := gatewayImageMedia(mask)
+		if maskMedia == "" {
+			w.imageWriteFailure(rw, b, fields["model"], inference.ContentUnknown, "")
 			return
 		}
 		if maskMedia != "image/png" {
 			w.badRequest(rw, b, fields["model"], errField("mask"))
 			return
 		}
-		req.MaskDigest, req.MaskMediaType = maskDigest, maskMedia
+		req.MaskDigest, req.MaskMediaType = gatewayDigest(mask), maskMedia
 	}
-	w.finishOpenAIImage(rw, r, b, req)
+	// The uploads are stored inside the start's hold: a store refused for
+	// want of input:image holds for its question like a refused start.
+	w.finishOpenAIImage(rw, r, b, req, func(ctx context.Context) inference.ContentOutcome {
+		if outcome := storeGatewayImage(w, ctx, b, image); outcome != inference.ContentResolved || len(mask) == 0 {
+			return outcome
+		}
+		return storeGatewayImage(w, ctx, b, mask)
+	})
 }
 
-func (w *Window) finishOpenAIImage(rw http.ResponseWriter, r *http.Request, b Bound, req wire.ImageRequest) {
+// finishOpenAIImage stores the request's uploads through store, when it is
+// not nil, and admits and answers the request, all within one hold.
+func (w *Window) finishOpenAIImage(rw http.ResponseWriter, r *http.Request, b Bound, req wire.ImageRequest, store func(context.Context) inference.ContentOutcome) {
 	provider := w.cfg.Chat.(ImageGenerator)
 	ctx := inference.WithLocalImageDelivery(routed(r.Context(), b))
-	admission := provider.StartImage(ctx, b.Subject(), req)
+	admission, stored := w.startStored(r, ctx, b, req.Model, "image", store, func(ctx context.Context) wire.Admission {
+		return provider.StartImage(ctx, b.Subject(), req)
+	})
+	if stored != inference.ContentResolved {
+		w.imageWriteFailure(rw, b, req.Model, stored, admission.Reason)
+		return
+	}
 	if admission.Outcome != wire.StartOutcomeAccepted {
 		refusalOf(admission.Outcome.String(), admission.Reason).write(rw)
 		return

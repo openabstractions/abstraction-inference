@@ -23,6 +23,7 @@ import (
 type operatorRecorder struct {
 	mu       sync.Mutex
 	subjects []inference.Subject
+	budgets  []*wire.ProgramBudget
 }
 
 func (o *operatorRecorder) saw(s inference.Subject) {
@@ -66,6 +67,24 @@ func (o *operatorRecorder) SetGateway(_ context.Context, s inference.Subject, _ 
 func (o *operatorRecorder) Audit(_ context.Context, s inference.Subject, cursor, _ int64) wire.AuditPage {
 	o.saw(s)
 	return wire.AuditPage{Outcome: wire.AuditOutcomePage, Entries: []wire.AuditEntry{{Sequence: cursor, Route: wire.AuditRouteWindow, Outcome: "completed"}}, Next: cursor + 1, AtEnd: true}
+}
+
+func (o *operatorRecorder) Requests(_ context.Context, s inference.Subject, cursor, _ int64) wire.RequestPage {
+	o.saw(s)
+	place := wire.ServedPlaceLocal
+	return wire.RequestPage{Outcome: wire.AuditOutcomePage, Entries: []wire.RequestEntry{{Entry: wire.AuditEntry{Sequence: cursor, Route: wire.AuditRouteNative, Outcome: "completed"}, PreferredModel: "cloud-model", UnavailableHosts: []string{"cloud"}, Selection: "preferred_route_unavailable", Placement: &place}}, Next: cursor + 1, AtEnd: true}
+}
+
+func (o *operatorRecorder) ProgramBudgets(_ context.Context, s inference.Subject, _ string) wire.ProgramBudgetPage {
+	o.saw(s)
+	return wire.ProgramBudgetPage{Outcome: wire.ProgramBudgetReadOutcomePage, Revision: "program-budgets-1", Entries: []wire.ProgramBudgetEntry{{Program: s.Program, Budget: &wire.ProgramBudget{}, Spend: wire.Spend{Day: "2026-11-04"}}}, Profiles: []string{"chat"}}
+}
+func (o *operatorRecorder) SetProgramBudget(_ context.Context, s inference.Subject, request wire.ProgramBudgetChange) wire.ProgramBudgetResult {
+	o.saw(s)
+	o.mu.Lock()
+	o.budgets = append(o.budgets, request.Budget)
+	o.mu.Unlock()
+	return wire.ProgramBudgetResult{Outcome: wire.ProgramBudgetEditOutcomeConflict, Revision: "program-budgets-1"}
 }
 
 // operator@1 shares chat@1's endpoint, every call reaches the operator with
@@ -121,13 +140,28 @@ func TestOperatorProfileSharesTheEndpointAndBindsTheCaller(t *testing.T) {
 	if page, err := operator.Audit(call, 7, 16); err != nil || page.Outcome != wire.AuditOutcomePage || page.Entries[0].Sequence != 7 {
 		t.Fatalf("audit %+v %v", page, err)
 	}
+	if page, err := operator.Requests(call, 7, 16); err != nil || page.Outcome != wire.AuditOutcomePage || len(page.Entries) != 1 || page.Entries[0].Entry.Sequence != 7 || page.Entries[0].PreferredModel != "cloud-model" || page.Entries[0].Placement == nil || *page.Entries[0].Placement != wire.ServedPlaceLocal {
+		t.Fatal(page, err)
+	}
 	if state, err := operator.Gateway(call); err != nil || !state.Open || state.ListeningAddress != "127.0.0.1:8793" {
 		t.Fatalf("gateway %+v %v", state, err)
 	}
 	if change, err := operator.SetGateway(call, "gateway-v1:x", true, "0.0.0.0:8793"); err != nil || change.Outcome != wire.EditOutcomeInvalid || change.Reason != "address" {
 		t.Fatalf("set gateway %+v %v", change, err)
 	}
+	if page, err := operator.ProgramBudgets(call, "fixture"); err != nil || page.Outcome != wire.ProgramBudgetReadOutcomePage || len(page.Entries) != 1 || page.Entries[0].Budget == nil {
+		t.Fatal(page, err)
+	}
+	if change, err := operator.SetProgramBudget(call, wire.ProgramBudgetChange{ExpectedRevision: "stale", Credential: "fixture", Program: "another-program", Budget: &wire.ProgramBudget{}}); err != nil || change.Outcome != wire.ProgramBudgetEditOutcomeConflict {
+		t.Fatal(change, err)
+	}
+	if change, err := operator.SetProgramBudget(call, wire.ProgramBudgetChange{ExpectedRevision: "stale", Credential: "fixture", Program: "another-program"}); err != nil || change.Outcome != wire.ProgramBudgetEditOutcomeConflict {
+		t.Fatal(change, err)
+	}
 	recorder.mu.Lock()
+	if len(recorder.budgets) != 2 || recorder.budgets[0] == nil || recorder.budgets[1] != nil {
+		t.Fatal("No limit and removal collapsed on native wire", recorder.budgets)
+	}
 	for _, s := range recorder.subjects {
 		if !strings.EqualFold(s.Program, identity.CanonicalProgramPath(filepath.Clean(exe))) || s.Account == "" {
 			t.Fatalf("operator saw subject %+v; this program is %s", s, exe)

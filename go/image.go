@@ -3,7 +3,6 @@ package inference
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"math"
 	"net/http"
 	"strconv"
@@ -15,8 +14,8 @@ import (
 	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
 	"github.com/openabstractions/abstraction-inference/go/imagemask"
 	"github.com/openabstractions/abstraction-inference/go/mediationcontent"
-	"github.com/openabstractions/abstraction-inference/go/providerhost/sdcpp"
 	router "github.com/openabstractions/abstraction-router/go"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 const ImageContract = "abstraction.inference/image@1"
@@ -67,8 +66,8 @@ func validateImageRequest(req wire.ImageRequest) string {
 	// host the router picks; an OpenAI-compatible host may be sd-server or
 	// Lemonade in front of it, and a provider may forward an extension value
 	// as its negative prompt.
-	if sdcpp.HasDirective(req.Prompt) {
-		return sdcpp.ReasonEngineDirective
+	if mediationcontent.HasDirective(req.Prompt) {
+		return mediationcontent.ReasonEngineDirective
 	}
 	if _, _, ok := imageDimensions(req.Size); !ok {
 		return "size"
@@ -81,10 +80,10 @@ func validateImageRequest(req wire.ImageRequest) string {
 			return "mode"
 		}
 	} else {
-		if !canonicalSHA256(req.ImageDigest) || !generatedInputMedia(req.ImageMediaType) {
+		if !contentdigest.Valid(req.ImageDigest) || !generatedInputMedia(req.ImageMediaType) {
 			return "image"
 		}
-		if (req.MaskDigest == "") != (req.MaskMediaType == "") || req.MaskDigest != "" && (!canonicalSHA256(req.MaskDigest) || req.MaskMediaType != "image/png") {
+		if (req.MaskDigest == "") != (req.MaskMediaType == "") || req.MaskDigest != "" && (!contentdigest.Valid(req.MaskDigest) || req.MaskMediaType != "image/png") {
 			return "mask"
 		}
 	}
@@ -93,8 +92,8 @@ func validateImageRequest(req wire.ImageRequest) string {
 		if !ok || owner == "" || name == "" || len(key) > 128 || len(req.Extensions[key]) > 32768 {
 			return "extensions"
 		}
-		if sdcpp.HasDirective(req.Extensions[key]) {
-			return sdcpp.ReasonEngineDirective
+		if mediationcontent.HasDirective(req.Extensions[key]) {
+			return mediationcontent.ReasonEngineDirective
 		}
 	}
 	for _, key := range req.RequiredExtensions {
@@ -214,7 +213,7 @@ func unsupportedImageFor(kind string, host *router.Host, req wire.ImageRequest, 
 		}
 		// INF-SD2: Lemonade and sd-server decode request images against
 		// this size; the bound keeps their allocation from wrapping.
-		if req.Size != "auto" && sdcpp.CheckOpenAISize(req.Size) != nil {
+		if req.Size != "auto" && mediationcontent.CheckOpenAISize(req.Size) != nil {
 			return "size:" + req.Size
 		}
 	case "stability":
@@ -237,11 +236,11 @@ func unsupportedImageFor(kind string, host *router.Host, req wire.ImageRequest, 
 // take the size from it when the request says "auto", so its header must
 // name a size within the bound.
 func openAIEditInput(input resolvedImageInput) (wire.StartOutcome, string) {
-	switch err := sdcpp.CheckImageInput(input.mediaType, input.data); sdcpp.Reason(err) {
+	switch err := mediationcontent.CheckImageInput(input.mediaType, input.data); mediationcontent.Reason(err) {
 	case "":
 		return 0, ""
-	case sdcpp.ReasonImageSize:
-		return wire.StartOutcomeUnsupportedFeature, sdcpp.ReasonImageSize
+	case mediationcontent.ReasonImageSize:
+		return wire.StartOutcomeUnsupportedFeature, mediationcontent.ReasonImageSize
 	}
 	return wire.StartOutcomeInvalid, "content:media-type"
 }
@@ -265,7 +264,7 @@ func maskWithinBound(kind string, width, height int) bool {
 		return width >= stabilityMinSide && height >= stabilityMinSide && pixels >= stabilityMinPixels &&
 			pixels <= stabilityMaxPixels && 2*width <= 5*height && 2*height <= 5*width
 	}
-	return sdcpp.CheckSize(max(width, sdcpp.MinDimension), max(height, sdcpp.MinDimension)) == nil
+	return mediationcontent.CheckSize(max(width, mediationcontent.MinDimension), max(height, mediationcontent.MinDimension)) == nil
 }
 
 // maskForms are the mask forms of the adapters that send a mask themselves
@@ -283,8 +282,8 @@ func editMask(kind string, req wire.ImageRequest, inputs map[string]resolvedImag
 		return wire.StartOutcomeInvalid, "mask"
 	}
 	input, mask := inputs[req.ImageDigest], inputs[req.MaskDigest]
-	width, height, err := sdcpp.InputSize(input.mediaType, input.data)
-	maskWidth, maskHeight, maskErr := sdcpp.InputSize(mask.mediaType, mask.data)
+	width, height, err := mediationcontent.InputSize(input.mediaType, input.data)
+	maskWidth, maskHeight, maskErr := mediationcontent.InputSize(mask.mediaType, mask.data)
 	if err != nil || maskErr != nil || width != maskWidth || height != maskHeight {
 		return wire.StartOutcomeInvalid, "mask"
 	}
@@ -298,7 +297,7 @@ func editMask(kind string, req wire.ImageRequest, inputs map[string]resolvedImag
 	// the route's bound since decoding allocates its pixels: a mask whose
 	// pixels do not decode, or that marks no pixel to change, is refused.
 	if !maskWithinBound(kind, maskWidth, maskHeight) {
-		return wire.StartOutcomeUnsupportedFeature, sdcpp.ReasonImageSize
+		return wire.StartOutcomeUnsupportedFeature, mediationcontent.ReasonImageSize
 	}
 	if _, _, changed, err := imagemask.Inspect(mask.data); err != nil || changed == 0 {
 		return wire.StartOutcomeInvalid, "mask"
@@ -340,7 +339,7 @@ func (p *Provider) resolveImageInput(ctx context.Context, subject Subject, diges
 		return resolvedImageInput{}, wire.StartOutcomeInvalid, "content:too-large"
 	}
 	sum := sha256.Sum256(data)
-	if digest != "sha256:"+hex.EncodeToString(sum[:]) {
+	if digest != contentdigest.Hex(sum[:]) {
 		return resolvedImageInput{}, wire.StartOutcomeInvalid, "content:digest"
 	}
 	if http.DetectContentType(data) != media {
@@ -362,8 +361,9 @@ func (p *Provider) startImage(ctx context.Context, subject Subject, req wire.Ima
 	refuse := func(outcome wire.StartOutcome, reason string, host *router.Host, model string) wire.Admission {
 		record := Record{Profile: router.ProfileImage, Route: via.name, Rung: via.rung, Account: subject.Account, Program: subject.Program, Model: req.Model,
 			Family: familyOf(req.Model), Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
+		noteOf(selected).apply(&record)
 		if host != nil {
-			record.Host, record.Model = host.Name, model
+			record.Host, record.Model, record.Placement = host.Name, model, servedPlace(host)
 			if host.Wire == router.WireRemote {
 				record.Domain = host.Domain
 			}
@@ -376,6 +376,13 @@ func (p *Provider) startImage(ctx context.Context, subject Subject, req wire.Ima
 	}
 	if subject.Account == "" || subject.Program == "" {
 		return refuse(wire.StartOutcomeForbidden, "caller", nil, "")
+	}
+	if op := p.jobOperation(subject, router.ProfileImage, extensions.job); op != nil {
+		admission := wire.Admission{Outcome: wire.StartOutcomeAccepted, Operation: op.id, Host: op.host.Name, Model: op.model}
+		p.bounds(&admission)
+		idle, retention := p.limits(op)
+		admission.IdleMs, admission.RetentionMs = idle.Milliseconds(), retention.Milliseconds()
+		return admission
 	}
 	if reason := validateImageRequest(req); reason != "" {
 		return refuse(wire.StartOutcomeInvalid, reason, nil, "")
@@ -485,13 +492,31 @@ func (p *Provider) startImage(ctx context.Context, subject Subject, req wire.Ima
 	if grants.refused() {
 		return refuse(grants.startOutcome(), grants.reason(), host, model)
 	}
+	var comfyBinding *ComfyRecipeBinding
+	if kind == "comfyui" {
+		binding, why := p.comfyRecipeBinding(host, model)
+		if why != "" {
+			return refuse(wire.StartOutcomeUnsupportedFeature, why, host, model)
+		}
+		if binding != nil {
+			comfyBinding = binding
+			if why = binding.Recipe.requestReason(req); why != "" {
+				return refuse(wire.StartOutcomeUnsupportedFeature, why, host, model)
+			}
+			if why = p.verifyComfyRecipe(ctx, binding); why != "" {
+				return refuse(wire.StartOutcomeUnavailable, why, host, model)
+			}
+		} else if why = p.verifyComfyCheckpoint(ctx, host, model); why != "" {
+			return refuse(wire.StartOutcomeUnavailable, why, host, model)
+		}
+	}
 	credential := ""
 	if host.Hosted {
 		credential = host.Credential
 	}
 	if credential != "" && p.cfg.Ceilings != nil && !remote {
-		if unit, over := p.cfg.Ceilings.Exceeded(credential); over {
-			return refuse(wire.StartOutcomeBudgetExceeded, "ceiling:"+unit+":"+credential, host, model)
+		if reason := p.cfg.Ceilings.budgetRefusal(credential, subject, host); reason != "" {
+			return refuse(budgetStartOutcome(reason), reason, host, model)
 		}
 	}
 	if p.active(subject) >= p.cfg.MaxOperations {
@@ -514,20 +539,18 @@ func (p *Provider) startImage(ctx context.Context, subject Subject, req wire.Ima
 		clear(headers)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
-	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileImage, model, &subject)
-	if !ok {
+	activity, admissionOutcome, admitReason := p.admitModel(ctx, host, router.ProfileImage, model, &subject, subject, credential)
+	if admissionOutcome != wire.StartOutcomeAccepted {
 		clear(headers)
-		if capacityRefusal {
-			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
-		}
-		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+		return refuse(admissionOutcome, admitReason, host, model)
 	}
 	defer p.releaseModelActivity(activity)
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
-	op.profile, op.route, op.remote = router.ProfileImage, via, remote
+	op.profile, op.route, op.remote, op.selection = router.ProfileImage, via, remote, noteOf(selected)
 	if req.Mode == wire.ImageModeEdit {
 		op.inputs = namedInputs(req.ImageDigest, req.MaskDigest)
 	}
+	op.job = extensions.job
 	p.bindOperation(ctx, op)
 	runCtx, cancel := context.WithCancel(p.ctx)
 	op.cancel = cancel
@@ -536,9 +559,11 @@ func (p *Provider) startImage(ctx context.Context, subject Subject, req wire.Ima
 		clear(headers)
 		return refuse(outcome, admitReason, host, model)
 	}
-	go p.runImage(runCtx, op, kind, req, inputs, fields, commits, headers)
+	go p.runImage(runCtx, op, kind, req, inputs, fields, commits, headers, comfyBinding)
 	admission := wire.Admission{Outcome: wire.StartOutcomeAccepted, Operation: id, Host: host.Name, Model: model}
 	p.bounds(&admission)
+	idle, retention := p.limits(op)
+	admission.IdleMs, admission.RetentionMs = idle.Milliseconds(), retention.Milliseconds()
 	return admission
 }
 
@@ -597,7 +622,7 @@ func (p *Provider) imageFields(kind string, host *router.Host, req wire.ImageReq
 	return fields, req, ""
 }
 
-func (p *Provider) runImage(ctx context.Context, op *operation, kind string, req wire.ImageRequest, inputs map[string]resolvedImageInput, fields map[string]any, commits []ContentCommitter, headers map[string]string) {
+func (p *Provider) runImage(ctx context.Context, op *operation, kind string, req wire.ImageRequest, inputs map[string]resolvedImageInput, fields map[string]any, commits []ContentCommitter, headers map[string]string, comfyBinding *ComfyRecipeBinding) {
 	defer p.runs.Done()
 	defer close(op.finished)
 	defer op.cancel()
@@ -617,6 +642,8 @@ func (p *Provider) runImage(ctx context.Context, op *operation, kind string, req
 		var backend imageBackendReply
 		if kind == "engine" {
 			backend = p.runImageEngine(ctx, op.host, op.model, req, inputs, emitProgress)
+		} else if kind == "comfyui" {
+			backend = p.runAdmittedComfyImage(ctx, op.host, op.model, req, comfyBinding, bounds, emitProgress)
 		} else {
 			backend = runImageBackend(ctx, p.cfg.HTTP, op.host, op.model, kind, req, inputs, fields, headers, bounds, emitProgress)
 		}
@@ -626,9 +653,10 @@ func (p *Provider) runImage(ctx context.Context, op *operation, kind string, req
 		end = p.publishImages(ctx, op, req, backend, commits)
 	}
 	clear(headers)
-	if reason := op.stopped(); reason != "" {
+	uncertain := remoteExecutionUncertain(op, end.Outcome, end.Reason)
+	if reason := op.stopped(); reason != "" && !uncertain {
 		end.Outcome, end.Reason = wire.ReplyOutcomeCancelled, reason
-	} else if p.ctx.Err() != nil || ctx.Err() != nil && end.Outcome == wire.ReplyOutcomeUnavailable {
+	} else if !uncertain && (p.ctx.Err() != nil || ctx.Err() != nil && end.Outcome == wire.ReplyOutcomeUnavailable) {
 		end.Outcome, end.Reason = wire.ReplyOutcomeCancelled, "caller"
 	}
 	end.Host, end.Model = op.host.Name, op.model
@@ -637,15 +665,16 @@ func (p *Provider) runImage(ctx context.Context, op *operation, kind string, req
 		if end.Cost != nil {
 			micros = end.Cost.Micros
 		}
-		if err := p.cfg.Ceilings.AddModalities(op.credential, end.Usage.Input+end.Usage.Output, micros, end.Images, 0, 0); err != nil {
+		if err := p.cfg.Ceilings.addModalitiesForSubject(op.credential, op.subject, addObservedCount(end.Usage.Input, end.Usage.Output), micros, end.Images, 0, 0, end.Cost != nil); err != nil {
 			p.report(err)
 		}
 	}
 	now := p.cfg.Now()
 	op.emit(wire.Delta{Kind: wire.DeltaKindEnd, ImageEnd: &end}, now)
 	record := Record{Operation: op.id, Profile: router.ProfileImage, Route: op.route.name, Rung: op.route.rung, Account: op.subject.Account, Program: op.subject.Program,
-		Host: op.host.Name, Model: op.model, Family: familyOf(op.model), Credential: op.credential, Outcome: end.Outcome.String(), Reason: end.Reason,
+		Host: op.host.Name, Model: op.model, Placement: op.placement, Family: familyOf(op.model), Credential: op.credential, Outcome: end.Outcome.String(), Reason: end.Reason,
 		TokensIn: end.Usage.Input, TokensOut: end.Usage.Output, Images: end.Images, WallMS: now.Sub(op.started).Milliseconds(), Domain: op.route.domain, Claim: op.route.claim}
+	op.selection.apply(&record)
 	if op.remote {
 		record.Domain = op.host.Domain
 	}
@@ -675,7 +704,7 @@ func (p *Provider) publishImages(ctx context.Context, op *operation, req wire.Im
 	}
 	for index, output := range backend.images {
 		sum := sha256.Sum256(output.data)
-		digest := "sha256:" + hex.EncodeToString(sum[:])
+		digest := contentdigest.Hex(sum[:])
 		switch commits[index](ctx, digest, output.data) {
 		case ContentResolved:
 		case ContentForbidden:
@@ -699,7 +728,7 @@ func validateRemoteImageDelivery(req wire.ImageRequest, results []wire.ImageResu
 		return "remote:count"
 	}
 	for i, result := range results {
-		if result.Index != int64(i) || result.Delivery != end.Deliveries[i] || !canonicalSHA256(result.Delivery.Digest) || !generatedInputMedia(result.Delivery.MediaType) || result.Delivery.Size < 1 || result.Delivery.Location != "local" {
+		if result.Index != int64(i) || result.Delivery != end.Deliveries[i] || !contentdigest.Valid(result.Delivery.Digest) || !generatedInputMedia(result.Delivery.MediaType) || result.Delivery.Size < 1 || result.Delivery.Location != "local" {
 			return "remote:delivery"
 		}
 	}
@@ -775,7 +804,7 @@ func (p *Provider) runRemoteImage(ctx context.Context, op *operation, req wire.I
 	client := wire.NewImageClient(transport.WithContext(ctx))
 	admission, err := client.Start(forwarded)
 	if err != nil {
-		return imageFailure(wire.ReplyOutcomeUnavailable, "remote:unreachable")
+		return imageFailure(wire.ReplyOutcomeUnavailable, remoteRequestReason(err))
 	}
 	if admission.Outcome != wire.StartOutcomeAccepted {
 		outcome := replyFromStart(admission.Outcome)
@@ -816,7 +845,7 @@ func (p *Provider) runRemoteImage(ctx context.Context, op *operation, req wire.I
 				op.emit(wire.Delta{Kind: wire.DeltaKindImageProgress, ImageProgress: &progress}, p.cfg.Now())
 			case wire.DeltaKindImageResult:
 				result := *delta.ImageResult
-				if int64(len(results)) >= req.Count || result.Index != int64(len(results)) || !canonicalSHA256(result.Delivery.Digest) || !generatedInputMedia(result.Delivery.MediaType) || result.Delivery.Size < 1 || result.Delivery.Location != "local" {
+				if int64(len(results)) >= req.Count || result.Index != int64(len(results)) || !contentdigest.Valid(result.Delivery.Digest) || !generatedInputMedia(result.Delivery.MediaType) || result.Delivery.Size < 1 || result.Delivery.Location != "local" {
 					cancelRemote()
 					return imageFailure(wire.ReplyOutcomeUnavailable, "remote:delivery")
 				}

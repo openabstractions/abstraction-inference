@@ -1,4 +1,4 @@
-// Package client calls an explicitly selected abstraction.inference/chat@1
+// Package client calls explicitly selected abstraction.inference chat services
 // service over shared framed IPC. Complete and Stream hide Start, Observe and
 // Cancel. Start is never retried.
 package client
@@ -76,8 +76,18 @@ func (c *Chat) Cancel(ctx context.Context, operation string) (Cancellation, erro
 // reply with that outcome. Leaving the loop early, or a failure, cancels the
 // operation. A gap yields ErrGap and stops.
 func (c *Chat) Stream(ctx context.Context, request Request) iter.Seq2[Delta, error] {
+	return streamChat(ctx, func() (Admission, error) { return c.Start(ctx, request) }, c)
+}
+
+type chatOperation interface {
+	Observe(context.Context, string, int64, int64, int64, int64) (DeltaPage, error)
+	Cancel(context.Context, string) (Cancellation, error)
+}
+
+// streamChat owns the shared Start-once, paging and iterator-exit lifetime.
+func streamChat(ctx context.Context, start func() (Admission, error), c chatOperation) iter.Seq2[Delta, error] {
 	return func(yield func(Delta, error) bool) {
-		a, err := c.Start(ctx, request)
+		a, err := start()
 		if err != nil {
 			yield(Delta{}, err)
 			return

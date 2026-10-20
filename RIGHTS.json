@@ -162,22 +162,25 @@
         "operations": [
           "abstraction.inference/selection-operator@2#Read",
           "abstraction.inference/selection-operator@2#Put",
-          "abstraction.inference/selection-operator@2#DeletePolicy"
+          "abstraction.inference/selection-operator@2#DeletePolicy",
+          "abstraction.inference/selection-operator@2#ReadAccountDefault",
+          "abstraction.inference/selection-operator@2#PutAccountDefault",
+          "abstraction.inference/selection-operator@2#DeleteAccountDefault"
         ],
         "resource_profile": "abstraction.rights/legacy-exact-string@1",
         "resource_type": "string (legacy exact resource)",
         "enforced_by": [
           "abstraction.inference/selection-operator@2"
         ],
-        "disclosure": "Read/write/delete another program's named selection policy.",
-        "lifecycle": "Any target program's named policies within the receiving account; future policy names included.",
+        "disclosure": "Read/write/delete another program's named selection policy and account defaults.",
+        "lifecycle": "Any target program's named policies and account defaults within the receiving account; future policy names included.",
         "first_use": "none",
         "served": true
       },
       "label": "abstraction.inference/selection.manage_for",
       "supported_selectors": [],
       "first_use_selectors": [],
-      "collection": "Any target program's named policies within the receiving account; future policy names included.",
+      "collection": "Any target program's named policies and account defaults within the receiving account; future policy names included.",
       "all_effect": "",
       "request_type": "string (legacy exact resource)"
     }

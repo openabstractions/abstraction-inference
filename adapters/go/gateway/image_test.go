@@ -88,8 +88,10 @@ func TestGatewayImageEditRefusedInputWriteStartsNothing(t *testing.T) {
 	provider := &fakeImage{}
 	var records []inference.Record
 	w := &Window{cfg: Config{Chat: provider,
-		StoreContent: func(context.Context, inference.Subject, string, []byte) inference.ContentOutcome { return inference.ContentForbidden },
-		Record:       func(r inference.Record) { records = append(records, r) }}}
+		StoreContent: func(context.Context, inference.Subject, string, []byte) inference.ContentOutcome {
+			return inference.ContentForbidden
+		},
+		Record: func(r inference.Record) { records = append(records, r) }}}
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	for name, value := range map[string]string{"model": "gpt-image-1", "prompt": "remove the sign"} {

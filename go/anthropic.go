@@ -91,13 +91,15 @@ type anthropicEvent struct {
 		Usage anthropicUsage `json:"usage"`
 	} `json:"message"`
 	ContentBlock struct {
-		Type string `json:"type"`
-		ID   string `json:"id"`
-		Name string `json:"name"`
+		Type     string `json:"type"`
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Thinking string `json:"thinking"`
 	} `json:"content_block"`
 	Delta struct {
 		Type        string `json:"type"`
 		Text        string `json:"text"`
+		Thinking    string `json:"thinking"`
 		PartialJSON string `json:"partial_json"`
 		StopReason  string `json:"stop_reason"`
 	} `json:"delta"`
@@ -144,6 +146,9 @@ func (anthropic) run(ctx context.Context, client *http.Client, host *router.Host
 	var upstreamError string
 	var overflow bool
 	var window, input int64
+	// thinking, text and called track INF-Q8: a reply whose only output was
+	// a thinking block is a typed refusal, never an empty completion.
+	thinking, text, called := false, false, false
 	err := events(resp.Body, func(event, data string) bool {
 		var e anthropicEvent
 		if json.Unmarshal([]byte(data), &e) != nil {
@@ -162,6 +167,13 @@ func (anthropic) run(ctx context.Context, client *http.Client, host *router.Host
 				part.Kind = wire.PartKindText
 			case "tool_use":
 				part = wire.Part{Kind: wire.PartKindToolCall, CallID: e.ContentBlock.ID, Name: e.ContentBlock.Name}
+				called = true
+			case "thinking", "redacted_thinking":
+				thinking = true
+				if e.ContentBlock.Thinking != "" {
+					s.token()
+				}
+				return true
 			default:
 				return true
 			}
@@ -170,12 +182,16 @@ func (anthropic) run(ctx context.Context, client *http.Client, host *router.Host
 				s.part(blocks[e.Index], part)
 			}
 		case "content_block_delta":
+			if e.Delta.Type == "thinking_delta" && e.Delta.Thinking != "" {
+				s.token()
+			}
 			index, ok := blocks[e.Index]
 			if !ok {
 				return true
 			}
 			switch e.Delta.Type {
 			case "text_delta":
+				text = text || e.Delta.Text != ""
 				s.part(index, wire.Part{Kind: wire.PartKindText, Text: e.Delta.Text})
 			case "input_json_delta":
 				s.part(index, wire.Part{Kind: wire.PartKindToolCall, Arguments: e.Delta.PartialJSON})
@@ -215,6 +231,11 @@ func (anthropic) run(ctx context.Context, client *http.Client, host *router.Host
 	}
 	if reply.StopReason == wire.StopReasonNoStop {
 		reply.StopReason = wire.StopReasonEnd
+	}
+	if thinking && !text && !called {
+		only := failed(wire.ReplyOutcomeRefused, ReasonReasoningOnly)
+		only.StopReason, only.Usage = reply.StopReason, reply.Usage
+		return only
 	}
 	return reply
 }

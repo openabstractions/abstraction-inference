@@ -10,6 +10,7 @@ import (
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
@@ -159,7 +160,33 @@ func TestNativeChatRequiredExtensionUsesSelectedProfileBeforeAuthority(t *testin
 		t.Fatalf("unadvertised chat admission %+v, rights %d, admits %d", got, rights, admits)
 	}
 	host.SupportedExtensions[router.ProfileChat] = map[string]bool{"vendor/steps": true}
-	if got := p.Start(context.Background(), Subject{Account: "test", Program: "caller"}, req); got.Outcome != wire.StartOutcomeAccepted || rights != 1 || admits != 1 {
+	// Admission plus standing rechecks on each side of Admit use this static decider.
+	if got := p.Start(context.Background(), Subject{Account: "test", Program: "caller"}, req); got.Outcome != wire.StartOutcomeAccepted || rights != 3 || admits != 1 {
 		t.Fatalf("advertised chat admission %+v, rights %d, admits %d", got, rights, admits)
+	}
+}
+
+func TestNativeExtensionForwardingDropsCallerJobMark(t *testing.T) {
+	values := map[string]string{"vendor/steps": "4", JobExtension: "forged-job"}
+	got, _ := forwardedNativeExtensions(values, nil, "bound-app")
+	if _, ok := got[JobExtension]; ok || got["vendor/steps"] != "4" || values[JobExtension] != "forged-job" {
+		t.Fatalf("forwarded %#v from %#v", got, values)
+	}
+}
+
+func TestJobImageStartMarksTheJobsOwnOperation(t *testing.T) {
+	image := jobwire.ImageRequest{Extensions: map[string]string{"vendor/steps": "4", JobExtension: "app-job"}}
+	got, _ := jobImageExtensions(image, durableJobSubmission{operation: "job-operation-7", program: "bound-app"})
+	if got[JobExtension] != "job-operation-7" || got[ClaimExtension] != "bound-app" || got["vendor/steps"] != "4" {
+		t.Fatalf("job Start extensions %#v", got)
+	}
+}
+
+func TestNativeExtensionForwardingDropsEveryReservedKey(t *testing.T) {
+	values := map[string]string{"vendor/steps": "4", CacheScopeExtension: "forged-scope", CachePartitionExtension: "forged-partition",
+		JobExtension: "forged-job", ReservedExtensionPrefix + "future": "x"}
+	got, _ := forwardedNativeExtensions(values, nil, "bound-app")
+	if len(got) != 2 || got["vendor/steps"] != "4" || got[ClaimExtension] != "bound-app" {
+		t.Fatalf("forwarded %#v", got)
 	}
 }

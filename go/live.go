@@ -3,10 +3,11 @@ package inference
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 	router "github.com/openabstractions/abstraction-router/go"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 	"net/url"
 	"strings"
 	"sync"
@@ -81,7 +82,7 @@ func (p *Provider) PreflightLive(ctx context.Context, subject Subject, req wire.
 	refuse := func(outcome wire.StartOutcome, reason string, h *router.Host, model string) wire.Admission {
 		r := Record{Route: via.name, Rung: via.rung, Domain: via.domain, Claim: via.claim, Family: familyOf(req.Model), Profile: router.ProfileLive, Account: subject.Account, Program: subject.Program, Model: req.Model, Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds()}
 		if h != nil {
-			r.Host = h.Name
+			r.Host, r.Placement = h.Name, servedPlace(h)
 			r.Model = model
 			if h.Wire == router.WireRemote {
 				r.Domain = h.Domain
@@ -107,8 +108,9 @@ func (p *Provider) PreflightLive(ctx context.Context, subject Subject, req wire.
 	if err != nil || ctx.Err() != nil {
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
 	}
-	if word != "permitted" {
-		if word == "denied" || word == "not_granted" || word == "unknown_action" {
+	outcome, _ := rightsclient.ParseDecisionOutcome(word)
+	if outcome != rightsclient.DecisionOutcomePermitted {
+		if rightsclient.Evaluated(outcome) {
 			return refuse(wire.StartOutcomeNotPermitted, "rights:"+word, host, model)
 		}
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
@@ -131,7 +133,7 @@ func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.Live
 	refuse := func(outcome wire.StartOutcome, reason string, h *router.Host, model string) wire.Admission {
 		r := Record{Route: via.name, Rung: via.rung, Domain: via.domain, Claim: via.claim, Family: familyOf(req.Model), Profile: router.ProfileLive, Account: subject.Account, Program: subject.Program, Model: req.Model, Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds()}
 		if h != nil {
-			r.Host = h.Name
+			r.Host, r.Placement = h.Name, servedPlace(h)
 			r.Model = model
 			if h.Wire == router.WireRemote {
 				r.Domain = h.Domain
@@ -158,8 +160,9 @@ func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.Live
 	if err != nil || ctx.Err() != nil {
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
 	}
-	if word != "permitted" {
-		if word == "denied" || word == "not_granted" || word == "unknown_action" {
+	outcome, _ := rightsclient.ParseDecisionOutcome(word)
+	if outcome != rightsclient.DecisionOutcomePermitted {
+		if rightsclient.Evaluated(outcome) {
 			return refuse(wire.StartOutcomeNotPermitted, "rights:"+word, host, model)
 		}
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
@@ -187,8 +190,8 @@ func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.Live
 		credential = host.Credential
 	}
 	if credential != "" && p.cfg.Ceilings != nil && !remote {
-		if unit, over := p.cfg.Ceilings.Exceeded(credential); over {
-			return refuse(wire.StartOutcomeBudgetExceeded, "ceiling:"+unit+":"+credential, host, model)
+		if reason := p.cfg.Ceilings.budgetRefusal(credential, subject, host); reason != "" {
+			return refuse(budgetStartOutcome(reason), reason, host, model)
 		}
 	}
 	if p.active(subject) >= p.cfg.MaxOperations {
@@ -210,13 +213,10 @@ func (p *Provider) StartLive(ctx context.Context, subject Subject, req wire.Live
 		clear(headers)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
-	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileLive, model, &subject)
-	if !ok {
+	activity, admissionOutcome, admitReason := p.admitModel(ctx, host, router.ProfileLive, model, &subject, subject, credential)
+	if admissionOutcome != wire.StartOutcomeAccepted {
 		clear(headers)
-		if capacityRefusal {
-			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
-		}
-		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+		return refuse(admissionOutcome, admitReason, host, model)
 	}
 	defer p.releaseModelActivity(activity)
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
@@ -336,7 +336,8 @@ func (p *Provider) runLive(ctx context.Context, op *operation, req wire.LiveRequ
 		end.InputAudioBytes = ls.inputBytes
 		ls.mu.Unlock()
 		end.OutputAudioBytes = int64(len(output))
-		if reason := op.stopped(); reason != "" {
+		uncertain := remoteExecutionUncertain(op, end.Outcome, end.Reason)
+		if reason := op.stopped(); reason != "" && !uncertain {
 			if reason == "upstream:write" {
 				end.Outcome = wire.ReplyOutcomeUnavailable
 			} else {
@@ -345,13 +346,13 @@ func (p *Provider) runLive(ctx context.Context, op *operation, req wire.LiveRequ
 			end.Reason = reason
 			end.Delivery = wire.Delivery{}
 		}
-		if ctx.Err() != nil && end.Outcome == wire.ReplyOutcomeUnavailable && end.Reason != "upstream:write" {
+		if !uncertain && ctx.Err() != nil && end.Outcome == wire.ReplyOutcomeUnavailable && end.Reason != "upstream:write" {
 			end.Outcome = wire.ReplyOutcomeCancelled
 			end.Reason = "caller"
 		}
 		seconds := (end.InputAudioBytes + end.OutputAudioBytes + 47999) / 48000
 		if op.credential != "" && p.cfg.Ceilings != nil && !op.remote {
-			if err := p.cfg.Ceilings.AddUsage(op.credential, end.Usage.Input+end.Usage.Output, 0, seconds); err != nil {
+			if err := p.cfg.Ceilings.addModalitiesForSubject(op.credential, op.subject, addObservedCount(end.Usage.Input, end.Usage.Output), 0, 0, seconds, 0, false); err != nil {
 				p.report(err)
 			}
 		}
@@ -361,7 +362,7 @@ func (p *Provider) runLive(ctx context.Context, op *operation, req wire.LiveRequ
 		if op.remote {
 			domain = op.host.Domain
 		}
-		p.record(Record{Route: op.route.name, Rung: op.route.rung, Domain: domain, Claim: op.route.claim, Family: familyOf(op.model), Operation: op.id, Profile: router.ProfileLive, Account: op.subject.Account, Program: op.subject.Program, Host: op.host.Name, Model: op.model, Credential: op.credential, Outcome: end.Outcome.String(), Reason: end.Reason, TokensIn: end.Usage.Input, TokensOut: end.Usage.Output, AudioSeconds: seconds, WallMS: now.Sub(op.started).Milliseconds()})
+		p.record(Record{Route: op.route.name, Rung: op.route.rung, Domain: domain, Claim: op.route.claim, Family: familyOf(op.model), Operation: op.id, Profile: router.ProfileLive, Account: op.subject.Account, Program: op.subject.Program, Host: op.host.Name, Model: op.model, Placement: op.placement, Credential: op.credential, Outcome: end.Outcome.String(), Reason: end.Reason, TokensIn: end.Usage.Input, TokensOut: end.Usage.Output, AudioSeconds: seconds, WallMS: now.Sub(op.started).Milliseconds()})
 	}()
 	var backend liveBackend
 	var err error
@@ -466,7 +467,7 @@ func (p *Provider) runLive(ctx context.Context, op *operation, req wire.LiveRequ
 				return
 			}
 			sum := sha256.Sum256(output)
-			digest := "sha256:" + hex.EncodeToString(sum[:])
+			digest := contentdigest.Hex(sum[:])
 			if !op.beginCompletion() {
 				end.Outcome = wire.ReplyOutcomeCancelled
 				end.Reason = "cancel"
@@ -506,5 +507,5 @@ func liveFailure(err error) (wire.ReplyOutcome, string) {
 
 func liveAudioDigest(audio []byte) string {
 	sum := sha256.Sum256(audio)
-	return "sha256:" + hex.EncodeToString(sum[:])
+	return contentdigest.Hex(sum[:])
 }

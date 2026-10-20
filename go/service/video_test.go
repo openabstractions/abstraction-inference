@@ -49,6 +49,92 @@ func (v *recordingVideo) Cancel(_ context.Context, caller inference.Subject, ope
 // empty designated serves the endpoint with Listen, which designates none.
 func serveVideoLeaf(t *testing.T, designated string, video VideoServer) wire.VideoTransport {
 	t.Helper()
+	if designated == "" {
+		return serveVideoDesignating(t, nil, video)
+	}
+	return serveVideoDesignating(t, []string{designated}, video)
+}
+
+// heldVideo admits a request_id once per caller program, as a provider's
+// operation table does.
+type heldVideo struct {
+	mu       sync.Mutex
+	held     map[string]string
+	admitted int
+	observed string
+	canceled string
+}
+
+func (v *heldVideo) Start(_ context.Context, caller inference.Subject, request wire.VideoRequest) wire.VideoAdmission {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	key := caller.Program + "\x00" + request.RequestID
+	if operation, ok := v.held[key]; ok {
+		return wire.VideoAdmission{Outcome: wire.StartOutcomeAccepted, Operation: operation, RetentionMs: 1000}
+	}
+	v.admitted++
+	v.held[key] = "op-" + request.RequestID
+	return wire.VideoAdmission{Outcome: wire.StartOutcomeAccepted, Operation: v.held[key], RetentionMs: 1000}
+}
+
+func (v *heldVideo) Observe(_ context.Context, caller inference.Subject, _ string) wire.VideoObservation {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.observed = caller.Program
+	return wire.VideoObservation{Status: wire.VideoStateQueued, QueuePosition: 1}
+}
+
+func (v *heldVideo) Cancel(_ context.Context, caller inference.Subject, _ string) wire.Cancellation {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.canceled = caller.Program
+	return wire.Cancellation{Outcome: wire.CancelOutcomeCancelled}
+}
+
+// I-12: a job one designated runtime executable started and another
+// reclaims is admitted once. The provider holds request_id under the
+// runtime's designation, the same for every executable the leaf names.
+func TestVideoReclaimedByAnotherRuntimeExecutableIsAdmittedOnce(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sibling := filepath.Join(t.TempDir(), "openabstractions.exe")
+	if err := os.WriteFile(sibling, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	video := &heldVideo{held: map[string]string{}}
+	// The sibling runtime executable started the job before this one
+	// reclaimed it.
+	video.Start(context.Background(), inference.Subject{Account: "a", Program: identity.CanonicalProgramPath(sibling)}, wire.VideoRequest{RequestID: "r1"})
+	client := wire.NewVideoClient(serveVideoDesignating(t, []string{sibling, exe}, video))
+	admission, err := client.Start(wire.VideoRequest{RequestID: "r1", Model: "m", Prompt: "p", Size: "auto", DurationMs: 1000})
+	if err != nil || admission.Outcome != wire.StartOutcomeAccepted || admission.Operation != "op-r1" {
+		t.Fatalf("start %+v %v", admission, err)
+	}
+	// The reclaiming executable observes and cancels the sibling's
+	// operation as the same designation.
+	if observed, err := client.Observe("op-r1"); err != nil || observed.Status != wire.VideoStateQueued {
+		t.Fatalf("observe %+v %v", observed, err)
+	}
+	if cancelled, err := client.Cancel("op-r1"); err != nil || cancelled.Outcome != wire.CancelOutcomeCancelled {
+		t.Fatalf("cancel %+v %v", cancelled, err)
+	}
+	video.mu.Lock()
+	defer video.mu.Unlock()
+	if video.admitted != 1 {
+		t.Fatalf("the reclaimed job was admitted %d times", video.admitted)
+	}
+	designation := identity.CanonicalProgramPath(sibling)
+	if video.observed != designation || video.canceled != designation {
+		t.Fatalf("observe as %q, cancel as %q, want the designation %q", video.observed, video.canceled, designation)
+	}
+}
+
+// serveVideoDesignating serves a leaf designating every program in
+// designated, in order; none serves the endpoint with Listen.
+func serveVideoDesignating(t *testing.T, designated []string, video VideoServer) wire.VideoTransport {
+	t.Helper()
 	if err := identity.CanEver(listen.Program); err != nil {
 		t.Skip(err)
 	}
@@ -62,10 +148,10 @@ func serveVideoLeaf(t *testing.T, designated string, video VideoServer) wire.Vid
 	}
 	endpoint := endpointFor(t)
 	var h *Host
-	if designated == "" {
+	if len(designated) == 0 {
 		h, err = Listen(endpoint, leaf)
 	} else {
-		h, err = ListenDesignatedLeaf(endpoint, leaf, inference.ExecutionLocal, designated)
+		h, err = ListenDesignatedLeaf(endpoint, leaf, inference.ExecutionLocal, designated...)
 	}
 	if err != nil {
 		leaf.Close()

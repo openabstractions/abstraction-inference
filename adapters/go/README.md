@@ -9,6 +9,13 @@ runtime composes `realtime.Dial` through `inference.Config.LiveDialer` and opens
 `gateway.Window` after service setup. Native OA clients and remote providers
 continue to use their existing service transport.
 
+Provider authors apply the [provider kit's reviewed engine bindings](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#reviewed-engine-bindings)
+at an engine-facing adapter, including the existing sd.cpp directive/media
+checks. The inference contract owns provider-independent call semantics;
+historical engine-rule IDs and anchors forward to the kit. Shared engine code
+uses the kit's 0.8 Go paths; its [migration guide](https://github.com/openabstractions/abstraction-provider-kit/blob/main/MIGRATING-0.8.md)
+maps former `go/providerhost` imports. This adapter module keeps its own path.
+
 The gateway import moved from
 `github.com/openabstractions/abstraction-inference/go/gateway` to
 `github.com/openabstractions/abstraction-inference/adapters/go/gateway`. The

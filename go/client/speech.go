@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
+	digestfmt "github.com/openabstractions/abstraction-storage/go/digest"
 
 	"github.com/openabstractions/abstraction-identity/listen"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
@@ -78,7 +78,7 @@ func (c *Speech) Synthesize(ctx context.Context, request SpeechRequest) ([]byte,
 				reply := *d.SpeechEnd
 				if reply.Outcome == wire.ReplyOutcomeCompleted {
 					sum := sha256.Sum256(audio)
-					if reply.Delivery.Size != int64(len(audio)) || reply.Delivery.Digest != "sha256:"+hex.EncodeToString(sum[:]) {
+					if reply.Delivery.Size != int64(len(audio)) || reply.Delivery.Digest != digestfmt.Hex(sum[:]) {
 						return nil, SpeechReply{}, ErrInconsistent
 					}
 				}

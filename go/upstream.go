@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
@@ -26,18 +27,30 @@ type adapter interface {
 	run(ctx context.Context, client *http.Client, host *router.Host, model string, req wire.Request, images map[string][]byte, headers map[string]string, s *stream) wire.Reply
 }
 
+type wireAdapterDeclaration struct {
+	chat  adapter
+	stall time.Duration
+	relay bool
+}
+
+// One declaration per router wire_kinds member, plus the native IPC binding.
+// Generation's stall belongs to its wire adapter (Architect Codex 268).
+// Longer provider bounds must cite documented provider behaviour here.
+var wireAdapters = map[string]wireAdapterDeclaration{
+	router.WireOpenAICompatible:     {chat: openAI{}, stall: defaultGenerationStall},
+	router.WireAnthropicMessages:    {chat: anthropic{}, stall: defaultGenerationStall},
+	router.WireDeepgramPrerecorded:  {stall: defaultGenerationStall},
+	router.WireElevenLabsStream:     {stall: defaultGenerationStall},
+	router.WireStabilityV2Beta:      {stall: defaultGenerationStall},
+	router.WireFalQueue:             {stall: defaultGenerationStall},
+	router.WireReplicatePredictions: {stall: defaultGenerationStall},
+	router.WireOpenAIRealtime:       {stall: defaultGenerationStall},
+	router.WireRemote:               {chat: remoteChat{}, relay: true},
+	router.WireNative:               {chat: nativeChat{}, relay: true},
+}
+
 func adapterFor(kind string) adapter {
-	switch kind {
-	case router.WireOpenAICompatible:
-		return openAI{}
-	case router.WireAnthropicMessages:
-		return anthropic{}
-	case router.WireRemote:
-		return remoteChat{}
-	case router.WireNative:
-		return nativeChat{}
-	}
-	return nil
+	return wireAdapters[kind].chat
 }
 
 // usesFeatures returns the features a request uses, in catalogue order.
@@ -111,11 +124,13 @@ func post(ctx context.Context, client *http.Client, address string, body any, he
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+	generationSent(ctx)
 	resp, err := credentialRequestClient(client, headers).Do(req)
 	if err != nil {
 		r := failed(wire.ReplyOutcomeUnavailable, "upstream:unreachable")
 		return nil, &r
 	}
+	postResponse(ctx, resp)
 	if resp.StatusCode != http.StatusOK {
 		// The body is read only to recognise a context-window refusal and its
 		// two numbers (INF-Q7); nothing else from it is kept.
@@ -178,31 +193,91 @@ func streamBroken(ctx context.Context, err error) wire.Reply {
 	return failed(wire.ReplyOutcomeUnavailable, "upstream:stream")
 }
 
-// micros converts a JSON decimal number of currency units into millionths
-// without a float: digits beyond the sixth fractional place are truncated.
+// micros counts currency in millionths, rounded up. It accepts a bounded JSON
+// decimal with at most 64 mantissa digits and an exponent in -30..30, using
+// integer arithmetic. Invalid, negative and unrepresentable costs are absent.
 func micros(n json.Number) (int64, bool) {
 	s := string(n)
-	if s == "" || strings.ContainsAny(s, "eE+") {
+	if len(s) == 0 || len(s) > 80 || s[0] < '0' || s[0] > '9' {
 		return 0, false
 	}
-	negative := strings.HasPrefix(s, "-")
-	s = strings.TrimPrefix(s, "-")
-	whole, frac, _ := strings.Cut(s, ".")
-	if len(frac) > 6 {
-		frac = frac[:6]
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
 	}
-	frac += strings.Repeat("0", 6-len(frac))
-	w, err := strconv.ParseInt(whole, 10, 64)
+	if i > 1 && s[0] == '0' {
+		return 0, false
+	}
+	digits, fractional := s[:i], 0
+	if i < len(s) && s[i] == '.' {
+		i++
+		start := i
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+		if i == start {
+			return 0, false
+		}
+		fractional = i - start
+		digits += s[start:i]
+	}
+	if len(digits) > 64 {
+		return 0, false
+	}
+	exponent := 0
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		sign := 1
+		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			if s[i] == '-' {
+				sign = -1
+			}
+			i++
+		}
+		start := i
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			exponent = exponent*10 + int(s[i]-'0')
+			if exponent > 30 {
+				return 0, false
+			}
+			i++
+		}
+		if i == start {
+			return 0, false
+		}
+		exponent *= sign
+	}
+	if i != len(s) {
+		return 0, false
+	}
+	digits = strings.TrimLeft(digits, "0")
+	if digits == "" {
+		return 0, true
+	}
+	scale := exponent + 6 - fractional
+	roundUp := false
+	if scale >= 0 {
+		if len(digits)+scale > 19 {
+			return 0, false
+		}
+		digits += strings.Repeat("0", scale)
+	} else {
+		cut := len(digits) + scale
+		if cut <= 0 {
+			return 1, true
+		}
+		roundUp = strings.Trim(digits[cut:], "0") != ""
+		digits = digits[:cut]
+	}
+	v, err := strconv.ParseInt(digits, 10, 64)
 	if err != nil {
 		return 0, false
 	}
-	f, err := strconv.ParseInt(frac, 10, 64)
-	if err != nil || w > (1<<62)/1_000_000 {
-		return 0, false
-	}
-	v := w*1_000_000 + f
-	if negative {
-		v = -v
+	if roundUp {
+		if v == int64(^uint64(0)>>1) {
+			return 0, false
+		}
+		v++
 	}
 	return v, true
 }

@@ -154,6 +154,47 @@ jobs:
           go test -mod=readonly -count=1 -timeout=5m ./...
           printf '%s: provider adapters built and tested with pinned dependencies; GOWORK=off\n' "$RUNNER_OS" >> "$GITHUB_STEP_SUMMARY"
 
+  resource-platform:
+    if: github.event.repository.name == 'abstraction-resource'
+    name: Go resource platform (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go/platform/go.mod
+          cache: false
+      - name: select verified Windows Go SDK and smoke duplex pipes
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          python3 tools/windows_go_sdk.py --cache-dir "$RUNNER_TEMP/windows-go-sdk" --github-env --smoke-dir "$RUNNER_TEMP/windows-go-smoke" > windows-go-sdk-proof.json
+          printf '\n### Verified Windows Go SDK and duplex race smoke\n\n```json\n' >> "$GITHUB_STEP_SUMMARY"
+          cat windows-go-sdk-proof.json >> "$GITHUB_STEP_SUMMARY"
+          printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: preserve Windows Go SDK source identity and smoke
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-go-sdk-${{ github.job }}-${{ github.run_attempt }}
+          path: |
+            windows-go-sdk-proof.json
+            ${{ runner.temp }}/windows-go-smoke/named-pipe-race.log
+            ${{ runner.temp }}/windows-go-smoke/smoke-receipt.json
+          if-no-files-found: error
+      - name: build and test standalone resource platform
+        working-directory: go/platform
+        run: |
+          test "$(go env GOWORK)" = off
+          go build -mod=readonly ./...
+          go test -mod=readonly -count=1 -timeout=5m ./...
+          printf '%s: resource platform leaf built and tested with pinned dependencies; GOWORK=off\n' "$RUNNER_OS" >> "$GITHUB_STEP_SUMMARY"
+
   facade-protocol:
     if: github.event.repository.name == 'abstraction-facade'
     name: C++ resolver protocol (${{ matrix.os }})

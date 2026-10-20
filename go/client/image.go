@@ -21,6 +21,12 @@ func (c *ImageV2) Start(ctx context.Context, request ImageRequestV2) (AdmissionV
 	}
 	return wire.NewImageV2Client(c.transport.WithContext(ctx)).Start(request)
 }
+func (c *ImageV2) StartWithGuarantees(ctx context.Context, request ImageRequestV2, guarantees []wire.RequestGuarantee) (AdmissionV2, error) {
+	if err := ctx.Err(); err != nil {
+		return AdmissionV2{}, err
+	}
+	return wire.NewImageV2Client(c.transport.WithContext(ctx)).StartWithGuarantees(request, guarantees)
+}
 func (c *ImageV2) Observe(ctx context.Context, operation string, cursor, maxDeltas, maxBytes, waitMS int64) (DeltaPage, error) {
 	return observeOperation(ctx, c.transport, cursor, maxDeltas, maxBytes, waitMS,
 		func(d Delta) bool { return d.Kind != wire.DeltaKindEnd || d.ImageEnd != nil },

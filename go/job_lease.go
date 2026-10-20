@@ -45,10 +45,16 @@ type leaseRenewal struct {
 	err  error
 }
 
-func holdInferenceLease(parent context.Context, store job.Store, record *job.Record, ttl time.Duration) (context.Context, *inferenceLease) {
-	if ttl <= 0 {
-		ttl = 30 * time.Second
+const defaultInferenceLeaseTTL = 30 * time.Second
+
+func (e *JobExecution) leaseDuration() time.Duration {
+	if e.leaseTTL <= 0 {
+		return defaultInferenceLeaseTTL
 	}
+	return e.leaseTTL
+}
+
+func holdInferenceLease(parent context.Context, store job.Store, record *job.Record, ttl time.Duration) (context.Context, *inferenceLease) {
 	ctx, cancel := context.WithCancel(parent)
 	lease := &inferenceLease{store: store, id: record.ID, epoch: record.Lease.Epoch, ttl: ttl, cancel: cancel,
 		done: make(chan struct{}), exited: make(chan struct{}), lost: make(chan struct{})}

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	identity "github.com/openabstractions/abstraction-identity"
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
@@ -22,6 +23,7 @@ import (
 	acceptance "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 	router "github.com/openabstractions/abstraction-router/go"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 const (
@@ -41,6 +43,11 @@ type JobSubjectResolver func(context.Context, string, string) (Subject, ContentO
 // OperationJobSubjectResolver uses private job evidence for the claimed record.
 // The legacy resolver remains for journals accepted before subject retention.
 type OperationJobSubjectResolver func(context.Context, string, string, string) (Subject, ContentOutcome)
+
+// JobPendingQuestions returns, in order, the ids among the first-use
+// questions a refused admission gathered that are still pending about
+// subject's own program (INF-W11).
+type JobPendingQuestions func(ctx context.Context, subject Subject, ids []string) ([]string, error)
 
 type inferenceJobWork struct {
 	Scope   string          `json:"scope"`
@@ -63,7 +70,11 @@ type inferenceJobCheckpoint struct {
 	// Replanned records that the job was planned afresh once because its
 	// recorded server was replaced or gone; it is never planned afresh again
 	// (INF-G10).
-	Replanned bool               `json:"replanned,omitempty"`
+	Replanned bool `json:"replanned,omitempty"`
+	// Restarted records that the job's upstream operation was lost once,
+	// because the provider or its engine restarted, and the job was sent
+	// again from the start; a second loss fails it (INF-G7).
+	Restarted bool               `json:"restarted,omitempty"`
 	Waiting   string             `json:"waiting,omitempty"`
 	Failure   string             `json:"failure,omitempty"`
 	Result    *jobwire.JobResult `json:"result,omitempty"`
@@ -103,9 +114,8 @@ type durableJobProgress struct {
 	Position    int64
 }
 
-// waiting is the snapshot's waiting word for this report: queue:<n> while
-// queued at a known position, queued while queued at an unknown one, and
-// empty otherwise.
+// waiting reports queue:<n> for a known position, queued for an unknown
+// position, and an empty word for work outside the queue.
 func (p durableJobProgress) waiting() string {
 	switch {
 	case p.Queued && p.Position > 0:
@@ -153,6 +163,9 @@ type JobExecution struct {
 	provider                *Provider
 	resolveSubject          JobSubjectResolver
 	resolveOperationSubject OperationJobSubjectResolver
+	// pendingQuestions names a refused bound submission's pending first-use
+	// questions (INF-W11). Nil names none.
+	pendingQuestions JobPendingQuestions
 	// backends are tried in order: the first whose profile selects a host
 	// serves the job, and a recovered job returns to the backend that
 	// supports its pinned host.
@@ -246,6 +259,16 @@ func (e *JobExecution) SetOperationSubjectResolver(resolve OperationJobSubjectRe
 	e.resolveOperationSubject = resolve
 }
 
+// SetPendingQuestions lets a bound submission refused for want of a grant
+// name each first-use question its admission raised or found that is still
+// pending about the submitter, as rights:question_pending:<id> after its
+// grant words (INF-W11). The submitter's client waits for the answer through
+// asks permission@1 ObserveQuestion and submits the same key once more after
+// an Allow (JOB-A16). Assign before serving.
+func (e *JobExecution) SetPendingQuestions(pending JobPendingQuestions) {
+	e.pendingQuestions = pending
+}
+
 func NewJobExecution(provider *Provider, resolve JobSubjectResolver, onError func(error)) *JobExecution {
 	var client = (*http.Client)(nil)
 	if provider != nil {
@@ -261,9 +284,10 @@ func NewJobExecution(provider *Provider, resolve JobSubjectResolver, onError fun
 	}
 	backends := []durableJobBackend{
 		nativeVideoJobBackend{maxInput: maxInput, maxOutput: maxBytes},
+		nativeImageJobBackend{maxInput: maxInput, maxEach: maxEach, maxTotal: maxBytes},
 		replicateJobBackend{client: client, maxEach: maxEach, maxTotal: maxBytes},
 	}
-	return &JobExecution{provider: provider, resolveSubject: resolve, backends: backends, pollInterval: defaultInferenceJobPollInterval, leaseTTL: 30 * time.Second, onError: onError}
+	return &JobExecution{provider: provider, resolveSubject: resolve, backends: backends, pollInterval: defaultInferenceJobPollInterval, leaseTTL: defaultInferenceLeaseTTL, onError: onError}
 }
 
 // backendFor returns the backend that serves request on a pinned host, and
@@ -412,9 +436,10 @@ func mapsClone(in map[string]string) map[string]string {
 }
 
 type inferenceJobPlan struct {
-	subject Subject
-	host    *router.Host
-	backend durableJobBackend
+	subject   Subject
+	host      *router.Host
+	placement wire.ServedPlace
+	backend   durableJobBackend
 	// profile is the router profile the host was picked for, which its
 	// admission reads (AdmissionProfile).
 	profile string
@@ -467,6 +492,15 @@ func (e *JobExecution) planForSubject(ctx context.Context, work inferenceJobWork
 				continue
 			}
 			host, model, backend, profile = picked, pickedModel, candidate, wanted
+			// Several backends select hosts under one profile (a native image
+			// provider and Replicate both serve image): the one that supports
+			// the picked host serves the job.
+			for _, other := range e.backends {
+				if other.Profile(work.Request) == wanted && other.Supports(picked, work.Request) {
+					backend = other
+					break
+				}
+			}
 			break
 		}
 		if host == nil {
@@ -535,15 +569,22 @@ func (e *JobExecution) planForSubject(ctx context.Context, work inferenceJobWork
 			return stop(acceptance.AcceptanceOutcomeInvalid, why)
 		}
 		if request.MaskDigest != "" && !sent {
-			if _, resolved, why := e.provider.resolveImageInput(ctx, subject, request.MaskDigest, request.MaskMediaType); why != "" {
-				switch {
-				case resolved == wire.StartOutcomeForbidden:
-					grants.add(why)
-				case resolved == wire.StartOutcomeUnavailable:
-					return stop(acceptance.AcceptanceOutcomeUnavailable, why)
-				default:
+			mask, resolved, why := e.provider.resolveImageInput(ctx, subject, request.MaskDigest, request.MaskMediaType)
+			switch {
+			case why == "" && inputs != nil:
+				// A native provider receives the mask staged beside the image
+				// (INF-I1); the relay compares their sizes only.
+				inputs[request.MaskDigest] = mask
+				if _, why := editMask(adapter, request, inputs); why != "" {
 					return stop(acceptance.AcceptanceOutcomeInvalid, why)
 				}
+			case why == "":
+			case resolved == wire.StartOutcomeForbidden:
+				grants.add(why)
+			case resolved == wire.StartOutcomeUnavailable:
+				return stop(acceptance.AcceptanceOutcomeUnavailable, why)
+			default:
+				return stop(acceptance.AcceptanceOutcomeInvalid, why)
 			}
 		}
 	}
@@ -560,11 +601,16 @@ func (e *JobExecution) planForSubject(ctx context.Context, work inferenceJobWork
 	if grants.refused() {
 		return stop(acceptance.AcceptanceOutcomeForbidden, "")
 	}
+	// Questions-only admission ends with the grants: it applies no credential
+	// and reads no budget (AdmissionQuestionsForSubject).
+	if questionsOnly(ctx) {
+		return inferenceJobPlan{}, acceptance.AcceptanceOutcomeAccepted, ""
+	}
 	credential := host.Credential
 	if credential != "" && e.provider.cfg.Ceilings != nil {
 		continuing := operationID != "" && e.provider.cfg.Ceilings.DurableAttemptCounted(operationID)
-		if unit, over := e.provider.cfg.Ceilings.Exceeded(credential); over && !continuing {
-			return inferenceJobPlan{}, acceptance.AcceptanceOutcomeInvalid, "ceiling:" + unit + ":" + credential
+		if reason := e.provider.cfg.Ceilings.budgetRefusal(credential, subject, host); reason != "" && !continuing {
+			return inferenceJobPlan{}, acceptance.AcceptanceOutcomeInvalid, reason
 		}
 	}
 	var headers map[string]string
@@ -578,7 +624,7 @@ func (e *JobExecution) planForSubject(ctx context.Context, work inferenceJobWork
 			return inferenceJobPlan{}, acceptance.AcceptanceOutcomeForbidden, "credential:" + word
 		}
 	}
-	return inferenceJobPlan{subject: subject, host: host, backend: backend, profile: profile, model: model, adapter: adapter, headers: headers, commits: commits, inputs: inputs}, acceptance.AcceptanceOutcomeAccepted, ""
+	return inferenceJobPlan{subject: subject, host: host, placement: servedPlace(host), backend: backend, profile: profile, model: model, adapter: adapter, headers: headers, commits: commits, inputs: inputs}, acceptance.AcceptanceOutcomeAccepted, ""
 }
 
 func (e *JobExecution) CheckAdmission(scope, kind string, raw []byte, required []string) (acceptance.AcceptanceOutcome, string) {
@@ -600,7 +646,7 @@ func (e *JobExecution) CheckAdmissionForSubject(scope, kind string, raw []byte, 
 // for any reason other than its rights decision is the caller's to repair and
 // reads invalid, as the download kind's does (download DL-K1).
 func admissionOutcome(outcome acceptance.AcceptanceOutcome, reason string) (acceptance.AcceptanceOutcome, string) {
-	if outcome == acceptance.AcceptanceOutcomeForbidden && strings.HasPrefix(reason, "credential:") && reason != "credential:not_permitted" {
+	if outcome == acceptance.AcceptanceOutcomeForbidden && strings.HasPrefix(reason, "credential:") && !grantRefusalWords(reason) {
 		return acceptance.AcceptanceOutcomeInvalid, reason
 	}
 	return outcome, reason
@@ -616,8 +662,93 @@ func (e *JobExecution) checkAdmissionForSubject(scope, kind string, raw []byte, 
 	}
 	ctx, cancel := context.WithTimeout(WithPeer(context.Background(), peer), 10*time.Second)
 	defer cancel()
+	// The decision point adds each first-use question it raises or finds to
+	// this admission's own collector. It holds nothing: the submitter's
+	// client waits for the person.
+	var asked *Asked
+	if subject != nil && e.pendingQuestions != nil {
+		asked = &Asked{}
+		ctx = WithAsked(ctx, asked)
+	}
 	_, outcome, reason := e.planForSubject(ctx, inferenceJobWork{Scope: scope, Request: request}, inferenceJobCheckpoint{}, "", subject)
+	if asked != nil && outcome == acceptance.AcceptanceOutcomeForbidden && grantRefusalWords(reason) {
+		reason = e.namePendingQuestions(ctx, *subject, asked.IDs(), reason)
+	}
 	return outcome, reason
+}
+
+type questionsOnlyKey struct{}
+
+// questionsOnly reports a plan run by AdmissionQuestionsForSubject.
+func questionsOnly(ctx context.Context) bool {
+	only, _ := ctx.Value(questionsOnlyKey{}).(bool)
+	return only
+}
+
+// AdmissionQuestionsForSubject is CheckAdmissionForSubject in questions-only
+// mode (job JOB-A16, acceptanceprovider.QuestionAdmissionChecker). The job
+// service runs it when the submitter's acceptance.submit decision reads
+// not_granted and its question was asked, so the person sees every question
+// the job needs together. It decides the same grants, admitting their
+// first-use questions, and answers only the ids of those still pending about
+// subject's own program, in order. Every outcome and reason is dropped. It
+// stops before the budget and credential checks, applying no credential.
+func (e *JobExecution) AdmissionQuestionsForSubject(scope, kind string, raw []byte, required []string, subject Subject, peer *identity.Peer) []string {
+	if e.pendingQuestions == nil || kind != InferenceJobKind || !slices.Contains(required, RecoverableUpstreamGuarantee) {
+		return nil
+	}
+	request, err := decodeInferenceJob(raw)
+	if err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(WithPeer(context.Background(), peer), 10*time.Second)
+	defer cancel()
+	asked := &Asked{}
+	ctx = context.WithValue(WithAsked(ctx, asked), questionsOnlyKey{}, true)
+	//unchecked: questions-only mode answers the questions asked, never the plan's outcome.
+	_, _, _ = e.planForSubject(ctx, inferenceJobWork{Scope: scope, Request: request}, inferenceJobCheckpoint{}, "", &subject)
+	ids := asked.IDs()
+	if len(ids) == 0 {
+		return nil
+	}
+	pending, err := e.pendingQuestions(ctx, subject, ids)
+	if err != nil {
+		if e.onError != nil {
+			e.onError(fmt.Errorf("inference job admission: pending questions: %w", err))
+		}
+		return nil
+	}
+	return pending
+}
+
+// namePendingQuestions appends one rights:question_pending:<id> word to a
+// grant refusal for each gathered question still pending about subject, in
+// order (INF-W11). A lookup that fails names none.
+func (e *JobExecution) namePendingQuestions(ctx context.Context, subject Subject, ids []string, reason string) string {
+	if len(ids) == 0 {
+		return reason
+	}
+	pending, err := e.pendingQuestions(ctx, subject, ids)
+	if err != nil {
+		if e.onError != nil {
+			e.onError(fmt.Errorf("inference job admission: pending questions: %w", err))
+		}
+		return reason
+	}
+	named := asks.QuestionsPending(reason)
+	for _, id := range pending {
+		if id == "" || strings.ContainsAny(id, " \t\r\n") || slices.Contains(named, id) {
+			continue
+		}
+		// The acceptance reason holds at most 1024 bytes; the grant words
+		// come first and stay whole.
+		if len(reason)+len(" rights:question_pending:")+len(id) > 1024 {
+			break
+		}
+		named = append(named, id)
+		reason += " rights:question_pending:" + id
+	}
+	return reason
 }
 
 func (e *JobExecution) Serve(ctx context.Context, store job.Store) error {
@@ -705,7 +836,7 @@ func stoppedOr(serving context.Context, word string) string {
 }
 
 func (e *JobExecution) execute(serving context.Context, store job.Store, held *job.Record) error {
-	ctx, lease := holdInferenceLease(serving, store, held, e.leaseTTL)
+	ctx, lease := holdInferenceLease(serving, store, held, e.leaseDuration())
 	defer lease.stop()
 	work, err := decodeInferenceWork(held)
 	if err != nil {
@@ -778,8 +909,19 @@ func (e *JobExecution) execute(serving context.Context, store job.Store, held *j
 	// on-demand provider starts here, for a first submission and for work
 	// recovered after a restart alike, before any call reaches it. A
 	// provider still starting leaves the job waiting with the hook's word
-	// (activating:<name>), and the next sweep asks again.
+	// (activating:<name>), and the next sweep asks again. A provider that
+	// stopped after failed starts (start_failed:<name>) fails the job at
+	// once with the word a new submission reads from the router.
 	if reason, ok := e.provider.admitHost(WithPeer(ctx, e.submitter(held.ID)), plan.host, plan.profile, plan.model); !ok {
+		if strings.HasPrefix(reason, StartFailedPrefix) {
+			checkpoint.Failure = "host:" + reason
+			lease.stop()
+			if err := e.finish(store, held, job.StateFailed, checkpoint); err != nil {
+				return err
+			}
+			e.recordJobAttempt(ctx, held, work, plan, "failed", checkpoint.Failure, 0)
+			return nil
+		}
 		if reason == "not_permitted" {
 			checkpoint.Failure = "admission:" + reason
 			lease.stop()
@@ -797,13 +939,13 @@ func (e *JobExecution) execute(serving context.Context, store job.Store, held *j
 	freshSubmission := checkpoint.Phase == ""
 	host := plan.host
 	if e.provider.cfg.Ceilings != nil && host.Credential != "" {
-		if err := e.provider.cfg.Ceilings.AddDurableAttempt(held.ID, host.Credential); err != nil {
+		if err := e.provider.cfg.Ceilings.addDurableForSubject("attempt", held.ID, host.Credential, &plan.subject, 1, 0); err != nil {
 			return e.releaseWaitingRecorded(ctx, store, held, checkpoint, "ceiling:unavailable", work, plan)
 		}
 	}
 	if freshSubmission {
 		checkpoint = inferenceJobCheckpoint{Phase: "submitting", Host: plan.host.Name, Binding: inferenceHostBinding(plan.host), Model: plan.model, Adapter: plan.adapter,
-			SentMs: e.now().UnixMilli(), Replanned: checkpoint.Replanned}
+			SentMs: e.now().UnixMilli(), Replanned: checkpoint.Replanned, Restarted: checkpoint.Restarted}
 		held, err = store.Update(held.ID, held.Lease.Epoch, func(record *job.Record) error {
 			record.State, record.Error = job.StateRunning, ""
 			return record.SetCheckpoint(checkpoint)
@@ -884,6 +1026,21 @@ func (e *JobExecution) execute(serving context.Context, store job.Store, held *j
 		case durableJobSucceeded:
 			return e.publish(ctx, store, held, work, plan, checkpoint, status.Outputs, lease)
 		case durableJobFailed:
+			if status.Reason == providerLost && !checkpoint.Restarted && work.Request.Image.Credential == "" {
+				// The provider or its engine restarted and forgot the
+				// operation: the work is sent again from the start, once,
+				// with the same request_id (INF-G7).
+				// The lost run's progress goes with it.
+				restarted := inferenceJobCheckpoint{Replanned: checkpoint.Replanned, Restarted: true}
+				held, err = store.Update(held.ID, held.Lease.Epoch, func(record *job.Record) error {
+					record.Progress.Done, record.Progress.Total, record.Progress.UpdatedAt = 0, 0, job.At(time.Now())
+					return nil
+				})
+				if err != nil {
+					return err
+				}
+				return e.releaseWaitingRecorded(ctx, store, held, restarted, jobRestartingWord, work, plan)
+			}
 			checkpoint.Failure = status.Reason
 			return e.finishRecorded(store, held, job.StateFailed, checkpoint, work, plan, 0, lease)
 		case durableJobCancelled:
@@ -955,7 +1112,11 @@ func (e *JobExecution) pinnedHost(name string) *router.Host {
 
 func (e *JobExecution) publish(ctx context.Context, store job.Store, held *job.Record, work inferenceJobWork, plan inferenceJobPlan, checkpoint inferenceJobCheckpoint, outputs []durableJobOutput, lease *inferenceLease) error {
 	if e.provider.cfg.Ceilings != nil && plan.host.Credential != "" {
-		if err := e.provider.cfg.Ceilings.AddDurableImages(held.ID, plan.host.Credential, int64(len(outputs))); err != nil {
+		images := int64(len(outputs))
+		if work.Request.Profile == jobwire.ProfileVideo {
+			images = 0
+		}
+		if err := e.provider.cfg.Ceilings.addDurableForSubject("images", held.ID, plan.host.Credential, &plan.subject, 0, images); err != nil {
 			return e.releaseWaitingRecorded(ctx, store, held, checkpoint, "ceiling:unavailable", work, plan)
 		}
 	}
@@ -980,7 +1141,7 @@ func (e *JobExecution) publish(ctx context.Context, store job.Store, held *job.R
 	for i, output := range outputs {
 		size := int64(len(output.Data))
 		sum := sha256.Sum256(output.Data)
-		digest := "sha256:" + hex.EncodeToString(sum[:])
+		digest := contentdigest.Hex(sum[:])
 		if err := lease.renew(); err != nil || ctx.Err() != nil {
 			return errors.Join(err, ctx.Err())
 		}
@@ -1051,7 +1212,7 @@ func (e *JobExecution) recordedHostChanged(ctx context.Context, store job.Store,
 		e.recordJobAttempt(ctx, held, work, plan, "failed", reason, 0)
 		return nil
 	}
-	return e.releaseWaitingRecorded(ctx, store, held, inferenceJobCheckpoint{Replanned: true}, reason+":replanned", work, plan)
+	return e.releaseWaitingRecorded(ctx, store, held, inferenceJobCheckpoint{Replanned: true, Restarted: checkpoint.Restarted}, reason+":replanned", work, plan)
 }
 
 func (e *JobExecution) finish(store job.Store, held *job.Record, state job.State, checkpoint inferenceJobCheckpoint) error {
@@ -1103,7 +1264,7 @@ func (e *JobExecution) recordJobAttempt(ctx context.Context, held *job.Record, w
 		profile = router.ProfileVideo
 	}
 	record := Record{Operation: held.ID, Profile: profile, Route: RouteNative, Account: subject.Account, Program: subject.Program,
-		Host: host, Model: model, Family: familyOf(model), Credential: credential, Outcome: outcome, Reason: reason, Images: images}
+		Host: host, Model: model, Placement: plan.placement, Family: familyOf(model), Credential: credential, Outcome: outcome, Reason: reason, Images: images}
 	if e.provider.cfg.Ceilings != nil && credential != "" {
 		record.Ceiling = e.provider.cfg.Ceilings.State(credential)
 	}
@@ -1153,19 +1314,33 @@ var grantRefusals = map[string]bool{
 }
 
 // grantRefusalWords reports whether reason is one or more grant refusal
-// words, every one of them from grantRefusals.
+// words, every one of them from grantRefusals, optionally followed by words
+// naming the pending first-use questions the refusal raised (INF-W11).
 func grantRefusalWords(reason string) bool {
-	words := strings.Fields(reason)
-	for _, word := range words {
-		if !grantRefusals[word] {
+	grant := false
+	for _, word := range strings.Fields(reason) {
+		switch {
+		case grantRefusals[word]:
+			grant = true
+		case len(asks.QuestionsPending(word)) != 0:
+		default:
 			return false
 		}
 	}
-	return len(words) > 0
+	return grant
 }
 
 func (e *JobExecution) OperationFailure(record *job.Record) *acceptance.WorkFailure {
-	if record.Kind != InferenceJobKind || record.State != job.StateFailed {
+	if record.Kind != InferenceJobKind {
+		return nil
+	}
+	if record.State != job.StateFailed {
+		// A job sent again after its upstream lost it carries that loss as
+		// its last attempt's retryable failure until it ends (INF-G7).
+		var checkpoint inferenceJobCheckpoint
+		if !record.State.Terminal() && record.DecodeCheckpoint(&checkpoint) == nil && checkpoint.Restarted {
+			return &acceptance.WorkFailure{Classification: acceptance.FailureClassRetryable, Message: providerLost, Cause: acceptance.FailureCauseOther}
+		}
 		return nil
 	}
 	var checkpoint inferenceJobCheckpoint
@@ -1199,3 +1374,11 @@ func (e *JobExecution) ReadOperationResult(_ string, record *job.Record, offset,
 	}
 	return bytes.Clone(data[offset:end]), total, nil
 }
+
+// providerLost is the failure word of an operation its provider no longer
+// knows (INF-G7).
+const providerLost = "provider:lost"
+
+// jobRestartingWord is the waiting word of a job whose lost operation is
+// about to be sent again (INF-G7).
+const jobRestartingWord = "provider:restarting"

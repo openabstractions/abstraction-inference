@@ -154,6 +154,7 @@ func TestVisionAuthorizationPrecedesContentResolution(t *testing.T) {
 	}
 }
 
+// An uppercase digest is refused before any lookup ([CONV-T3]).
 func TestVisionDigestMediaTypeAndBoundsAreCheckedBeforeSpend(t *testing.T) {
 	imageA := append([]byte("\x89PNG\r\n\x1a\n"), []byte("abc")...)
 	imageB := append([]byte("\x89PNG\r\n\x1a\n"), []byte("def")...)
@@ -173,6 +174,7 @@ func TestVisionDigestMediaTypeAndBoundsAreCheckedBeforeSpend(t *testing.T) {
 	seen, uses := len(f.up.requests()), f.applier.count()
 	for _, part := range []wire.Part{
 		{Kind: wire.PartKindImage, Digest: strings.ToUpper(digestA), MediaType: "image/png"},
+		{Kind: wire.PartKindImage, Digest: "sha256:" + strings.ToUpper(strings.TrimPrefix(digestA, "sha256:")), MediaType: "image/png"},
 		{Kind: wire.PartKindImage, Digest: digestA, MediaType: "image/svg+xml"},
 	} {
 		req := hostedRequest("openrouter")

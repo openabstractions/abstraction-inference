@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 	"io"
 	"math"
 	"mime/multipart"
@@ -19,6 +19,7 @@ import (
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	"github.com/openabstractions/abstraction-inference/go/mediationcontent"
 	router "github.com/openabstractions/abstraction-router/go"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 const TranscriptionContract = "abstraction.inference/transcription@1"
@@ -28,7 +29,7 @@ func validateTranscription(req wire.TranscriptionRequest) string {
 	if req.Model == "" || len(req.Model) > 256 {
 		return "model"
 	}
-	if !canonicalSHA256(req.AudioDigest) {
+	if !contentdigest.Valid(req.AudioDigest) {
 		return "audio_digest"
 	}
 	if !audioMediaType(req.MediaType) {
@@ -106,7 +107,7 @@ func (p *Provider) resolveAudio(ctx context.Context, subject Subject, req wire.T
 		return nil, wire.StartOutcomeInvalid, "content:too-large"
 	}
 	sum := sha256.Sum256(data)
-	if "sha256:"+hex.EncodeToString(sum[:]) != req.AudioDigest {
+	if contentdigest.Hex(sum[:]) != req.AudioDigest {
 		return nil, wire.StartOutcomeInvalid, "content:digest"
 	}
 	if !audioMatches(data, req.MediaType) {
@@ -138,7 +139,7 @@ func (p *Provider) StartTranscription(ctx context.Context, subject Subject, req 
 	refuse := func(outcome wire.StartOutcome, reason string, host *router.Host, model string) wire.Admission {
 		r := Record{Profile: router.ProfileTranscription, Route: via.name, Rung: via.rung, Account: subject.Account, Program: subject.Program, Model: req.Model, Family: familyOf(req.Model), Credential: req.Credential, Outcome: outcome.String(), Reason: reason, WallMS: p.cfg.Now().Sub(started).Milliseconds(), Domain: via.domain, Claim: via.claim}
 		if host != nil {
-			r.Host, r.Model = host.Name, model
+			r.Host, r.Model, r.Placement = host.Name, model, servedPlace(host)
 			if host.Wire == router.WireRemote {
 				r.Domain = host.Domain
 			}
@@ -181,10 +182,11 @@ func (p *Provider) StartTranscription(ctx context.Context, subject Subject, req 
 		p.report(err)
 		return refuse(wire.StartOutcomeUnavailable, "rights:unavailable", host, model)
 	}
-	switch word {
-	case "permitted":
-	case "denied", "not_granted", "unknown_action":
-		if word == "not_granted" {
+	outcome, _ := rightsclient.ParseDecisionOutcome(word)
+	switch {
+	case outcome == rightsclient.DecisionOutcomePermitted:
+	case rightsclient.Evaluated(outcome):
+		if outcome == rightsclient.DecisionOutcomeNotGranted {
 			p.askInput(ctx, subject, InputAudio)
 		}
 		return refuse(wire.StartOutcomeNotPermitted, "rights:"+word, host, model)
@@ -205,8 +207,8 @@ func (p *Provider) StartTranscription(ctx context.Context, subject Subject, req 
 		credential = host.Credential
 	}
 	if credential != "" && p.cfg.Ceilings != nil && !remote {
-		if unit, over := p.cfg.Ceilings.Exceeded(credential); over {
-			return refuse(wire.StartOutcomeBudgetExceeded, "ceiling:"+unit+":"+credential, host, model)
+		if reason := p.cfg.Ceilings.budgetRefusal(credential, subject, host); reason != "" {
+			return refuse(budgetStartOutcome(reason), reason, host, model)
 		}
 	}
 	if p.active(subject) >= p.cfg.MaxOperations {
@@ -228,13 +230,10 @@ func (p *Provider) StartTranscription(ctx context.Context, subject Subject, req 
 		clear(headers)
 		return refuse(wire.StartOutcomeUnavailable, "capacity", host, model)
 	}
-	activity, admitReason, ok, capacityRefusal := p.admitModel(ctx, host, router.ProfileTranscription, model, &subject)
-	if !ok {
+	activity, admissionOutcome, admitReason := p.admitModel(ctx, host, router.ProfileTranscription, model, &subject, subject, credential)
+	if admissionOutcome != wire.StartOutcomeAccepted {
 		clear(headers)
-		if capacityRefusal {
-			return refuse(wire.StartOutcomeExhausted, "capacity", host, model)
-		}
-		return refuse(admitStartOutcome(admitReason), admitReason, host, model)
+		return refuse(admissionOutcome, admitReason, host, model)
 	}
 	defer p.releaseModelActivity(activity)
 	op := newOperation(id, subject, host, model, credential, p.cfg.RetainedDeltas, started)
@@ -280,9 +279,10 @@ func (p *Provider) runTranscription(ctx context.Context, op *operation, kind str
 		end = runTranscriptionHTTP(ctx, p.cfg.HTTP, op.host, op.model, kind, req, audio, headers, emit)
 	}
 	clear(headers)
-	if reason := op.stopped(); reason != "" {
+	uncertain := remoteExecutionUncertain(op, end.Outcome, end.Reason)
+	if reason := op.stopped(); reason != "" && !uncertain {
 		end.Outcome, end.Reason = wire.ReplyOutcomeCancelled, reason
-	} else if p.ctx.Err() != nil || ctx.Err() != nil && end.Outcome == wire.ReplyOutcomeUnavailable {
+	} else if !uncertain && (p.ctx.Err() != nil || ctx.Err() != nil && end.Outcome == wire.ReplyOutcomeUnavailable) {
 		end.Outcome, end.Reason = wire.ReplyOutcomeCancelled, "caller"
 	}
 	end.Host, end.Model = op.host.Name, op.model
@@ -292,13 +292,13 @@ func (p *Provider) runTranscription(ctx context.Context, op *operation, kind str
 		if end.Cost != nil {
 			cost = end.Cost.Micros
 		}
-		if err := p.cfg.Ceilings.AddUsage(op.credential, end.Usage.Input+end.Usage.Output, cost, audioSeconds); err != nil {
+		if err := p.cfg.Ceilings.addModalitiesForSubject(op.credential, op.subject, addObservedCount(end.Usage.Input, end.Usage.Output), cost, 0, audioSeconds, 0, end.Cost != nil); err != nil {
 			p.report(err)
 		}
 	}
 	now := p.cfg.Now()
 	op.emit(wire.Delta{Kind: wire.DeltaKindEnd, TranscriptionEnd: &end}, now)
-	r := Record{Operation: op.id, Profile: router.ProfileTranscription, Route: op.route.name, Rung: op.route.rung, Account: op.subject.Account, Program: op.subject.Program, Host: op.host.Name, Model: op.model, Family: familyOf(op.model), Credential: op.credential, Outcome: end.Outcome.String(), Reason: end.Reason, TokensIn: end.Usage.Input, TokensOut: end.Usage.Output, AudioSeconds: audioSeconds, WallMS: now.Sub(op.started).Milliseconds(), Domain: op.route.domain, Claim: op.route.claim}
+	r := Record{Operation: op.id, Profile: router.ProfileTranscription, Route: op.route.name, Rung: op.route.rung, Account: op.subject.Account, Program: op.subject.Program, Host: op.host.Name, Model: op.model, Placement: op.placement, Family: familyOf(op.model), Credential: op.credential, Outcome: end.Outcome.String(), Reason: end.Reason, TokensIn: end.Usage.Input, TokensOut: end.Usage.Output, AudioSeconds: audioSeconds, WallMS: now.Sub(op.started).Milliseconds(), Domain: op.route.domain, Claim: op.route.claim}
 	if op.remote {
 		r.Domain = op.host.Domain
 	}
@@ -585,7 +585,7 @@ func (p *Provider) runRemoteTranscription(ctx context.Context, op *operation, re
 	client := wire.NewTranscriptionClient(transport.WithContext(ctx))
 	admission, err := client.Start(forwarded)
 	if err != nil {
-		return transcriptionFailed(wire.ReplyOutcomeUnavailable, "remote:unreachable")
+		return transcriptionFailed(wire.ReplyOutcomeUnavailable, remoteRequestReason(err))
 	}
 	if admission.Outcome != wire.StartOutcomeAccepted {
 		outcome := replyFromStart(admission.Outcome)

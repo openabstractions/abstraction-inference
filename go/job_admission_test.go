@@ -25,7 +25,7 @@ func TestNativeVideoJobStartsAnOnDemandProviderThroughAdmission(t *testing.T) {
 	start := fakeVideoProviderStarter(t, fake, endpoint)
 	var mu sync.Mutex
 	var asked []string
-	started := false
+	started, allowAdmission := false, false
 	var startErr error
 	v := newVideoRuntimeWith(t, endpoint, nil, func(c *Config) {
 		c.Admit = func(ctx context.Context, host *router.Host, model string) (string, bool) {
@@ -35,6 +35,8 @@ func TestNativeVideoJobStartsAnOnDemandProviderThroughAdmission(t *testing.T) {
 			if !started {
 				started = true
 				startErr = start()
+			}
+			if !allowAdmission {
 				return "activating:" + host.Name, false
 			}
 			return "", startErr == nil
@@ -45,6 +47,15 @@ func TestNativeVideoJobStartsAnOnDemandProviderThroughAdmission(t *testing.T) {
 		t.Fatalf("submit %+v", accepted)
 	}
 	v.run(t)
+	waitSnapshot(t, v, submission.Identity, func(s *acceptance.OperationSnapshot) bool {
+		return s.State == acceptance.WorkStateRunning && s.Waiting == "activating:video-provider"
+	})
+	if starts, _ := fake.counts(); starts != 0 {
+		t.Fatalf("the provider saw %d starts before its activation was admitted", starts)
+	}
+	mu.Lock()
+	allowAdmission = true
+	mu.Unlock()
 	final := v.waitVideo(t, submission.Identity)
 	mu.Lock()
 	defer mu.Unlock()
@@ -59,6 +70,42 @@ func TestNativeVideoJobStartsAnOnDemandProviderThroughAdmission(t *testing.T) {
 		t.Fatalf("admission asked %v, want %q at least twice", asked, want)
 	}
 	if starts, _ := fake.counts(); starts != 1 {
+		t.Fatalf("the provider saw %d starts", starts)
+	}
+}
+
+// A job whose provider stopped after failed starts fails at once with
+// host:start_failed:<name> and never reaches the provider. On the R34 live
+// test a picture job onto Lemonade without Setup waited "activating" for
+// more than 411 s while the provider crash-looped (D1).
+func TestNativeJobFailsAtOnceOnAStoppedProvider(t *testing.T) {
+	fake := &fakeVideoProvider{script: []wire.VideoObservation{{Status: wire.VideoStateGenerating, Step: 1, Steps: 3}}}
+	endpoint := videoEndpoint(t)
+	var mu sync.Mutex
+	asked := 0
+	v := newVideoRuntimeWith(t, endpoint, nil, func(c *Config) {
+		c.Admit = func(ctx context.Context, host *router.Host, model string) (string, bool) {
+			mu.Lock()
+			defer mu.Unlock()
+			asked++
+			return StartFailedPrefix + host.Name, false
+		}
+	})
+	submission, accepted := v.submit(t, "video-stopped", jobwire.ImageRequest{Mode: jobwire.ModeGenerate, Extensions: map[string]string{}})
+	if accepted.Receipt == nil {
+		t.Fatalf("submit %+v", accepted)
+	}
+	v.run(t)
+	final := v.waitVideo(t, submission.Identity)
+	if final.State != acceptance.WorkStateFailed || final.Failure == nil || final.Failure.Message != "host:start_failed:video-provider" {
+		t.Fatalf("final %+v failure %+v", final, final.Failure)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if asked != 1 {
+		t.Fatalf("admission asked %d times", asked)
+	}
+	if starts, _ := fake.counts(); starts != 0 {
 		t.Fatalf("the provider saw %d starts", starts)
 	}
 }

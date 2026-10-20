@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,9 +94,15 @@ type ContentWriter func(context.Context, inference.Subject, string, []byte) infe
 // ContentReader authorizes content.read for subject and resolves complete bytes.
 type ContentReader func(context.Context, inference.Subject, string, int64) ([]byte, inference.ContentOutcome)
 
-// Grant is what a verified local key lets the window ask for: the hosted
-// credential name its requests may spend under, or none for local-only.
-type Grant struct{ Credential string }
+// Grant is what a presented key lets the window ask for (INF-W5): the hosted
+// credential name a minted key's requests may spend under, or none for
+// local-only. Declared is a placeholder key's grant: chat and messages reach
+// hosted model servers under the credential each server declares, and
+// abstraction.credentials/apply for the bound program decides every use.
+type Grant struct {
+	Credential string
+	Declared   bool
+}
 
 // KeyCheck verifies a presented key for the bound subject and returns a Key*
 // outcome word. A key minted for another program is KeyWrongProgram.
@@ -134,7 +141,33 @@ type Config struct {
 	// and refused requests are recorded by the provider.
 	Record  func(inference.Record)
 	OnError func(error)
+	// Await holds a call whose refusal admitted first-use questions
+	// (INF-W10): chat, messages, images, speech, transcription and
+	// embeddings alike. It returns true once a rights change permits what one of
+	// the questions asked, and false when every question was answered
+	// otherwise or ctx ended. Nil answers every refusal at once.
+	Await func(ctx context.Context, subject inference.Subject, questions []string) bool
+	// QuestionWait bounds how long one call is held for its questions;
+	// zero is DefaultQuestionWait.
+	QuestionWait time.Duration
+	// Pending returns which of a refusal's questions are still pending about
+	// subject when the hold ends; the refusal names each as
+	// rights:question_pending:<id> after its grant words (INF-W11). Nil names
+	// none.
+	Pending func(ctx context.Context, subject inference.Subject, questions []string) []string
 }
+
+// DefaultQuestionWait is how long the window holds a call open for the
+// first-use questions its refusal admitted (INF-W10): the one 40 s wait every
+// OA call that waits on the person uses (backlog/RIGHTS-FLOW.md, Wait policy).
+// The person's asks.answer_wait setting, carried as
+// PendingQuestion.answer_wait_ms, replaces it once the window reads it.
+const DefaultQuestionWait = 40 * time.Second
+
+// maxQuestionRounds bounds the admissions one held call makes: one question
+// per right a call needs (complete on the server, then the credential's use)
+// and a retry after each answer.
+const maxQuestionRounds = 4
 
 // Window is a listening gateway window.
 type Window struct {
@@ -467,27 +500,13 @@ func subjectOf(b *identity.Binding) (*identity.Peer, inference.Subject, string, 
 }
 
 // LoopbackSubject is the subject the window binds from a loopback peer: its
-// account and program, which PeerNeed requires at bound.
+// account and program, which PeerNeed requires at bound (identity.SubjectOf).
 func LoopbackSubject(peer *identity.Peer) (inference.Subject, error) {
-	if peer == nil {
-		return inference.Subject{}, errors.New("gateway: peer evidence required")
-	}
-	if err := peer.Check(PeerNeed); err != nil {
+	s, err := identity.SubjectOf(peer, PeerNeed)
+	if err != nil {
 		return inference.Subject{}, err
 	}
-	u, _ := peer.User.Get()
-	account := ""
-	switch {
-	case u.Kind == "windows":
-		account = u.SID
-	case u.Kind == "posix" && u.UID >= 0:
-		account = strconv.Itoa(u.UID)
-	}
-	program, err := identity.SubjectProgram(peer, identity.ProofClaimed)
-	if account == "" || err != nil {
-		return inference.Subject{}, errors.New("gateway: the peer's account or program is unavailable")
-	}
-	return inference.Subject{Account: account, Program: program}, nil
+	return inference.Subject{Account: s.Account, Program: s.Program}, nil
 }
 
 // routed is ctx for one of b's provider calls: the window route and rung for
@@ -588,7 +607,7 @@ func (w *Window) serveHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	key := presentedKey(r)
 	if key == "" {
-		refuse(http.StatusUnauthorized, "forbidden", "key:missing", "a local key is required: openabstractions inference key issue --for <program>")
+		refuse(http.StatusUnauthorized, "forbidden", "key:missing", "a key is required: any non-empty text, or a gateway key from openabstractions inference key issue --for <program>")
 		return
 	}
 	grant, word := w.cfg.Keys(r.Context(), subject, key)
@@ -652,14 +671,121 @@ func (w *Window) readBody(rw http.ResponseWriter, r *http.Request, b Bound, into
 	return true
 }
 
-// start admits request for the bound subject under the key's grant.
+// start admits a chat request for the bound subject under the key's grant,
+// held for its first-use questions (holdForQuestions).
 func (w *Window) start(r *http.Request, b Bound, grant Grant, req wire.Request) wire.Admission {
-	if grant.Credential != "" {
+	ctx := routed(r.Context(), b)
+	switch {
+	case grant.Credential != "":
 		req.Guarantees, req.Credential = []wire.RequestGuarantee{wire.RequestGuaranteeHostedAllowed}, grant.Credential
-	} else {
+	case grant.Declared:
+		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeHostedAllowed}
+		ctx = inference.WithDeclaredCredential(ctx)
+	default:
 		req.Guarantees = []wire.RequestGuarantee{wire.RequestGuaranteeLocalOnly}
 	}
-	return w.cfg.Chat.Start(routed(r.Context(), b), b.Subject(), req)
+	return w.startHeld(r, ctx, b, req.Model, "", func(ctx context.Context) wire.Admission {
+		return w.cfg.Chat.Start(ctx, b.Subject(), req)
+	})
+}
+
+// startHeld admits one request of any profile through holdForQuestions. A
+// refused admission's reason names each question still pending; a connection
+// that stopped answering for its program is refused forbidden.
+func (w *Window) startHeld(r *http.Request, ctx context.Context, b Bound, model, profile string, start func(context.Context) wire.Admission) wire.Admission {
+	admission, _ := w.startStored(r, ctx, b, model, profile, nil, start)
+	return admission
+}
+
+// storeRefusedReason is the reason of an upload the content store refused for
+// want of a grant (INF-V1).
+const storeRefusedReason = "content:write:forbidden"
+
+// startStored is startHeld for a request whose input the window stores
+// first. store and start run as one attempt inside one hold, so an upload
+// refused for want of its input profile holds for the input question the
+// store admitted, as a refused start holds for its own (INF-W10). When the
+// last attempt stopped at the store, stored is the store's outcome and, for
+// ContentForbidden, the admission's reason is storeRefusedReason followed by
+// one rights:question_pending:<id> word for each question still pending
+// (INF-W11). Otherwise stored is ContentResolved. A nil store stores nothing.
+func (w *Window) startStored(r *http.Request, ctx context.Context, b Bound, model, profile string, store func(context.Context) inference.ContentOutcome, start func(context.Context) wire.Admission) (admission wire.Admission, stored inference.ContentOutcome) {
+	reason, bound := w.holdForQuestions(r, ctx, b, model, profile, func(ctx context.Context) (bool, string) {
+		stored = inference.ContentResolved
+		if store != nil {
+			if stored = store(ctx); stored != inference.ContentResolved {
+				return stored == inference.ContentForbidden, storeRefusedReason
+			}
+		}
+		admission = start(ctx)
+		return admission.Outcome == wire.StartOutcomeNotPermitted || admission.Outcome == wire.StartOutcomeForbidden, admission.Reason
+	})
+	if !bound {
+		return wire.Admission{Outcome: wire.StartOutcomeForbidden, Reason: reason}, inference.ContentResolved
+	}
+	if stored != inference.ContentResolved {
+		return wire.Admission{Outcome: wire.StartOutcomeForbidden, Reason: reason}, stored
+	}
+	admission.Reason = reason
+	return admission, stored
+}
+
+// holdForQuestions runs attempt with a fresh first-use collector on ctx. An
+// attempt refused for want of a grant that admitted or found first-use
+// questions holds the call open until they are answered or QuestionWait
+// ends, and a rights change that answered one runs attempt again (INF-W10).
+// Every route that admits a request holds through it. It returns the last
+// attempt's reason followed by one rights:question_pending:<id> word for each
+// of its questions still pending about the caller (INF-W11). bound is false
+// when the connection stopped answering for its program before a retry;
+// reason is then that refusal's binding word. Nothing has been written to the
+// client before it returns.
+func (w *Window) holdForQuestions(r *http.Request, ctx context.Context, b Bound, model, profile string, attempt func(context.Context) (grantRefused bool, reason string)) (reason string, bound bool) {
+	wait := w.cfg.QuestionWait
+	if wait <= 0 {
+		wait = DefaultQuestionWait
+	}
+	held, cancel := context.WithTimeout(r.Context(), wait)
+	defer cancel()
+	for round := 1; ; round++ {
+		asked := &inference.Asked{}
+		refused, reason := attempt(inference.WithAsked(ctx, asked))
+		questions := asked.IDs()
+		if !refused || len(questions) == 0 {
+			return reason, true
+		}
+		if w.cfg.Await == nil || round == maxQuestionRounds {
+			return w.namePending(ctx, b.Subject(), questions, reason), true
+		}
+		allowed := w.cfg.Await(held, b.Subject(), questions)
+		// The connection must still answer for the program it was bound to
+		// after the hold, before the call is admitted again or its refusal
+		// names the pending questions (INF-W3).
+		if err := b.Recheck(); err != nil {
+			subject := b.Subject()
+			reason := "binding:" + BindingWord(err)
+			w.record(inference.Record{Profile: profile, Rung: b.Rung(), Account: subject.Account, Program: subject.Program, Model: model, Outcome: "forbidden", Reason: reason})
+			return reason, false
+		}
+		if !allowed {
+			return w.namePending(ctx, b.Subject(), questions, reason), true
+		}
+	}
+}
+
+// namePending appends one rights:question_pending:<id> word to a refusal
+// reason for each of its questions still pending about subject (INF-W11).
+func (w *Window) namePending(ctx context.Context, subject inference.Subject, questions []string, reason string) string {
+	if w.cfg.Pending == nil || len(questions) == 0 {
+		return reason
+	}
+	for _, id := range w.cfg.Pending(ctx, subject, questions) {
+		word := "rights:question_pending:" + id
+		if id != "" && !strings.ContainsAny(id, " \t\r\n") && !slices.Contains(strings.Fields(reason), word) {
+			reason += " " + word
+		}
+	}
+	return reason
 }
 
 // observe yields each page of an admitted operation until its end. It cancels

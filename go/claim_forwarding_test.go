@@ -5,6 +5,8 @@ import (
 	"errors"
 	"maps"
 	"net"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,10 +19,20 @@ import (
 
 // claimUpstream is a remote runtime that records the extensions of every Start
 // it receives and refuses the work, so no operation runs beyond admission.
-type claimUpstream struct{ seen chan map[string]string }
+type claimUpstream struct {
+	seen chan map[string]string
+	lost bool
+	gate <-chan struct{}
+}
 
 func (u claimUpstream) record(values map[string]string) (wire.Admission, error) {
 	u.seen <- maps.Clone(values)
+	if u.gate != nil {
+		<-u.gate
+	}
+	if u.lost {
+		return wire.Admission{}, errLostReply
+	}
 	return wire.Admission{Outcome: wire.StartOutcomeUnavailable, Reason: "fixture"}, nil
 }
 
@@ -32,7 +44,24 @@ func (claimChat) Observe(string, int64, int64, int64, int64) (wire.DeltaPage, er
 }
 func (claimChat) Cancel(string) (wire.Cancellation, error) { return wire.Cancellation{}, nil }
 
+type claimEmbed struct{ claimUpstream }
+
+func (e claimEmbed) Embed(r wire.EmbedRequest) (wire.Embeddings, error) {
+	if _, err := e.record(r.Extensions); err != nil {
+		return wire.Embeddings{}, err
+	}
+	return wire.Embeddings{Outcome: wire.EmbedOutcomeUnavailable, Reason: "fixture"}, nil
+}
+
 type claimSpeech struct{ claimUpstream }
+
+type claimImage struct{ claimUpstream }
+
+func (c claimImage) Start(r wire.ImageRequest) (wire.Admission, error) { return c.record(r.Extensions) }
+func (claimImage) Observe(string, int64, int64, int64, int64) (wire.DeltaPage, error) {
+	return wire.DeltaPage{}, nil
+}
+func (claimImage) Cancel(string) (wire.Cancellation, error) { return wire.Cancellation{}, nil }
 
 func (c claimSpeech) Start(r wire.SpeechRequest) (wire.Admission, error) {
 	return c.record(r.Extensions)
@@ -66,6 +95,10 @@ func (claimLive) Cancel(string) (wire.Cancellation, error)    { return wire.Canc
 
 type claimInventory struct{}
 
+func (claimInventory) Modalities(string, int64) (routerwire.ModalityPage, error) {
+	return routerwire.ModalityPage{}, errors.New("unexpected profile catalogue call")
+}
+
 func (claimInventory) Models(bool) (routerwire.ModelsSnapshot, error) {
 	return routerwire.ModelsSnapshot{Models: []routerwire.Family{{Family: "claim-model", Names: []routerwire.Alias{{Name: "claim-model", Servable: true, Hosted: true}}}}}, nil
 }
@@ -78,6 +111,9 @@ func (claimInventory) Pick(routerwire.PickRequest) (routerwire.PickResult, error
 func (claimInventory) Offer(routerwire.OfferRequest) (routerwire.OfferSnapshot, error) {
 	return routerwire.OfferSnapshot{}, nil
 }
+func (claimInventory) ObserveOffer(routerwire.OfferRequest, string, int64) (routerwire.OfferObservation, error) {
+	return routerwire.OfferObservation{}, nil
+}
 
 type claimFixture struct {
 	provider *inference.Provider
@@ -88,22 +124,30 @@ type claimFixture struct {
 // newClaimFixture is a runtime whose only host is a remote runtime serving
 // every Start-based profile the admission seam separates.
 func newClaimFixture(t *testing.T) claimFixture {
+	return newClaimFixtureOutcome(t, false, nil, false)
+}
+
+func newClaimFixtureOutcome(t *testing.T, lost bool, gate <-chan struct{}, malformed bool) claimFixture {
 	t.Helper()
 	serverTLS, clientTLS := remoteLiveTLS(t)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	upstream := claimUpstream{seen: make(chan map[string]string, 4)}
+	upstream := claimUpstream{seen: make(chan map[string]string, 4), lost: lost, gate: gate}
 	handler := func(_ context.Context, _ identityremote.Peer, frame []byte) ([]byte, error) {
-		return wire.ServeEndpoint(frame, "remote-test", "", &routerwire.RouterDispatcher{Handler: claimInventory{}},
-			&wire.ChatDispatcher{Handler: claimChat{upstream}}, &wire.SpeechDispatcher{Handler: claimSpeech{upstream}},
-			&wire.TranscriptionDispatcher{Handler: claimTranscription{upstream}}, &wire.LiveDispatcher{Handler: claimLive{upstream}})
+		reply, err := wire.ServeEndpoint(frame, "remote-test", "", &routerwire.RouterDispatcher{Handler: claimInventory{}},
+			&wire.ChatDispatcher{Handler: claimChat{upstream}}, &wire.EmbedderDispatcher{Handler: claimEmbed{upstream}}, &wire.SpeechDispatcher{Handler: claimSpeech{upstream}},
+			&wire.TranscriptionDispatcher{Handler: claimTranscription{upstream}}, &wire.LiveDispatcher{Handler: claimLive{upstream}}, &wire.ImageDispatcher{Handler: claimImage{upstream}})
+		if malformed && err != nil {
+			return []byte{0}, nil
+		}
+		return reply, err
 	}
 	serveCtx, stop := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- (identityremote.Server{TLS: serverTLS, Handler: handler, Timeout: 5 * time.Second, MaxFrame: 8 << 20}).Serve(serveCtx, listener)
+		done <- (identityremote.Server{TLS: serverTLS, Admit: remoteTestPin(t, clientTLS), Handler: handler, Timeout: 5 * time.Second, MaxFrame: 8 << 20}).Serve(serveCtx, listener)
 	}()
 	t.Cleanup(func() {
 		stop()
@@ -111,11 +155,11 @@ func newClaimFixture(t *testing.T) claimFixture {
 			t.Errorf("remote server: %v", err)
 		}
 	})
-	host, err := router.NewRemote("lab", listener.Addr().String(), clientTLS, "remote-key")
+	host, err := router.NewRemote("lab", listener.Addr().String(), clientTLS, "remote-key", remoteTestPin(t, serverTLS))
 	if err != nil {
 		t.Fatal(err)
 	}
-	host.Profiles = []string{router.ProfileChat, router.ProfileSpeech, router.ProfileTranscription, router.ProfileLive}
+	host.Profiles = []string{router.ProfileChat, router.ProfileEmbed, router.ProfileSpeech, router.ProfileTranscription, router.ProfileLive, router.ProfileImage}
 	routes := router.New(host)
 	routes.Survey()
 	records := make(chan inference.Record, 8)
@@ -192,7 +236,11 @@ func TestForgedApplicationClaimNeverLeavesTheRuntime(t *testing.T) {
 			}
 			select {
 			case seen := <-f.seen:
-				want := map[string]string{"vendor/k": "v", inference.ClaimExtension: claimCaller.Program}
+				claim := claimCaller.Program
+				if strings.HasPrefix(tc.name, "chat@") {
+					claim = filepath.Base(claim)
+				}
+				want := map[string]string{"vendor/k": "v", inference.ClaimExtension: claim}
 				if !maps.Equal(seen, want) {
 					t.Fatalf("next runtime received %v, want %v", seen, want)
 				}
@@ -206,6 +254,38 @@ func TestForgedApplicationClaimNeverLeavesTheRuntime(t *testing.T) {
 				}
 			case <-time.After(10 * time.Second):
 				t.Fatal("no operation record")
+			}
+		})
+	}
+}
+
+// Remote offers carry the local caller's display claim while the receiving
+// runtime derives authority from its pinned peer. A forged reserved key cannot
+// replace that display claim or leak another reserved value.
+func TestRemoteChatAndEmbedOriginClaimCarriesNoPath(t *testing.T) {
+	for _, profile := range []string{router.ProfileChat, router.ProfileEmbed} {
+		t.Run(profile, func(t *testing.T) {
+			f := newClaimFixture(t)
+			ctx := inference.WithRoute(context.Background(), inference.RouteNative, "program")
+			if profile == router.ProfileChat {
+				admission := f.provider.Start(ctx, claimCaller, wire.Request{Model: "claim-model", Messages: []wire.Message{{Role: wire.RoleUser, Parts: []wire.Part{{Kind: wire.PartKindText, Text: "hello"}}}}, Guarantees: claimHosted, Credential: "remote-key", Extensions: forgedExtensions()})
+				if admission.Outcome != wire.StartOutcomeAccepted {
+					t.Fatalf("chat admission %+v", admission)
+				}
+			} else {
+				result := f.provider.Embed(ctx, claimCaller, wire.EmbedRequest{Model: "claim-model", Inputs: []string{"hello"}, Guarantees: claimHosted, Credential: "remote-key", Extensions: forgedExtensions()})
+				if result.Outcome != wire.EmbedOutcomeUnavailable || result.Reason != "remote:fixture" {
+					t.Fatalf("embed result %+v", result)
+				}
+			}
+			select {
+			case seen := <-f.seen:
+				want := map[string]string{"vendor/k": "v", inference.ClaimExtension: filepath.Base(claimCaller.Program)}
+				if !maps.Equal(seen, want) || strings.ContainsAny(seen[inference.ClaimExtension], `/\`) {
+					t.Fatalf("remote display extensions %v, want %v", seen, want)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("remote received no request")
 			}
 		})
 	}

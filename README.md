@@ -11,6 +11,10 @@ OpenRouter, then applies the named credential inside the service.
 Video generation and image batches use durable jobs, with retained results and
 recovery after the application reconnects.
 
+**Known implementation limit (INF-P4, planned 0.9):** automatic sequential audit
+history recovery remains pending. Invalid required journal data currently
+returns a typed unavailable page; it does not recover or skip that history.
+
 **What's new here:** Applications call local and hosted models with no API key
 and no vendor protocol in the application: the service holds the credential,
 checks the person's rule and records each call.
@@ -22,7 +26,7 @@ lives under `go/`, `cpp/`, `py/`, `rs/` and `javascript/`.
 The request carries messages of typed parts (text, image by storage digest,
 tool call, tool result), tools, options, vendor extensions, guarantees and a
 credential name. A reply streams as bounded pages: `Start` admits the call,
-`Observe` reads deltas from a cursor with a long-poll wait, and `Cancel` stops
+`Observe` reads [deltas](https://openabstractions.github.io/reference.html#concept-inference.operation-delta) from a cursor with a long-poll wait, and `Cancel` stops
 it. A request nobody observes is closed, because a stream nobody reads is
 spend.
 
@@ -47,10 +51,10 @@ The example is in [Chat with a model](#chat-with-a-model).
 
 ## Set up a model server
 
-Lemonade, LM Studio and Ollama at their documented default local addresses
-are installation declarations: the runtime reaches them with no file and no
-command. `inference server add` is for a local engine at another address, or for a
-hosted server. `openabstractions inference server list` shows every declared
+Model servers come from a product's own endpoint record, an installed OA
+provider declaration, or explicit operator configuration. A default local
+address alone registers no third-party product. Use `inference server add`
+for a local engine whose product records no endpoint, or for a hosted server. `openabstractions inference server list` shows every declared
 model server, installed and operator-added alike.
 
 Before an application's first call, one rule must grant it
@@ -127,9 +131,8 @@ nothing else (CONTRACT.md INF-H1):
 | Foundry Local | the address `foundry service status` prints; it picks a port at each start and writes none to a file |
 
 A product that recorded nothing declares no model server. Its documented
-default address is an installation declaration instead: this is where
-Lemonade, LM Studio, Ollama and ComfyUI at their fixed local ports live
-today, with no compiled-in list inside the router itself. A malformed record
+default address alone supplies no registration. Explicit operator entries
+remain registered when their server is offline. A malformed record
 is no declaration, logged with its reason; no probe opens a connection,
 scans a port or listens for multicast. llama-swap records its listen address
 only in its command line, with no default configuration path, and an
@@ -258,7 +261,7 @@ SDK coverage.
 
 ## Go provider
 
-- `inference.Provider` admits a request in the contract's order: shape,
+- [`inference.Provider`](https://openabstractions.github.io/reference.html#concept-inference.chat-provider) admits a request in the contract's order: shape,
   model-server selection through `router.Router` within the request's
   guarantees, features, the `abstraction.inference/complete` decision on
   `server:<name>`, authorized image reads, the credential's budget,
@@ -282,7 +285,7 @@ SDK coverage.
   model as an object through `Admit` can keep it loaded for as long as the
   request is open, instead of tracking calls itself.
 - `service.Listen` serves the inference contracts on one endpoint and binds
-  every caller by Program proof. Current macOS source uses XPC for that proof;
+  every caller by [Program](https://openabstractions.github.io/reference.html#concept-identity.listener-program-need) proof. Current macOS source uses XPC for that proof;
   the Unix-socket path remains below the required policy. The published 0.2.0
   package predates XPC support.
 
@@ -365,7 +368,7 @@ provider-independent vocabulary.
 
 ## Packing model files
 
-`openabstractions models pack` turns a safetensors or GGUF file, or a whole
+`modelpack` turns a safetensors or GGUF file, or a whole
 model folder, into an OpenAbstractions model archive: a zip of STORED,
 64 KiB-aligned entries that standard zip tools open, led by `oa-archive.json`
 with every file's digest, 16 MiB span digests and tensor table (CONTRACT.md
@@ -375,13 +378,13 @@ quantised tensors, F32 and every other file are stored as they are, under
 their own names. The command works on files and reaches no service.
 
 ```sh
-openabstractions models pack measure model.safetensors     # this machine's rates, as --rates takes them
-openabstractions models pack model.safetensors model.oa.zip
-openabstractions models pack info model.oa.zip             # digests, units per encoding, bytes kept
-openabstractions models pack verify model.oa.zip --digest sha256:<hex>
-openabstractions models pack restore model.oa.zip model.safetensors   # byte for byte
-openabstractions models pack ./my-model my-model.oa.zip    # a folder: one archive
-openabstractions models pack restore my-model.oa.zip ./my-model-again
+modelpack measure model.safetensors     # this machine's rates, as --rates takes them
+modelpack model.safetensors model.oa.zip
+modelpack info model.oa.zip             # digests, units per encoding, bytes kept
+modelpack verify model.oa.zip --digest sha256:<hex>
+modelpack restore model.oa.zip model.safetensors   # byte for byte
+modelpack ./my-model my-model.oa.zip    # a folder: one archive
+modelpack restore my-model.oa.zip ./my-model-again
 ```
 
 Without `--rates`, `pack` measures for a few seconds first. Each unit takes
@@ -464,15 +467,19 @@ runtime for that run, and leaves the installed setting unchanged.
 The gateway speaks OpenAI `POST /v1/chat/completions` and `GET /v1/models`,
 and Anthropic `POST /v1/messages`, with server-sent events. `gateway.Listen`
 binds each connection's peer through the socket-owner table
-(`identity.BindLoopback`) before reading it, requires the gateway key issued
-to that exact program before reading a body, and admits the request through
-the provider as that program: its rules decide, and the audit records the
-gateway route and the socket rung. On macOS the gateway still refuses every
-connection: XPC service proof does not establish loopback caller proof. The
-key is held in the platform store as a credentials record of
-kind `openabstractions/local-key@1`; a key alone grants nothing, and which
-consumer it admits for follows the route, not the key itself (CONTRACT.md
-INF-W5).
+(`identity.BindLoopback`) before reading it, requires a non-empty key before
+reading a body, and admits the request through the provider as that program:
+its rules decide, and the audit records the gateway route and the socket
+rung. On macOS the gateway still refuses every connection: XPC service proof
+does not establish loopback caller proof. A desktop client may give any
+non-empty key: its chat reaches a hosted model server under the credential
+the server names, and the program's own rules decide each use. A gateway
+key minted with `key issue` is held in the platform store as a credentials
+record of kind `openabstractions/local-key@1` and is verified for its
+program; a key alone grants nothing, and which consumer it admits for
+follows the route, not the key itself (CONTRACT.md INF-W4, INF-W5). A chat
+call refused for want of a first-use answer is held open until the person
+answers (INF-W10).
 
 A Realtime-speaking client reaches live voice the same way:
 
@@ -496,7 +503,13 @@ use typed options. The core owns cancellation and session cleanup.
 The gateway's current import is
 `github.com/openabstractions/abstraction-inference/adapters/go/gateway`.
 See the [adapter README](adapters/go/README.md) for migration and dependency
-status. The [contract](CONTRACT.md) defines the behavior each provider must keep.
+status. The [contract](CONTRACT.md) defines provider-independent call behavior.
+The [provider kit's reviewed engine bindings](https://github.com/openabstractions/abstraction-provider-kit/blob/main/CONTRACT.md#reviewed-engine-bindings)
+own engine-specific options, environment, prompt/media checks and platform video
+encoding. Their legacy `INF-` IDs and inference section anchors remain valid
+through explicit forwarding. Shared provider execution now uses the provider
+kit; its [0.8 migration guide](https://github.com/openabstractions/abstraction-provider-kit/blob/main/MIGRATING-0.8.md) maps Go imports. Inference retains mandatory pure
+request safety at its neutral media boundary.
 
 <!-- BEGIN GENERATED PERMISSION DEFINITIONS -->
 
@@ -513,6 +526,6 @@ This reference records compiled receiving support; RIGHTS.json names the compila
 | `abstraction.inference/host.manage` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/operator@1#Hosts`, `abstraction.inference/operator@1#AddHost`, `abstraction.inference/operator@1#RemoveHost`, `abstraction.inference/operator@1#Gateway`, `abstraction.inference/operator@1#SetGateway` | `none` | served in compiled context |
 | `abstraction.inference/key.issue` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/operator@1#Keys`, `abstraction.inference/operator@1#IssueKey`, `abstraction.inference/operator@1#RevokeKey` | `none` | served in compiled context |
 | `abstraction.inference/selection.manage` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/selection-operator@2#Read`, `abstraction.inference/selection-operator@2#Put`, `abstraction.inference/selection-operator@2#DeletePolicy` | `none` | served in compiled context |
-| `abstraction.inference/selection.manage_for` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/selection-operator@2#Read`, `abstraction.inference/selection-operator@2#Put`, `abstraction.inference/selection-operator@2#DeletePolicy` | `none` | served in compiled context |
+| `abstraction.inference/selection.manage_for` | `abstraction.rights/legacy-exact-string@1` | `abstraction.inference/selection-operator@2#Read`, `abstraction.inference/selection-operator@2#Put`, `abstraction.inference/selection-operator@2#DeletePolicy`, `abstraction.inference/selection-operator@2#ReadAccountDefault`, `abstraction.inference/selection-operator@2#PutAccountDefault`, `abstraction.inference/selection-operator@2#DeleteAccountDefault` | `none` | served in compiled context |
 
 <!-- END GENERATED PERMISSION DEFINITIONS -->
