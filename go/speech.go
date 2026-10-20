@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,6 +22,50 @@ import (
 )
 
 const SpeechContract = "abstraction.inference/speech@1"
+
+// Speech options as speech@1 extensions (INF-S9): a speaking-rate multiplier
+// in 0.25..4 written as a decimal, and free-text voice instructions of at most
+// 4096 bytes. A server that cannot honour one refuses the request with
+// unsupported_feature extension:<key>; none drops it.
+const (
+	SpeechSpeedExtension        = "openai/speed"
+	SpeechInstructionsExtension = "openai/instructions"
+	MinSpeechSpeed              = 0.25
+	MaxSpeechSpeed              = 4.0
+	MaxSpeechInstructionsBytes  = 4096
+)
+
+// SpeechSpeed reads the speed extension of req: the multiplier and whether
+// it was named. A named speed that is not a number in MinSpeechSpeed..
+// MaxSpeechSpeed is an error.
+func SpeechSpeed(req wire.SpeechRequest) (float64, bool, error) {
+	raw, named := req.Extensions[SpeechSpeedExtension]
+	if !named {
+		return 1, false, nil
+	}
+	speed, err := strconv.ParseFloat(raw, 64)
+	if err != nil || math.IsNaN(speed) || speed < MinSpeechSpeed || speed > MaxSpeechSpeed {
+		return 0, true, fmt.Errorf("speed %q is not a number in %v..%v", raw, MinSpeechSpeed, MaxSpeechSpeed)
+	}
+	return speed, true, nil
+}
+
+// speechOptionsUnsupported names the first speech option that a server of
+// adapter kind cannot honour, as extension:<key>, or "". An OpenAI-compatible
+// server takes both as request fields; a remote peer and a speech engine
+// decide for themselves at their own admission.
+func speechOptionsUnsupported(kind string, req wire.SpeechRequest) string {
+	switch kind {
+	case "openai", "remote", "engine":
+		return ""
+	}
+	for _, key := range []string{SpeechSpeedExtension, SpeechInstructionsExtension} {
+		if _, named := req.Extensions[key]; named {
+			return "extension:" + key
+		}
+	}
+	return ""
+}
 
 func speechFormatWord(format wire.SpeechFormat) string { return format.String() }
 
@@ -46,6 +92,12 @@ func validateSpeech(req wire.SpeechRequest) (int64, string) {
 	}
 	if !req.Format.Known() {
 		return 0, "format"
+	}
+	if _, _, err := SpeechSpeed(req); err != nil {
+		return 0, "speed"
+	}
+	if instructions, named := req.Extensions[SpeechInstructionsExtension]; named && (instructions == "" || len(instructions) > MaxSpeechInstructionsBytes || !utf8.ValidString(instructions)) {
+		return 0, "instructions"
 	}
 	for key := range req.Extensions {
 		owner, name, ok := strings.Cut(key, "/")
@@ -127,6 +179,9 @@ func (p *Provider) StartSpeech(ctx context.Context, subject Subject, req wire.Sp
 	}
 	if kind == "" || host.SpeechURL() == "" {
 		return refuse(wire.StartOutcomeUnsupportedFeature, "wire:"+host.Wire, host, model)
+	}
+	if reason := speechOptionsUnsupported(kind, req); reason != "" {
+		return refuse(wire.StartOutcomeUnsupportedFeature, reason, host, model)
 	}
 	// The router answers which formats a server produces; a native provider
 	// decides its own at its own admission, and an engine narrows them below.
@@ -286,6 +341,12 @@ func runSpeechHTTP(ctx context.Context, client *http.Client, host *router.Host, 
 	body := map[string]any{"text": input.Text}
 	if kind == "openai" {
 		body = map[string]any{"model": model, "voice": input.Voice, "input": input.Text, "response_format": speechFormatWord(input.Format)}
+		if speed, named, _ := SpeechSpeed(input); named {
+			body["speed"] = speed
+		}
+		if instructions, named := input.Extensions[SpeechInstructionsExtension]; named {
+			body["instructions"] = instructions
+		}
 	}
 	if kind == "piper" {
 		body["voice"] = input.Voice
@@ -302,7 +363,7 @@ func runSpeechHTTP(ctx context.Context, client *http.Client, host *router.Host, 
 		address = u.String()
 		body = map[string]any{"text": input.Text, "model_id": model}
 	}
-	//unchecked: body above holds only string values; json.Marshal on plain data types cannot fail
+	//unchecked: body above holds only string and finite number values; json.Marshal on plain data types cannot fail
 	raw, _ := json.Marshal(body)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, address, bytes.NewReader(raw))
 	if err != nil {

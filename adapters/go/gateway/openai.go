@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,9 +18,54 @@ import (
 )
 
 // errUnsupported is a request field the window cannot express in chat@1.
-type errUnsupported struct{ feature string }
+// plain, when set, is the message the client reads in place of the reason.
+type errUnsupported struct{ feature, plain string }
 
 func (e errUnsupported) Error() string { return "feature:" + e.feature }
+
+// oaiModeled names the chat completions fields the window translates. Any
+// other top-level field is ignored and named in one log line per request.
+var oaiModeled = map[string]bool{
+	"model": true, "messages": true, "tools": true, "tool_choice": true,
+	"max_tokens": true, "max_completion_tokens": true, "temperature": true,
+	"stop": true, "stream": true, "stream_options": true, "response_format": true, "n": true,
+	"reasoning_effort": true,
+}
+
+// oaiIgnored returns the sorted names of the top-level fields of body that
+// the window does not translate.
+func oaiIgnored(body map[string]json.RawMessage) []string {
+	var names []string
+	for name := range body {
+		if !oaiModeled[name] {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// oaiToolChoice reads tool_choice. "auto" and an absent value keep the
+// tools; "none" withholds them from the model. "required" and a named
+// function are unsupported: chat@1 carries no tool choice.
+func oaiToolChoice(raw json.RawMessage) (withhold bool, err error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return false, nil
+	}
+	const accepted = `the gateway accepts tool_choice "auto" or "none"`
+	var word string
+	if json.Unmarshal(raw, &word) != nil {
+		return false, errUnsupported{"openai/tool_choice:function", "tool_choice naming a function is unsupported: " + accepted}
+	}
+	switch word {
+	case "auto":
+		return false, nil
+	case "none":
+		return true, nil
+	}
+	return false, errUnsupported{"openai/tool_choice:" + word, fmt.Sprintf("tool_choice %q is unsupported: %s", word, accepted)}
+}
 
 type oaiRequest struct {
 	Model               string          `json:"model"`
@@ -38,7 +85,9 @@ type oaiRequest struct {
 			Schema json.RawMessage `json:"schema"`
 		} `json:"json_schema"`
 	} `json:"response_format"`
-	N *int64 `json:"n"`
+	N               *int64          `json:"n"`
+	ToolChoice      json.RawMessage `json:"tool_choice"`
+	ReasoningEffort *string         `json:"reasoning_effort"`
 }
 
 type oaiMessage struct {
@@ -90,7 +139,7 @@ func oaiText(raw json.RawMessage) ([]string, error) {
 		case "text":
 			out = append(out, p.Text)
 		case "image_url", "input_image", "image":
-			return nil, errUnsupported{inference.FeatureVision}
+			return nil, errUnsupported{feature: inference.FeatureVision}
 		default:
 			return nil, fmt.Errorf("content part type %q", p.Type)
 		}
@@ -114,7 +163,7 @@ func milli(t float64) *wire.Temperature {
 func fromOpenAI(in oaiRequest) (wire.Request, error) {
 	req := wire.Request{Model: in.Model, Messages: []wire.Message{}}
 	if in.N != nil && *in.N != 1 {
-		return req, errUnsupported{"openai/n"}
+		return req, errUnsupported{feature: "openai/n"}
 	}
 	for _, m := range in.Messages {
 		texts, err := oaiText(m.Content)
@@ -141,7 +190,15 @@ func fromOpenAI(in oaiRequest) (wire.Request, error) {
 			return req, fmt.Errorf("message role %q", m.Role)
 		}
 	}
-	for _, t := range in.Tools {
+	withhold, err := oaiToolChoice(in.ToolChoice)
+	if err != nil {
+		return req, err
+	}
+	tools := in.Tools
+	if withhold {
+		tools = nil
+	}
+	for _, t := range tools {
 		if t.Type != "function" {
 			return req, fmt.Errorf("tool type %q", t.Type)
 		}
@@ -169,17 +226,25 @@ func fromOpenAI(in oaiRequest) (wire.Request, error) {
 	if f := in.ResponseFormat; f != nil {
 		switch f.Type {
 		case "", "text":
+		case "json_object":
+			// JSON mode is the schema every JSON object meets.
+			options.JSONSchema = `{"type":"object"}`
 		case "json_schema":
 			if f.JSONSchema == nil || len(f.JSONSchema.Schema) == 0 {
 				return req, errors.New("response_format json_schema without a schema")
 			}
 			options.JSONSchema = string(f.JSONSchema.Schema)
 		default:
-			return req, errUnsupported{"openai/response_format:" + f.Type}
+			return req, errUnsupported{feature: "openai/response_format:" + f.Type}
 		}
 	}
 	if options.MaxOutput != 0 || options.Temperature != nil || len(options.Stop) > 0 || options.JSONSchema != "" {
 		req.Options = &options
+	}
+	if e := in.ReasoningEffort; e != nil && *e != "" {
+		// An optional extension: a wire that maps it sends it, and the rest
+		// serve the request without it (INF-W7).
+		req.Extensions = map[string]string{"openai/reasoning_effort": *e}
 	}
 	return req, nil
 }
@@ -214,18 +279,37 @@ func (w *Window) badRequest(rw http.ResponseWriter, b Bound, model string, err e
 	}
 	subject := b.Subject()
 	w.record(inference.Record{Rung: b.Rung(), Account: subject.Account, Program: subject.Program, Model: model, Outcome: outcome, Reason: reason})
-	refusalOf(outcome, reason).write(rw)
+	answer := refusalOf(outcome, reason)
+	if unsupported.plain != "" {
+		answer.message = unsupported.plain
+	}
+	answer.write(rw)
 }
 
 func (w *Window) openAIChat(rw http.ResponseWriter, r *http.Request, b Bound, grant Grant) {
+	var body json.RawMessage
+	if !w.readBody(rw, r, b, &body) {
+		return
+	}
 	var in oaiRequest
-	if !w.readBody(rw, r, b, &in) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &in); err != nil {
+		writeError(rw, http.StatusBadRequest, "invalid", "the request body is not a chat completions request: "+err.Error())
+		return
+	}
+	if err := json.Unmarshal(body, &fields); err != nil {
+		writeError(rw, http.StatusBadRequest, "invalid", "the request body is not a JSON object: "+err.Error())
 		return
 	}
 	req, err := fromOpenAI(in)
 	if err != nil {
 		w.badRequest(rw, b, in.Model, err)
 		return
+	}
+	if ignored := oaiIgnored(fields); len(ignored) > 0 {
+		// Names only: a field's value can carry the caller's data.
+		log.Printf("inference gateway: chat completions request from %s for model %q ignored fields: %s",
+			b.Subject().Program, in.Model, strings.Join(ignored, ", "))
 	}
 	admission := w.start(r, b, grant, req)
 	if admission.Outcome != wire.StartOutcomeAccepted {

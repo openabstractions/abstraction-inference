@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -303,5 +304,50 @@ func TestElevenLabsUsesVoicePathModelAndOutputFormat(t *testing.T) {
 	posts := f.up.posts()
 	if len(posts) != 1 || posts[0].path != "/v1/text-to-speech/voice-123/stream" || posts[0].header.Get("xi-api-key") != secret || !bytes.Contains([]byte(posts[0].body), []byte(`"model_id":"eleven_multilingual_v2"`)) {
 		t.Fatalf("posts %+v", posts)
+	}
+}
+
+// Speed and instructions reach an OpenAI-compatible speech server as its
+// request fields; a server that cannot honour them refuses the request
+// naming the option before any output is prepared (INF-S9).
+func TestSpeechSpeedAndInstructionsReachTheServerOrAreRefused(t *testing.T) {
+	store := &speechStore{}
+	f := setup(t, router.WireOpenAICompatible, func(c *Config) { c.PrepareContentWrite = store.prepare })
+	req := speechRequest("hello")
+	req.Extensions = map[string]string{SpeechSpeedExtension: "1.5", SpeechInstructionsExtension: "Speak calmly."}
+	a := f.provider.StartSpeech(context.Background(), caller, req)
+	if a.Outcome != wire.StartOutcomeAccepted {
+		t.Fatalf("admission %+v", a)
+	}
+	if _, _, end := drainSpeech(t, f.provider, caller, a.Operation); end.Outcome != wire.ReplyOutcomeCompleted {
+		t.Fatalf("end %+v", end)
+	}
+	posts := f.up.posts()
+	if len(posts) != 1 || !strings.Contains(posts[0].body, `"speed":1.5`) || !strings.Contains(posts[0].body, `"instructions":"Speak calmly."`) {
+		t.Fatalf("posts %+v", posts)
+	}
+	req.Extensions = map[string]string{SpeechSpeedExtension: "9"}
+	if a := f.provider.StartSpeech(context.Background(), caller, req); a.Outcome != wire.StartOutcomeInvalid || a.Reason != "speed" {
+		t.Fatalf("speed 9: %+v", a)
+	}
+
+	r := router.New(router.Piper("http://127.0.0.1:1"))
+	r.Survey()
+	prepared := 0
+	p, err := New(Config{Router: r, Decide: func(context.Context, Subject, string, string) (string, error) { return "permitted", nil },
+		Apply: func(context.Context, Subject, string, string, string) (map[string]string, string) { return nil, "applied" },
+		PrepareContentWrite: func(context.Context, Subject, string, string, int64) (ContentCommitter, ContentOutcome) {
+			prepared++
+			return nil, ContentUnavailable
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+	for key, value := range map[string]string{SpeechSpeedExtension: "0.8", SpeechInstructionsExtension: "Whisper."} {
+		piper := wire.SpeechRequest{Model: "piper", Voice: "lessac", Text: "hello", Format: wire.SpeechFormatWav, Extensions: map[string]string{key: value}}
+		if a := p.StartSpeech(context.Background(), caller, piper); a.Outcome != wire.StartOutcomeUnsupportedFeature || a.Reason != "extension:"+key || prepared != 0 {
+			t.Fatalf("piper %s: %+v prepared %d", key, a, prepared)
+		}
 	}
 }

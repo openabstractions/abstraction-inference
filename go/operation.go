@@ -345,7 +345,13 @@ func (p *Provider) run(ctx context.Context, op *operation, adapter adapter, req 
 		op.timing.prepare(prepared.Timing)
 		op.mu.Unlock()
 	}
+	window, input, over := int64(0), int64(0), false
 	if ready {
+		window, input, over = p.windowOverflow(ctx, op.host, op.model, req)
+	}
+	if over {
+		end = overflowed(window, input)
+	} else if ready {
 		if op.chat3 != nil {
 			end = p.runChat3(ctx, op, req, images, headers)
 		} else {

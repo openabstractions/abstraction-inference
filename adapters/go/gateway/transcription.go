@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	digestfmt "github.com/openabstractions/abstraction-storage/go/digest"
 	"io"
 	"net/http"
@@ -98,7 +99,9 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 	if format == "" {
 		format = "json"
 	}
-	if format != "json" && format != "verbose_json" {
+	switch format {
+	case "json", "verbose_json", "text", "srt", "vtt":
+	default:
 		w.transcriptionBadRequest(rw, b, model, "response_format")
 		return
 	}
@@ -114,6 +117,9 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 		}
 		switch {
 		case segment && word:
+			mode = wire.TimestampModeSegmentAndWord
+		case word && (format == "srt" || format == "vtt"):
+			// Subtitles are cues of segments.
 			mode = wire.TimestampModeSegmentAndWord
 		case word:
 			mode = wire.TimestampModeWord
@@ -201,6 +207,20 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 			text.WriteString(unit.Text)
 		}
 	}
+	switch format {
+	case "text", "srt", "vtt":
+		body, contentType := text.String(), "text/plain; charset=utf-8"
+		if format != "text" {
+			body = subtitles(format, units)
+		}
+		if format == "vtt" {
+			contentType = "text/vtt; charset=utf-8"
+		}
+		rw.Header().Set("Content-Type", contentType)
+		//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to
+		_, _ = io.WriteString(rw, body)
+		return
+	}
 	out := map[string]any{"text": text.String()}
 	if format == "verbose_json" {
 		out["language"], out["duration"] = end.Language, float64(end.DurationMs)/1000
@@ -221,6 +241,32 @@ func (w *Window) openAITranscription(rw http.ResponseWriter, r *http.Request, b 
 	rw.Header().Set("Content-Type", "application/json")
 	//unchecked: terminal write of the response; headers and status are already committed and this package has no logger to report a write failure to (matches writeError and the other Encode calls in this package)
 	_ = json.NewEncoder(rw).Encode(out)
+}
+
+// subtitles renders the segments of a transcript as SubRip (srt) or WebVTT
+// (vtt) cues, numbered from 1 in transcript order.
+func subtitles(format string, units []wire.TranscriptSegment) string {
+	var out strings.Builder
+	separator := ","
+	if format == "vtt" {
+		separator = "."
+		//unchecked: strings.Builder.WriteString never returns a non-nil error
+		out.WriteString("WEBVTT\n\n")
+	}
+	stamp := func(ms int64) string {
+		ms = max(ms, 0)
+		return fmt.Sprintf("%02d:%02d:%02d%s%03d", ms/3600000, ms/60000%60, ms/1000%60, separator, ms%1000)
+	}
+	cue := 0
+	for _, unit := range units {
+		if unit.Kind != wire.TranscriptUnitKindSegment {
+			continue
+		}
+		cue++
+		//unchecked: fmt.Fprintf into a strings.Builder never fails
+		fmt.Fprintf(&out, "%d\n%s --> %s\n%s\n\n", cue, stamp(unit.StartMs), stamp(unit.EndMs), strings.TrimSpace(unit.Text))
+	}
+	return out.String()
 }
 
 func first(values []string) string {

@@ -105,14 +105,14 @@ func fromAnthropic(in antRequest) (wire.Request, error) {
 				var text strings.Builder
 				for _, ib := range inner {
 					if ib.Type != "text" {
-						return req, errUnsupported{inference.FeatureVision}
+						return req, errUnsupported{feature: inference.FeatureVision}
 					}
 					//unchecked: strings.Builder.WriteString never returns a non-nil error
 					text.WriteString(ib.Text)
 				}
 				results = append(results, wire.Part{Kind: wire.PartKindToolResult, CallID: b.ToolUseID, Text: text.String()})
 			case "image", "document":
-				return req, errUnsupported{inference.FeatureVision}
+				return req, errUnsupported{feature: inference.FeatureVision}
 			case "thinking", "redacted_thinking":
 			default:
 				return req, fmt.Errorf("content block type %q", b.Type)
@@ -143,7 +143,7 @@ func fromAnthropic(in antRequest) (wire.Request, error) {
 	}
 	for _, t := range in.Tools {
 		if t.Type != "" && t.Type != "custom" {
-			return req, errUnsupported{"anthropic/tool:" + t.Type}
+			return req, errUnsupported{feature: "anthropic/tool:" + t.Type}
 		}
 		params := string(t.InputSchema)
 		if params == "" || params == "null" {

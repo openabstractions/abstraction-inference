@@ -6,6 +6,8 @@ import oa_dependency_acceptance "github.com/openabstractions/abstraction-job/go/
 
 import "time"
 
+import "runtime/debug"
+
 type Raw = string
 
 func escByte(out []byte, c byte) []byte {
@@ -34605,6 +34607,23 @@ func serviceReply(v *oaServiceFrame, payload Raw, err error) (frame []byte, outE
 	return frame, nil
 }
 
+// handlerPanic writes a recovered handler panic and its stack to standard error.
+func handlerPanic(service, method string, p interface{}) {
+	value := "a value that is neither a string nor an error"
+	func() {
+		defer func() { _ = recover() }()
+		switch v := p.(type) {
+		case string:
+			value = v
+		case error:
+			value = v.Error()
+		case interface{ String() string }:
+			value = v.String()
+		}
+	}()
+	print(service, " ", method, ": handler panic: ", value, "\n", string(debug.Stack()))
+}
+
 // EndpointContract is abstraction.facade/endpoint@1, which every dispatcher
 // answers beside its own service.
 const EndpointContract = "abstraction.facade/endpoint@1"
@@ -34812,7 +34831,8 @@ func ServeEndpointRemote(frame []byte, program, version string, admit func(contr
 			return &ServiceError{Code: "forbidden", Message: "remote admission required"}
 		}
 		defer func() {
-			if recover() != nil {
+			if p := recover(); p != nil {
+				handlerPanic(v.Service, v.Method+" admission", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}()
@@ -35150,6 +35170,7 @@ func (d *ChatDispatcher) invokeStart(args *oaChatStartArguments) (payload Raw, e
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@1", "Start", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -35182,6 +35203,7 @@ func (d *ChatDispatcher) invokeObserve(args *oaChatObserveArguments) (payload Ra
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@1", "Observe", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -35214,6 +35236,7 @@ func (d *ChatDispatcher) invokeCancel(args *oaChatCancelArguments) (payload Raw,
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@1", "Cancel", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -35575,6 +35598,7 @@ func (d *ChatV2Dispatcher) invokeStartWithGuarantees(args *oaChatV2StartWithGuar
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@2", "StartWithGuarantees", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -35607,6 +35631,7 @@ func (d *ChatV2Dispatcher) invokeStart(args *oaChatV2StartArguments) (payload Ra
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@2", "Start", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -35639,6 +35664,7 @@ func (d *ChatV2Dispatcher) invokeObserve(args *oaChatV2ObserveArguments) (payloa
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@2", "Observe", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -35671,6 +35697,7 @@ func (d *ChatV2Dispatcher) invokeCancel(args *oaChatV2CancelArguments) (payload 
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@2", "Cancel", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -36036,6 +36063,7 @@ func (d *ChatV3Dispatcher) invokeGetHistoryWindow(args *oaChatV3GetHistoryWindow
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@3", "GetHistoryWindow", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -36072,6 +36100,7 @@ func (d *ChatV3Dispatcher) invokeStart(args *oaChatV3StartArguments) (payload Ra
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@3", "Start", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -36104,6 +36133,7 @@ func (d *ChatV3Dispatcher) invokeObserve(args *oaChatV3ObserveArguments) (payloa
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@3", "Observe", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -36136,6 +36166,7 @@ func (d *ChatV3Dispatcher) invokeCancel(args *oaChatV3CancelArguments) (payload 
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/chat@3", "Cancel", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -36317,6 +36348,7 @@ func (d *PreloaderDispatcher) invokePreload(args *oaPreloaderPreloadArguments) (
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/preload@1", "Preload", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -36498,6 +36530,7 @@ func (d *EmbedderDispatcher) invokeEmbed(args *oaEmbedderEmbedArguments) (payloa
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/embed@1", "Embed", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -36803,6 +36836,7 @@ func (d *TranscriptionDispatcher) invokeStart(args *oaTranscriptionStartArgument
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/transcription@1", "Start", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -36835,6 +36869,7 @@ func (d *TranscriptionDispatcher) invokeObserve(args *oaTranscriptionObserveArgu
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/transcription@1", "Observe", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -36867,6 +36902,7 @@ func (d *TranscriptionDispatcher) invokeCancel(args *oaTranscriptionCancelArgume
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/transcription@1", "Cancel", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -37168,6 +37204,7 @@ func (d *SpeechDispatcher) invokeStart(args *oaSpeechStartArguments) (payload Ra
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/speech@1", "Start", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -37200,6 +37237,7 @@ func (d *SpeechDispatcher) invokeObserve(args *oaSpeechObserveArguments) (payloa
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/speech@1", "Observe", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -37232,6 +37270,7 @@ func (d *SpeechDispatcher) invokeCancel(args *oaSpeechCancelArguments) (payload 
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/speech@1", "Cancel", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -37653,6 +37692,7 @@ func (d *LiveDispatcher) invokeStart(args *oaLiveStartArguments) (payload Raw, e
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/live@1", "Start", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -37685,6 +37725,7 @@ func (d *LiveDispatcher) invokeAppend(args *oaLiveAppendArguments) (payload Raw,
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/live@1", "Append", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -37717,6 +37758,7 @@ func (d *LiveDispatcher) invokeObserve(args *oaLiveObserveArguments) (payload Ra
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/live@1", "Observe", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -37749,6 +37791,7 @@ func (d *LiveDispatcher) invokeCommit(args *oaLiveCommitArguments) (payload Raw,
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/live@1", "Commit", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -37781,6 +37824,7 @@ func (d *LiveDispatcher) invokeCancel(args *oaLiveCancelArguments) (payload Raw,
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/live@1", "Cancel", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38082,6 +38126,7 @@ func (d *ImageDispatcher) invokeStart(args *oaImageStartArguments) (payload Raw,
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/image@1", "Start", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38114,6 +38159,7 @@ func (d *ImageDispatcher) invokeObserve(args *oaImageObserveArguments) (payload 
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/image@1", "Observe", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38146,6 +38192,7 @@ func (d *ImageDispatcher) invokeCancel(args *oaImageCancelArguments) (payload Ra
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/image@1", "Cancel", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38507,6 +38554,7 @@ func (d *ImageV2Dispatcher) invokeStartWithGuarantees(args *oaImageV2StartWithGu
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/image@2", "StartWithGuarantees", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38539,6 +38587,7 @@ func (d *ImageV2Dispatcher) invokeStart(args *oaImageV2StartArguments) (payload 
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/image@2", "Start", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38571,6 +38620,7 @@ func (d *ImageV2Dispatcher) invokeObserve(args *oaImageV2ObserveArguments) (payl
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/image@2", "Observe", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38603,6 +38653,7 @@ func (d *ImageV2Dispatcher) invokeCancel(args *oaImageV2CancelArguments) (payloa
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/image@2", "Cancel", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38904,6 +38955,7 @@ func (d *VideoDispatcher) invokeStart(args *oaVideoStartArguments) (payload Raw,
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/video@1", "Start", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38936,6 +38988,7 @@ func (d *VideoDispatcher) invokeObserve(args *oaVideoObserveArguments) (payload 
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/video@1", "Observe", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -38968,6 +39021,7 @@ func (d *VideoDispatcher) invokeCancel(args *oaVideoCancelArguments) (payload Ra
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/video@1", "Cancel", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -39809,6 +39863,7 @@ func (d *OperatorDispatcher) invokeHosts(args *oaOperatorHostsArguments) (payloa
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "Hosts", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -39841,6 +39896,7 @@ func (d *OperatorDispatcher) invokeAddHost(args *oaOperatorAddHostArguments) (pa
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "AddHost", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -39873,6 +39929,7 @@ func (d *OperatorDispatcher) invokeRemoveHost(args *oaOperatorRemoveHostArgument
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "RemoveHost", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -39905,6 +39962,7 @@ func (d *OperatorDispatcher) invokeKeys(args *oaOperatorKeysArguments) (payload 
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "Keys", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -39937,6 +39995,7 @@ func (d *OperatorDispatcher) invokeIssueKey(args *oaOperatorIssueKeyArguments) (
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "IssueKey", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -39969,6 +40028,7 @@ func (d *OperatorDispatcher) invokeRevokeKey(args *oaOperatorRevokeKeyArguments)
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "RevokeKey", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40001,6 +40061,7 @@ func (d *OperatorDispatcher) invokeAudit(args *oaOperatorAuditArguments) (payloa
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "Audit", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40033,6 +40094,7 @@ func (d *OperatorDispatcher) invokeRequests(args *oaOperatorRequestsArguments) (
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "Requests", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40065,6 +40127,7 @@ func (d *OperatorDispatcher) invokeGateway(args *oaOperatorGatewayArguments) (pa
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "Gateway", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40097,6 +40160,7 @@ func (d *OperatorDispatcher) invokeSetGateway(args *oaOperatorSetGatewayArgument
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "SetGateway", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40129,6 +40193,7 @@ func (d *OperatorDispatcher) invokeProgramBudgets(args *oaOperatorProgramBudgets
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "ProgramBudgets", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40161,6 +40226,7 @@ func (d *OperatorDispatcher) invokeSetProgramBudget(args *oaOperatorSetProgramBu
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/operator@1", "SetProgramBudget", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40706,6 +40772,7 @@ func (d *SelectionOperatorV2Dispatcher) invokeReadEffective(args *oaSelectionOpe
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/selection-operator@2", "ReadEffective", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40738,6 +40805,7 @@ func (d *SelectionOperatorV2Dispatcher) invokeRead(args *oaSelectionOperatorV2Re
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/selection-operator@2", "Read", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40770,6 +40838,7 @@ func (d *SelectionOperatorV2Dispatcher) invokePut(args *oaSelectionOperatorV2Put
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/selection-operator@2", "Put", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40802,6 +40871,7 @@ func (d *SelectionOperatorV2Dispatcher) invokeDeletePolicy(args *oaSelectionOper
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/selection-operator@2", "DeletePolicy", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40834,6 +40904,7 @@ func (d *SelectionOperatorV2Dispatcher) invokeReadAccountDefault(args *oaSelecti
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/selection-operator@2", "ReadAccountDefault", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40866,6 +40937,7 @@ func (d *SelectionOperatorV2Dispatcher) invokePutAccountDefault(args *oaSelectio
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/selection-operator@2", "PutAccountDefault", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
@@ -40898,6 +40970,7 @@ func (d *SelectionOperatorV2Dispatcher) invokeDeleteAccountDefault(args *oaSelec
 			if _, ok := p.(*Refusal); ok {
 				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
+				handlerPanic("abstraction.inference/selection-operator@2", "DeleteAccountDefault", p)
 				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}

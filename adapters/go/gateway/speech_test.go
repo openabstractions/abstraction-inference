@@ -47,3 +47,50 @@ func TestGatewaySpeechStreamsProviderBytes(t *testing.T) {
 		t.Fatalf("request %+v", provider.request)
 	}
 }
+
+// refusingSpeech is a speech provider whose server cannot honour any option.
+type refusingSpeech struct{ fakeSpeech }
+
+func (f *refusingSpeech) StartSpeech(_ context.Context, _ inference.Subject, request wire.SpeechRequest) wire.Admission {
+	f.request = request
+	for _, key := range []string{inference.SpeechSpeedExtension, inference.SpeechInstructionsExtension} {
+		if _, named := request.Extensions[key]; named {
+			return wire.Admission{Outcome: wire.StartOutcomeUnsupportedFeature, Reason: "extension:" + key}
+		}
+	}
+	return wire.Admission{Outcome: wire.StartOutcomeAccepted, Operation: "op"}
+}
+
+// speed and instructions travel as speech@1 extensions. A speed out of
+// range is the client's invalid request, and a server that cannot honour an
+// option is a plain 400 naming it and one log line without its value.
+func TestGatewaySpeechCarriesSpeedAndInstructions(t *testing.T) {
+	post := func(provider Chat, body string) *httptest.ResponseRecorder {
+		w := &Window{cfg: Config{Chat: provider}}
+		r := httptest.NewRequest(http.MethodPost, "/v1/audio/speech", strings.NewReader(body))
+		rw := httptest.NewRecorder()
+		w.openAISpeech(rw, r, fixedBound{inference.Subject{Account: "account", Program: "/apps/reader"}}, Grant{})
+		return rw
+	}
+	provider := &fakeSpeech{}
+	rw := post(provider, `{"model":"kokoro","voice":"af_sky","input":"hello","response_format":"wav","speed":1.25,"instructions":"Speak calmly."}`)
+	if rw.Code != http.StatusOK || provider.request.Extensions[inference.SpeechSpeedExtension] != "1.25" ||
+		provider.request.Extensions[inference.SpeechInstructionsExtension] != "Speak calmly." {
+		t.Fatalf("code=%d request %+v", rw.Code, provider.request)
+	}
+	provider = &fakeSpeech{}
+	if rw = post(provider, `{"model":"kokoro","voice":"af_sky","input":"hello","speed":1}`); rw.Code != http.StatusOK || provider.request.Extensions != nil {
+		t.Fatalf("default speed: code=%d extensions %v", rw.Code, provider.request.Extensions)
+	}
+	if rw = post(&fakeSpeech{}, `{"model":"kokoro","voice":"af_sky","input":"hello","speed":5}`); rw.Code != http.StatusBadRequest {
+		t.Fatalf("speed 5: code=%d body %s", rw.Code, rw.Body)
+	}
+	logged := captureLog(t)
+	rw = post(&refusingSpeech{}, `{"model":"piper","voice":"lessac","input":"hello","response_format":"wav","instructions":"Secret tone."}`)
+	if rw.Code != http.StatusBadRequest || !strings.Contains(rw.Body.String(), `instructions is unsupported by the speech server for model \"piper\"`) {
+		t.Fatalf("refused option: code=%d body %s", rw.Code, rw.Body)
+	}
+	if line := logged.String(); !strings.Contains(line, "extension:openai/instructions") || strings.Contains(line, "Secret tone") {
+		t.Fatalf("log %q", line)
+	}
+}

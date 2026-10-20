@@ -193,9 +193,35 @@ func chat3HostedRequest(t *testing.T, client *wire.ChatV3Client) wire.RequestV3 
 }
 
 func TestChat3GeneratedClientRunsOneAdmissionThroughReasoningAndAnswer(t *testing.T) {
-	f := setup(t, router.WireOpenAICompatible, nil)
+	ctx := t.Context()
+	if deadline, ok := t.Deadline(); ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
+	completed := make(chan struct{})
+	var completedOnce sync.Once
+	f := setup(t, router.WireOpenAICompatible, func(config *Config) {
+		record := config.Record
+		config.Record = func(rec Record) {
+			// Terminal observation precedes accounting. Record completion before
+			// the deliberate conflict to exercise accounting in the other order.
+			if rec.ChatVersion == 3 && rec.Outcome == "conflict" {
+				select {
+				case <-completed:
+				case <-ctx.Done():
+					t.Errorf("completion accounting: %v", ctx.Err())
+					return
+				}
+			}
+			record(rec)
+			if rec.ChatVersion == 3 && rec.Outcome == "completed" {
+				completedOnce.Do(func() { close(completed) })
+			}
+		}
+	})
 	f.up.reasoning = []string{"thinking", " separately"}
-	client := wire.NewChatV3Client(&wire.ChatV3Dispatcher{Handler: chat3BoundFixture{f.provider, caller, context.Background()}})
+	client := wire.NewChatV3Client(&wire.ChatV3Dispatcher{Handler: chat3BoundFixture{f.provider, caller, ctx}})
 	request := chat3HostedRequest(t, client)
 	a, err := client.Start(request)
 	if err != nil || a.Outcome != wire.ChatStartOutcomeAccepted {
@@ -263,8 +289,39 @@ func TestChat3GeneratedClientRunsOneAdmissionThroughReasoningAndAnswer(t *testin
 	if cancel := f.provider.Cancel(caller, a.Request); cancel.Outcome != wire.CancelOutcomeUnknown {
 		t.Fatal("legacy receiver cancelled chat3 request")
 	}
-	records := f.waitLogged(t, 1)
-	if records[len(records)-1].TokensOut != 3 || records[len(records)-1].Program != caller.Program {
+	records := f.logged()
+	for len(records) < 2 {
+		select {
+		case <-f.recorded:
+		case <-ctx.Done():
+			t.Fatalf("accounting: %v: %+v", ctx.Err(), f.logged())
+		}
+		records = f.logged()
+	}
+	if len(records) != 2 {
+		t.Fatalf("accounting %+v", records)
+	}
+	var completedRecord, conflictRecord bool
+	for _, rec := range records {
+		if rec.ChatVersion != 3 || rec.Account != caller.Account || rec.Program != caller.Program {
+			t.Fatalf("accounting subject %+v", rec)
+		}
+		switch rec.Outcome {
+		case "completed":
+			if completedRecord || rec.Operation != a.Request || rec.TokensIn != 7 || rec.TokensOut != 3 || rec.Credential != request.Content.Credential || rec.ChatUsage == nil || rec.ChatUsage.Input == nil || *rec.ChatUsage.Input != 7 || rec.ChatUsage.Output == nil || *rec.ChatUsage.Output != 3 {
+				t.Fatalf("completion accounting %+v", rec)
+			}
+			completedRecord = true
+		case "conflict":
+			if conflictRecord || rec.Operation != "" || rec.Reason != "history:conflict" || rec.TokensIn != 0 || rec.TokensOut != 0 || rec.ChatUsage != nil {
+				t.Fatalf("conflict accounting %+v", rec)
+			}
+			conflictRecord = true
+		default:
+			t.Fatalf("unexpected accounting %+v", rec)
+		}
+	}
+	if !completedRecord || !conflictRecord {
 		t.Fatalf("accounting %+v", records)
 	}
 }

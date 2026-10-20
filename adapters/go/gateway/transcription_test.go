@@ -116,3 +116,40 @@ func TestGatewayTranscriptionWriteDenialStartsNoOperation(t *testing.T) {
 		t.Fatalf("records %+v", records)
 	}
 }
+
+// Subtitle tools ask for text, srt or vtt: the window renders the segments
+// as plain text or numbered cues with the format's own time stamps, and
+// subtitles always ask the provider for segments.
+func TestGatewayTranscriptionRendersTextSrtAndVtt(t *testing.T) {
+	cases := []struct{ format, granularity, contentType, body string }{
+		{"text", "", "text/plain; charset=utf-8", "hello"},
+		{"srt", "word", "text/plain; charset=utf-8", "1\n00:00:00,000 --> 00:00:30,000\nhello\n\n"},
+		{"vtt", "", "text/vtt; charset=utf-8", "WEBVTT\n\n1\n00:00:00.000 --> 00:00:30.000\nhello\n\n"},
+	}
+	for _, c := range cases {
+		provider := &fakeTranscriber{}
+		w := &Window{cfg: Config{Chat: provider, StoreContent: func(context.Context, inference.Subject, string, []byte) inference.ContentOutcome {
+			return inference.ContentResolved
+		}}}
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		part, _ := mw.CreateFormFile("file", "recording.wav")
+		_, _ = part.Write(append([]byte("RIFF\x24\x00\x00\x00WAVEfmt "), make([]byte, 64)...))
+		_ = mw.WriteField("model", "whisper-1")
+		_ = mw.WriteField("response_format", c.format)
+		if c.granularity != "" {
+			_ = mw.WriteField("timestamp_granularities[]", c.granularity)
+		}
+		_ = mw.Close()
+		r := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", &body)
+		r.Header.Set("Content-Type", mw.FormDataContentType())
+		rw := httptest.NewRecorder()
+		w.openAITranscription(rw, r, fixedBound{inference.Subject{Account: "account", Program: "/apps/subtitler"}}, Grant{})
+		if rw.Code != http.StatusOK || rw.Header().Get("Content-Type") != c.contentType || rw.Body.String() != c.body {
+			t.Fatalf("%s: code %d type %q body %q", c.format, rw.Code, rw.Header().Get("Content-Type"), rw.Body.String())
+		}
+		if c.granularity == "word" && provider.request.Timestamps != wire.TimestampModeSegmentAndWord {
+			t.Fatalf("%s with word stamps asked for %v", c.format, provider.request.Timestamps)
+		}
+	}
+}

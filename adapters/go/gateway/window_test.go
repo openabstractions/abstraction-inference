@@ -37,6 +37,7 @@ const model = "fixture-chat:1b"
 type upstream struct {
 	server *httptest.Server
 	chats  atomic.Int64
+	last   atomic.Value // the last chat request body, a string
 }
 
 func newUpstream(t *testing.T) *upstream {
@@ -50,6 +51,7 @@ func newUpstream(t *testing.T) *upstream {
 		u.chats.Add(1)
 		raw, _ := io.ReadAll(r.Body)
 		body := string(raw)
+		u.last.Store(body)
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher := w.(http.Flusher)
 		send := func(data string) { fmt.Fprintf(w, "data: %s\n\n", data); flusher.Flush() }

@@ -832,7 +832,11 @@ func (r *operatorReceiver) Hosts() (wire.HostList, error) {
 }
 
 func (r *operatorReceiver) AddHost(expectedRevision string, host wire.HostEntry) (wire.HostChange, error) {
-	return r.host.Operator.AddHost(r.ctx, r.caller(), expectedRevision, host), nil
+	// The bound peer rides along: a host add from a program other than the
+	// person's own window is a request the person confirms (rights
+	// RIGHTS-O17), and the runtime reads the peer to tell them apart.
+	subject, _, peer := r.bound()
+	return r.host.Operator.AddHost(inference.WithPeer(r.ctx, peer), subject, expectedRevision, host), nil
 }
 
 func (r *operatorReceiver) RemoveHost(expectedRevision, name string) (wire.HostChange, error) {

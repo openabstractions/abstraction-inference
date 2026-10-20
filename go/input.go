@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"slices"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	"github.com/openabstractions/abstraction-inference/go/inputprofile"
 )
 
 // Request input profiles (INF-V4). Content an application uploads for a
@@ -17,9 +17,9 @@ import (
 const (
 	// InputImage is an edit input, an edit mask, a vision image or a video's
 	// first frame.
-	InputImage = "image"
+	InputImage = inputprofile.Image
 	// InputAudio is audio to transcribe.
-	InputAudio = "audio"
+	InputAudio = inputprofile.Audio
 )
 
 // InputProfiles lists every request input profile.
@@ -27,24 +27,14 @@ var InputProfiles = []string{InputImage, InputAudio}
 
 // InputResource is the rights resource of an input profile, input:<profile>,
 // under both abstraction.storage/content.write and content.read.
-func InputResource(profile string) string { return "input:" + profile }
+func InputResource(profile string) string { return inputprofile.Resource(profile) }
 
 // InputProfileOf names the input profile the leading bytes of a content object
 // fall under, or "" when they fit none. head needs at most 512 bytes. An image
 // is a PNG, JPEG, GIF or WebP, the types image input and vision accept
-// (INF-V1); audio is any type transcription accepts (INF-M5).
-func InputProfileOf(head []byte) string {
-	switch http.DetectContentType(head) {
-	case "image/png", "image/jpeg", "image/gif", "image/webp":
-		return InputImage
-	}
-	for _, media := range []string{"audio/wav", "audio/mpeg", "audio/mp4", "audio/webm", "audio/ogg", "audio/flac"} {
-		if audioMatches(head, media) {
-			return InputAudio
-		}
-	}
-	return ""
-}
+// (INF-V1); audio is any type transcription accepts (INF-M5). The
+// classification is inputprofile's, which uploading clients share.
+func InputProfileOf(head []byte) string { return inputprofile.Of(head) }
 
 // askInput tells the runtime that a consuming request of subject wants the
 // input profile it lacks (INF-V4). Only a request that consumes input calls it.

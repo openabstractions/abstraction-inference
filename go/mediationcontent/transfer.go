@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/openabstractions/abstraction-identity/listen"
+	"github.com/openabstractions/abstraction-inference/go/inputprofile"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
 	storageclient "github.com/openabstractions/abstraction-storage/go/client"
 	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
@@ -38,25 +39,7 @@ func MediaMatches(data []byte, media string) bool {
 	if ImageMedia(media) || VideoMedia(media) {
 		return http.DetectContentType(data) == media
 	}
-	switch media {
-	case "audio/wav":
-		return len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WAVE"
-	case "audio/mpeg":
-		return len(data) >= 3 && (string(data[:3]) == "ID3" || data[0] == 0xff && data[1]&0xe0 == 0xe0)
-	case "audio/mp4":
-		return len(data) >= 12 && string(data[4:8]) == "ftyp"
-	case "audio/webm":
-		return len(data) >= 4 && bytes.Equal(data[:4], []byte{0x1a, 0x45, 0xdf, 0xa3})
-	case "audio/ogg":
-		return len(data) >= 4 && string(data[:4]) == "OggS"
-	case "audio/flac":
-		return len(data) >= 4 && string(data[:4]) == "fLaC"
-	case "audio/aac":
-		return len(data) >= 2 && data[0] == 0xff && data[1]&0xf6 == 0xf0
-	case "audio/pcm":
-		return len(data) > 0 && len(data)%2 == 0
-	}
-	return false
+	return inputprofile.AudioMatches(data, media)
 }
 
 // ImageMedia reports whether media is an image type inference accepts as an

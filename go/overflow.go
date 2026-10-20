@@ -1,12 +1,16 @@
 package inference
 
 import (
+	"context"
 	"encoding/json"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	router "github.com/openabstractions/abstraction-router/go"
 )
 
 // overflowReasonPrefix starts the reason of a reply the model server refused
@@ -179,4 +183,78 @@ func (p *Provider) withObservedWindow(reason, host, model string) string {
 		}
 	}
 	return reason
+}
+
+// windowCheckFloor is the prompt size, in tokens, below which a request is
+// sent without reading the window: every model server window is larger.
+const windowCheckFloor = 1024
+
+// promptTokensAtLeast is a lower bound on the tokens req's messages and tools
+// take in a model's prompt: one token per six bytes of their text, with each
+// run of white space counted as one byte. Tokenizers spend at least that.
+func promptTokensAtLeast(req wire.Request) int64 {
+	var bytes int64
+	count := func(text string) {
+		space := false
+		for _, r := range text {
+			if unicode.IsSpace(r) {
+				if !space {
+					bytes++
+				}
+				space = true
+				continue
+			}
+			space = false
+			bytes += int64(utf8.RuneLen(r))
+		}
+	}
+	for _, m := range req.Messages {
+		for _, part := range m.Parts {
+			count(part.Text)
+			count(part.Name)
+			count(part.Arguments)
+		}
+	}
+	for _, t := range req.Tools {
+		count(t.Name)
+		count(t.Description)
+		count(t.Parameters)
+	}
+	return bytes / 6
+}
+
+// cachedWindow is the router's latest survey observation of the window host
+// serves model with, 0 when unknown.
+func (p *Provider) cachedWindow(host, model string) int64 {
+	families, _ := p.cfg.Router.Models(false)
+	for _, family := range families {
+		for _, alias := range family.Names {
+			if alias.Host == host && alias.Name == model && alias.EffectiveContextLength > 0 &&
+				(alias.ContextLength <= 0 || alias.EffectiveContextLength <= alias.ContextLength) {
+				return alias.EffectiveContextLength
+			}
+		}
+	}
+	return 0
+}
+
+// windowOverflow reports a request that certainly exceeds the window a
+// server that reports its loaded window serves model with (INF-Q7): Ollama and LM
+// Studio cut such a prompt silently, dropping its start with the system
+// prompt. A prompt the survey shows fits is sent at once; otherwise the
+// window is read from the server, loading an Ollama model as the request
+// would. An unknown window lets the request through.
+func (p *Provider) windowOverflow(ctx context.Context, host *router.Host, model string, req wire.Request) (window, input int64, over bool) {
+	if !host.ReportsLoadedWindow() {
+		return 0, 0, false
+	}
+	input = promptTokensAtLeast(req)
+	if input <= windowCheckFloor {
+		return 0, 0, false
+	}
+	if cached := p.cachedWindow(host.Name, model); cached > 0 && input <= cached {
+		return 0, 0, false
+	}
+	window = router.LoadedWindow(ctx, host, model)
+	return window, input, window > 0 && input > window
 }
